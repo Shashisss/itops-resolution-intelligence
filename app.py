@@ -25,7 +25,7 @@ if _needs_seed():
 
 st.set_page_config(page_title="ITOps Resolution Intelligence — POC", layout="wide")
 st.title("IT Operations Resolution & Intelligence")
-st.caption("Signal → Context → Reason → Recommend → Verify   ·   one governed record, shaped per persona   ·   build v5")
+st.caption("Signal → Context → Reason → Recommend → Verify   ·   one governed record, shaped per persona   ·   build v6")
 
 services, edges, incidents, changes, metrics, G = E.load()
 tickets = E.load_tickets()

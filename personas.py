@@ -121,7 +121,7 @@ def csm_view(inc, ctx):
                 st.rerun()
     q = st.text_input("Ask about this service or incident", key="q")
     if q:
-        r = csm.answer(q)
+        r = csm.answer(q, persona="CSM")
         st.markdown(r["answer"].replace("\n", "  \n") if r["intent"] == "customer" else r["answer"])
         with st.expander("📎 Evidence ledger", expanded=True):
             for e in r["evidence"]:

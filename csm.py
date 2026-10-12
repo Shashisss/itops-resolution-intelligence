@@ -1,12 +1,23 @@
 #!/usr/bin/env python3
-"""CSM Assistant — answers questions with an evidence-led narrative.
-Context-aware: suggestions follow the selected incident. No LLM required."""
+"""CSM Assistant — evidence-led, persona-aware answers (deterministic NLG, no LLM required)."""
+import datetime as dt
 import duckdb
 import engine as E
+import nlg
 
 DB_HIST = "data/history.duckdb"
 KEYWORDS = {"payment": "its_payment_api", "checkout": "app_checkout",
             "database": "db_payments", "db": "db_payments", "api": "its_payment_api"}
+SLA_HOURS = {"P1": 4, "P2": 8, "P3": 24, "P4": 72}
+
+
+def _sla(inc):
+    try:
+        created = dt.datetime.fromisoformat(inc["created_at"])
+        hrs = SLA_HOURS.get(inc["priority"], 8) - (dt.datetime.now() - created).total_seconds() / 3600
+        return ("BREACHED" if hrs <= 0 else f"{int(hrs)}h {int((hrs % 1) * 60)}m left"), hrs
+    except Exception:
+        return "n/a", None
 
 
 def customer_narrative(sid):
@@ -99,7 +110,7 @@ def suggestions(inc, services):
     ]
 
 
-def answer(question):
+def answer(question, persona=None):
     services, edges, incidents, changes, metrics, G = E.load()
     kind, tgt = _target(question, services, incidents)
     intent = _intent(question)
@@ -117,39 +128,14 @@ def answer(question):
     kpi = _kpi_now()
     similar = E.similar(incidents, inc, 2) if inc else []
     story = " → ".join(services[n]["name"] for n in reversed(chain))
-    cause_txt = "; ".join(c["text"] for c in causes) if causes else "no change or metric breach found"
+    sla_txt, _ = _sla(inc) if inc else ("n/a", None)
+    scope = E.impacted(G, sid)
+    change = next((c for c in changes if c["service_id"] in scope), None)
 
-    if intent == "customer":
-        parts = [customer_narrative(sid)]
-    else:
-        if inc and inc["status"] == "open":
-            head = f'**{services[biz]["name"] if biz else services[sid]["name"]} — AT RISK.**'
-        elif inc:
-            head = f'{services[biz]["name"] if biz else services[sid]["name"]} — steady.'
-        else:
-            head = f'{services[sid]["name"]} — no incident found.'
-        parts = [head]
-        if inc:
-            parts.append(f'{inc["title"]} ({inc["id"]}, {inc["priority"]}, {inc["status"]}).')
-        parts.append(f'Service path: {story}.')
-        if biz and kpi is not None:
-            parts.append(f'Business impact: **{services[biz]["name"]}** — checkout success {kpi}% (from ~98.5%).')
-        if intent in ("status", "cause"):
-            parts.append(f'Likely cause / blockers: {cause_txt}.')
-        if intent in ("status", "who") and rec:
-            parts.append(f'Next actor: **{rec["actor"]}**.')
-        if intent in ("status", "sla"):
-            parts.append('SLA risk: **elevated** — customer-impacting and still open.'
-                         if (inc and inc["status"] == "open") else 'SLA risk: low.')
-        if intent in ("status", "recur") and similar:
-            parts.append('Precedent: ' + "; ".join(similar) + '.')
-        if rec:
-            parts.append(f'Recommended action ({rec["mode"]}): {rec["action"]}')
-
+    # evidence ledger
     evidence = []
     if inc:
         evidence.append(f'[INC] {inc["id"]} · {inc["title"]} · {inc["priority"]}/{inc["status"]} · {inc["created_at"]}')
-    scope = E.impacted(G, sid)
     for ch in changes:
         if ch["service_id"] in scope:
             evidence.append(f'[CHG] {ch["id"]} · {ch["service_id"]} · {ch["description"]} · {ch["deployed_at"]}')
@@ -161,4 +147,17 @@ def answer(question):
     evidence.append(f'[GRAPH] {story}')
     evidence += [f'[SIMILAR] {s}' for s in similar]
 
-    return {"answer": " ".join(parts), "evidence": evidence, "intent": intent, "target": sid}
+    if intent == "customer":
+        text = customer_narrative(sid)
+    else:
+        cite = ""
+        if inc:
+            cite = f' — see {inc["id"]}' + (f', {change["id"]}' if change else '')
+        facts = dict(subject=services[sid]["name"], open=bool(inc and inc["status"] == "open"),
+                     priority=inc["priority"] if inc else "—", status=inc["status"] if inc else "—",
+                     causes=[c["text"] for c in causes], rec=rec, similar=similar,
+                     business=services[biz]["name"] if biz else None, kpi=kpi, path=story,
+                     sla=sla_txt, n_evidence=len(evidence), cite=cite)
+        text = nlg.narrative(facts, intent, persona)
+
+    return {"answer": text, "evidence": evidence, "intent": intent, "target": sid, "persona": persona}
