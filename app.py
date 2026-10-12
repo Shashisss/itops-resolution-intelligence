@@ -27,7 +27,7 @@ if _needs_seed():
 
 st.set_page_config(page_title="ITOps Resolution Intelligence — POC", layout="wide")
 st.title("IT Operations Resolution & Intelligence")
-st.caption("Signal → Context → Reason → Recommend → Verify   ·   demo on sample data")
+st.caption("Signal → Context → Reason → Recommend → Verify   ·   demo on sample data   ·   build v3")
 
 services, edges, incidents, changes, metrics, G = E.load()
 titles = {i["id"]: f'{i["id"]} · {i["title"]} ({i["status"]})' for i in incidents}
