@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+"""ITOps Resolution Intelligence — 5-minute POC UI (Streamlit).
+Signal -> Context -> Reason -> Recommend -> Verify, on sample data."""
+import os
+import duckdb
+import pandas as pd
+import streamlit as st
+import engine as E
+
+# Hosted filesystems are ephemeral: seed sample data on first run.
+if not os.path.exists("data/ops.db"):
+    import seed  # noqa: F401  (writes data/ops.db + data/history.duckdb)
+
+st.set_page_config(page_title="ITOps Resolution Intelligence — POC", layout="wide")
+st.title("IT Operations Resolution & Intelligence — POC")
+st.caption("Signal → Context → Reason → Recommend → Verify   ·   demo on sample data")
+
+services, edges, incidents, changes, metrics, G = E.load()
+titles = {i["id"]: f'{i["id"]} · {i["title"]}' for i in incidents}
+sel = st.sidebar.selectbox("Incident", list(titles), format_func=lambda x: titles[x])
+st.sidebar.caption("Pick an incident to assemble its operational story.")
+
+inc = next(i for i in incidents if i["id"] == sel)
+chain = E.impact_chain(G, inc["service_id"])
+biz = E.business_service(G, chain, services)
+
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Service", services[inc["service_id"]]["name"])
+c2.metric("Priority", inc["priority"])
+c3.metric("Business service", services[biz]["name"] if biz else "—")
+c4.metric("Status", inc["status"])
+
+st.subheader("1 · The operational story")
+st.write(" → ".join(services[n]["name"] + f' ({services[n]["type"].replace("_"," ")})'
+                   for n in reversed(chain)))
+st.info(inc["summary"])
+
+st.subheader("2 · Business impact (computed over the graph)")
+con = duckdb.connect("data/history.duckdb")
+df = con.execute("SELECT ts, value, scenario FROM kpi ORDER BY ts").df()
+con.close()
+cur = df[df.scenario == "current"]
+st.line_chart(cur.set_index("ts")["value"], height=150)
+if biz:
+    st.warning(f'Business KPI at risk: Checkout success ↓ to {cur["value"].iloc[-1]:.1f}% '
+               f'(from ~98.5%) on {services[biz]["name"]}.')
+
+st.subheader("3 · Likely cause & blockers (RCA over the graph)")
+causes = E.causes(inc, G, changes, metrics, services)
+if causes:
+    for cch in causes:
+        st.write(f'- {cch["text"]}')
+else:
+    st.write("- No change or metric breach found in the chain.")
+
+st.subheader("4 · Recommended action (policy-governed)")
+rec = E.recommend(inc, causes)
+st.write(f'**Recommended:** {rec["action"]}')
+mode = {"Autonomous": "🟢 Autonomous", "Auto": "🟠 Auto",
+        "Policy controlled": "🟠 Policy controlled", "Human approval": "🔴 Human approval"}
+st.write(f'Risk class: **{rec["risk"]}**  ·  Mode: **{mode.get(rec["mode"], rec["mode"])}**'
+         f'  ·  Next actor: **{rec["actor"]}**')
+
+st.subheader("5 · Similar past incidents (retrieval)")
+for s in E.similar(incidents, inc):
+    st.write(f'- {s}')
+
+st.subheader("6 · Act & verify")
+approved = True
+if rec["mode"] in ("Human approval", "Policy controlled"):
+    approved = st.checkbox("Operator approval required (production / high blast radius)")
+if st.button("Apply recommended action", disabled=not approved, type="primary"):
+    st.success("Action executed (simulated): change rolled back, DB connections relaxed.")
+    fixed = df[df.scenario == "fixed"]
+    st.line_chart(fixed.set_index("ts")["value"], height=150)
+    st.success(f'VERIFIED: Checkout success recovered to {fixed["value"].iloc[-1]:.1f}%. '
+               f'Evidence captured → knowledge / policy learning.')
