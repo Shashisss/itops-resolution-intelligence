@@ -26,6 +26,14 @@ def load():
     return services, edges, incidents, changes, metrics, G
 
 
+def load_tickets():
+    con = sqlite3.connect(DB)
+    con.row_factory = sqlite3.Row
+    rows = [dict(r) for r in con.execute("SELECT * FROM tickets")]
+    con.close()
+    return rows
+
+
 def impact_chain(G, node):
     """Upstream path to the business service (for the narrative)."""
     chain, cur, seen = [], node, set()

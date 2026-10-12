@@ -23,6 +23,8 @@ CREATE TABLE incidents(id TEXT PRIMARY KEY, title TEXT, service_id TEXT, priorit
                        status TEXT, created_at TEXT, summary TEXT);
 CREATE TABLE changes(id TEXT PRIMARY KEY, service_id TEXT, description TEXT, deployed_at TEXT, owner TEXT);
 CREATE TABLE metrics(id TEXT PRIMARY KEY, service_id TEXT, metric TEXT, value REAL, threshold REAL, ts TEXT);
+CREATE TABLE tickets(id TEXT PRIMARY KEY, incident_id TEXT, service_id TEXT, title TEXT, status TEXT,
+                     assignee TEXT, created_at TEXT, acceptance TEXT, fix_hint TEXT);
 """)
 
 services = [
@@ -73,6 +75,20 @@ metrics = [
     ("M4", "app_checkout",    "error_rate_pct",      8.1, 1.0,   now.isoformat(timespec="minutes")),
 ]
 c.executemany("INSERT INTO metrics VALUES(?,?,?,?,?,?)", metrics)
+
+tickets = [
+    ("JIRA-5521", "INC-8841", "app_checkout",
+     "checkout-api: connection pool exhaustion under retry storm",
+     "In Progress", "Checkout Team", (now - dt.timedelta(minutes=25)).isoformat(timespec="minutes"),
+     "Pool must not exhaust under retry; p95 latency < 300ms; error rate < 1%.",
+     "Tune pool size + backoff; guard retry amplification; stay under payments-db connection cap."),
+    ("JIRA-5488", "INC-8711", "db_payments",
+     "payments-db: connection leak on long-running transactions",
+     "Done", "DBA Team", (now - dt.timedelta(days=13)).isoformat(timespec="minutes"),
+     "No connection growth over a 24h soak test.",
+     "Audit long-running transactions; enforce statement timeout."),
+]
+c.executemany("INSERT INTO tickets VALUES(?,?,?,?,?,?,?,?,?)", tickets)
 con.commit()
 con.close()
 

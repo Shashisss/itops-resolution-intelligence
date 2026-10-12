@@ -7,9 +7,22 @@ import duckdb
 import streamlit as st
 import engine as E
 import csm
+import developer
 
-# Hosted filesystems are ephemeral: seed sample data on first run.
-if not os.path.exists("data/ops.db"):
+# Hosted filesystems are ephemeral: seed sample data on first run (or when schema is outdated).
+def _needs_seed():
+    import sqlite3
+    if not os.path.exists("data/ops.db"):
+        return True
+    try:
+        con = sqlite3.connect("data/ops.db")
+        con.execute("SELECT 1 FROM tickets LIMIT 1")
+        con.close()
+        return False
+    except Exception:
+        return True
+
+if _needs_seed():
     import seed  # noqa: F401  (writes data/ops.db + data/history.duckdb)
 
 st.set_page_config(page_title="ITOps Resolution Intelligence — POC", layout="wide")
@@ -25,7 +38,7 @@ st.sidebar.caption("Changing this updates the suggested questions and the incide
 inc = next(i for i in incidents if i["id"] == sel)
 svc_name = services[inc["service_id"]]["name"]
 
-tab_csm, tab_inc = st.tabs(["💬  CSM Assistant", "🛠  Incident intelligence"])
+tab_csm, tab_inc, tab_dev = st.tabs(["💬  CSM Assistant", "🛠  Incident intelligence", "🧑‍💻  Developer context"])
 
 # ------------------------------------------------------------------ CSM Assistant
 with tab_csm:
@@ -129,3 +142,47 @@ with tab_inc:
         st.line_chart(fixed.set_index("ts")["value"], height=150)
         st.success(f'VERIFIED: Checkout success recovered to {fixed["value"].iloc[-1]:.1f}%. '
                    f'Evidence captured → knowledge / policy learning.')
+
+# ------------------------------------------------------------------ Developer context
+with tab_dev:
+    st.subheader("Developer context — from the Jira ticket to the fix")
+    st.caption("The evidence bundle that travels with the work — no 30-minute context transfer, no discovery calls.")
+    tickets = E.load_tickets()
+    tmap = {t["id"]: f'{t["id"]} · {t["title"]}' for t in tickets}
+    tsel = st.selectbox("Jira ticket", list(tmap), format_func=lambda x: tmap[x])
+    b = developer.context(tsel)
+    if not b:
+        st.write("No context found for this ticket.")
+    else:
+        d1, d2, d3, d4 = st.columns(4)
+        d1.metric("Ticket status", b["ticket"]["status"])
+        d2.metric("Assignee", b["ticket"]["assignee"])
+        d3.metric("Linked incident", b["incident"]["id"] if b["incident"] else "—")
+        d4.metric("SLA", b["sla"])
+
+        if b["incident"]:
+            st.markdown(f'**Why this ticket exists:** {b["incident"]["title"]} — {b["incident"]["summary"]}')
+        st.markdown(f'**Affected service:** {b["service"]}   ·   **Business service:** {b["business"] or "—"}')
+        st.markdown(f'**Dependency path:** {b["path"]}')
+        if b["downstream"]:
+            st.markdown("**Downstream / blast radius:** " + ", ".join(b["downstream"]))
+        if b["kpi"] is not None:
+            st.markdown(f'**Business impact:** checkout success **{b["kpi"]}%** (baseline 98.5%)')
+        if b["change"]:
+            st.markdown(f'**Recent change (suspect):** {b["change"]["id"]} · {b["change"]["description"]}'
+                        f' · {b["change"]["deployed_at"]}')
+
+        st.markdown("**RCA hypothesis / evidence:**")
+        for cch in (b["causes"] or ["no change or metric breach found"]):
+            st.write("- " + cch)
+        if b["similar"]:
+            st.markdown("**Similar past incidents:**")
+            for s in b["similar"]:
+                st.write("- " + s)
+
+        st.success(f'**What to fix:** {b["fix_hint"]}')
+        st.info(f'**Acceptance / definition of done:** {b["acceptance"]}')
+        st.markdown(f'**How it is verified (closed loop):** {b["verify"]}')
+        with st.expander("📎 Evidence ledger (citations)", expanded=True):
+            for e in b["evidence"]:
+                st.write("· " + e)
