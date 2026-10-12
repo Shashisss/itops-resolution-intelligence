@@ -53,3 +53,9 @@ streamlit run app.py
 | `requirements.txt` | Dependencies |
 | `setup.sh` | One-command bootstrap for Cloud Shell / any Linux |
 | `policy/policy.rego` | Reference OPA policy for policy-governed autonomy |
+
+## Scope & framing (for customer presentations)
+This prototype demonstrates **resolution intelligence** through **deterministic graph traversal + rule-based logic**.
+It is **not** autonomous or learned root-cause analysis — RCA hypotheses are *suspected* until a human confirms them.
+Business KPIs and SLA countdowns are **scenario-specific sample estimates** (not universal metrics), and all
+remediation/recovery is **simulated**. That is the honest, credible scope for a proof of concept.
