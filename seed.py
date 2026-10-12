@@ -26,6 +26,22 @@ CREATE TABLE tickets(id TEXT PRIMARY KEY, incident_id TEXT, service_id TEXT, tit
                      assignee TEXT, created_at TEXT, acceptance TEXT, fix_hint TEXT);
 CREATE TABLE kpis(id TEXT PRIMARY KEY, business_service TEXT, metric TEXT, unit TEXT,
                   baseline REAL, current REAL);
+
+-- ---------- DataOps domain (separate model; not forced into the IT incident schema) ----------
+CREATE TABLE pipelines(id TEXT PRIMARY KEY, name TEXT, owner_team TEXT, criticality TEXT,
+                       schedule TEXT, freshness_sla_min INT);
+CREATE TABLE dop_datasets(id TEXT PRIMARY KEY, name TEXT, layer TEXT, owner_team TEXT);
+CREATE TABLE dop_lineage(src TEXT, dst TEXT);                       -- upstream dataset -> downstream
+CREATE TABLE pipeline_io(pipeline_id TEXT, dataset_id TEXT, direction TEXT);  -- produces | reads
+CREATE TABLE dop_runs(id TEXT PRIMARY KEY, pipeline_id TEXT, status TEXT, started_at TEXT,
+                      duration_min REAL, rows INT, error TEXT);
+CREATE TABLE dop_dq(id TEXT PRIMARY KEY, dataset_id TEXT, rule TEXT, value REAL, threshold REAL);
+CREATE TABLE dop_freshness(dataset_id TEXT PRIMARY KEY, last_updated TEXT, sla_min INT);
+CREATE TABLE dop_contracts(id TEXT PRIMARY KEY, dataset_id TEXT, name TEXT, version TEXT, owner TEXT);
+CREATE TABLE dop_consumers(dataset_id TEXT, consumer TEXT);
+CREATE TABLE dop_incidents(id TEXT PRIMARY KEY, title TEXT, pipeline_id TEXT, dataset_id TEXT,
+                           priority TEXT, status TEXT, created_at TEXT, stage TEXT, owner_team TEXT,
+                           blocker TEXT, confirmed_cause TEXT, summary TEXT);
 """)
 
 services = [
@@ -100,6 +116,95 @@ kpis = [
     ("K1", "bs_payments", "checkout_success_pct", "%", 98.5, 90.0),
 ]
 c.executemany("INSERT INTO kpis VALUES(?,?,?,?,?,?)", kpis)
+
+# ---------- DataOps data ----------
+pipelines = [
+    ("P-ORD", "orders_bronze_ingest", "Data Platform", "high", "every 15m", 30),
+    ("P-CUST", "customer_360_build", "Analytics Engineering", "high", "hourly", 60),
+    ("P-PAY", "payments_gold_agg", "Finance Data", "critical", "every 15m", 15),
+]
+c.executemany("INSERT INTO pipelines VALUES(?,?,?,?,?,?)", pipelines)
+
+datasets = [
+    ("ds_ord_bz", "orders_bronze", "bronze", "Data Platform"),
+    ("ds_ord_sv", "orders_silver", "silver", "Analytics Engineering"),
+    ("ds_ord_gd", "orders_gold", "gold", "Analytics Engineering"),
+    ("ds_cust_bz", "customer_bronze", "bronze", "Data Platform"),
+    ("ds_cust_sv", "customer_silver", "silver", "Analytics Engineering"),
+    ("ds_cust_360", "customer_360", "gold", "Analytics Engineering"),
+    ("ds_pay_bz", "payments_bronze", "bronze", "Finance Data"),
+    ("ds_pay_gd", "payments_gold", "gold", "Finance Data"),
+]
+c.executemany("INSERT INTO dop_datasets VALUES(?,?,?,?)", datasets)
+
+lineage = [
+    ("ds_ord_bz", "ds_ord_sv"), ("ds_ord_sv", "ds_ord_gd"),
+    ("ds_cust_bz", "ds_cust_sv"), ("ds_cust_sv", "ds_cust_360"),
+    ("ds_pay_bz", "ds_pay_gd"),
+]
+c.executemany("INSERT INTO dop_lineage VALUES(?,?)", lineage)
+
+pipeline_io = [
+    ("P-ORD", "ds_ord_bz", "produces"),
+    ("P-CUST", "ds_cust_bz", "reads"), ("P-CUST", "ds_cust_360", "produces"),
+    ("P-PAY", "ds_pay_bz", "reads"), ("P-PAY", "ds_pay_gd", "produces"),
+]
+c.executemany("INSERT INTO pipeline_io VALUES(?,?,?)", pipeline_io)
+
+runs = [
+    ("R-9001", "P-ORD", "failed", (now - dt.timedelta(minutes=35)).isoformat(timespec="minutes"), 3.0, 0,
+     "SCHEMA_MISMATCH: unexpected column 'region_code' in source"),
+    ("R-9000", "P-ORD", "success", (now - dt.timedelta(minutes=50)).isoformat(timespec="minutes"), 4.2, 118400, ""),
+    ("R-9101", "P-PAY", "success", (now - dt.timedelta(minutes=48)).isoformat(timespec="minutes"), 26.0, 220100, ""),
+    ("R-9100", "P-PAY", "success", (now - dt.timedelta(minutes=30)).isoformat(timespec="minutes"), 9.0, 220300, ""),
+    ("R-9200", "P-CUST", "success", (now - dt.timedelta(minutes=40)).isoformat(timespec="minutes"), 12.0, 54000, ""),
+]
+c.executemany("INSERT INTO dop_runs VALUES(?,?,?,?,?,?,?)", runs)
+
+dop_dq = [
+    ("DQ-1", "ds_cust_360", "null_customer_id_pct", 6.0, 1.0),
+    ("DQ-2", "ds_ord_gd", "reconciliation_variance_pct", 0.2, 0.5),
+    ("DQ-3", "ds_pay_gd", "row_count_drift_pct", 3.0, 10.0),
+]
+c.executemany("INSERT INTO dop_dq VALUES(?,?,?,?,?)", dop_dq)
+
+dop_fresh = [
+    ("ds_ord_bz", (now - dt.timedelta(minutes=40)).isoformat(timespec="minutes"), 30),
+    ("ds_ord_gd", (now - dt.timedelta(minutes=45)).isoformat(timespec="minutes"), 60),
+    ("ds_cust_360", (now - dt.timedelta(minutes=70)).isoformat(timespec="minutes"), 60),
+    ("ds_pay_gd", (now - dt.timedelta(minutes=45)).isoformat(timespec="minutes"), 15),
+]
+c.executemany("INSERT INTO dop_freshness VALUES(?,?,?)", dop_fresh)
+
+dop_contracts = [
+    ("DC-1", "ds_ord_bz", "orders_bronze", "v3", "Data Platform"),
+    ("DC-2", "ds_cust_360", "customer_360", "v5", "Analytics Engineering"),
+    ("DC-3", "ds_pay_gd", "payments_gold", "v2", "Finance Data"),
+]
+c.executemany("INSERT INTO dop_contracts VALUES(?,?,?,?,?)", dop_contracts)
+
+consumers = [
+    ("ds_ord_gd", "Ops reporting"), ("ds_ord_gd", "Revenue dashboard"),
+    ("ds_cust_360", "CSM 360"), ("ds_cust_360", "Marketing"),
+    ("ds_pay_gd", "Finance close"), ("ds_pay_gd", "Payments KPI"),
+]
+c.executemany("INSERT INTO dop_consumers VALUES(?,?)", consumers)
+
+dop_incidents = [
+    ("DOP-1001", "orders_bronze ingestion failed — source schema drift", "P-ORD", "ds_ord_bz", "P2", "open",
+     (now - dt.timedelta(minutes=34)).isoformat(timespec="minutes"), "Fix in progress", "Data Platform",
+     "Upstream schema drift not reconciled in contract", "",
+     "Run R-9001 failed with SCHEMA_MISMATCH (new column 'region_code'); downstream orders_gold is stale."),
+    ("DOP-1002", "customer_360 data-quality breach — null keys spike", "P-CUST", "ds_cust_360", "P2", "open",
+     (now - dt.timedelta(hours=2)).isoformat(timespec="minutes"), "Diagnosed", "Analytics Engineering",
+     "Null customer_id at 6% (> 1% rule)", "",
+     "DQ rule null_customer_id_pct breached at 6% (threshold 1%); customer_360 is consumed by CSM 360 and Marketing."),
+    ("DOP-1003", "payments_gold freshness SLA breach", "P-PAY", "ds_pay_gd", "P1", "open",
+     (now - dt.timedelta(minutes=45)).isoformat(timespec="minutes"), "Change raised", "Finance Data",
+     "Upstream backlog delaying the aggregation job", "",
+     "Freshness is 45m against a 15m SLA; Finance close depends on payments_gold."),
+]
+c.executemany("INSERT INTO dop_incidents VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", dop_incidents)
 
 con.commit()
 con.close()
