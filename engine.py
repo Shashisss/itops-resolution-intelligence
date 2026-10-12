@@ -34,15 +34,45 @@ def load_tickets():
     return rows
 
 
+def confirm_cause(inc_id, key):
+    con = sqlite3.connect(DB)
+    con.execute("UPDATE incidents SET confirmed_cause=? WHERE id=?", (key, inc_id))
+    con.commit()
+    con.close()
+
+
+def set_stage(inc_id, stage):
+    con = sqlite3.connect(DB)
+    con.execute("UPDATE incidents SET stage=? WHERE id=?", (stage, inc_id))
+    con.commit()
+    con.close()
+
+
+def load_kpis():
+    con = sqlite3.connect(DB)
+    con.row_factory = sqlite3.Row
+    rows = [dict(r) for r in con.execute("SELECT * FROM kpis")]
+    con.close()
+    return rows
+
+
 def impact_chain(G, node):
-    """Upstream path to the business service (for the narrative)."""
-    chain, cur, seen = [], node, set()
-    while cur and cur not in seen:
-        seen.add(cur)
-        chain.append(cur)
-        preds = list(G.predecessors(cur))
-        cur = preds[0] if preds else None
-    return chain
+    """Primary upstream path to the business service (for the narrative)."""
+    paths = dependency_paths(G, node)
+    return paths[0] if paths else [node]
+
+
+def dependency_paths(G, node):
+    """All business-service -> node paths, handling multiple parents."""
+    biz = [n for n in nx.ancestors(G, node) if G.nodes[n].get("type") == "business_service"]
+    paths = []
+    for b in biz:
+        for p in nx.all_simple_paths(G, b, node):
+            paths.append(p)
+    if not paths:
+        paths = [[node]]
+    paths = sorted({tuple(p) for p in paths}, key=len, reverse=True)
+    return [list(p) for p in paths]
 
 
 def impacted(G, node):
@@ -58,21 +88,36 @@ def business_service(G, chain, services):
 
 
 def causes(inc, G, changes, metrics, services):
-    """RCA over the impacted subgraph: changes + metric breaches."""
+    """RCA hypotheses over the impacted subgraph.
+    Each hypothesis carries: confidence, evidence, and suspected/confirmed status."""
     scope = impacted(G, inc["service_id"])
+    confirmed = (inc.get("confirmed_cause") or "") if inc else ""
     out = []
-    for ch in changes:
-        if ch["service_id"] in scope:
-            out.append({"type": "change", "service": ch["service_id"],
-                        "owner": ch["owner"] or services[ch["service_id"]]["owner"],
-                        "text": f'Recent change on {ch["service_id"]}: {ch["description"]} '
-                                f'({ch["deployed_at"]}, {ch["owner"]})'})
-    for m in metrics:
-        if m["service_id"] in scope and m["value"] > m["threshold"]:
-            out.append({"type": "metric", "service": m["service_id"],
-                        "owner": services[m["service_id"]]["owner"],
-                        "text": f'{m["service_id"]} {m["metric"]} = {m["value"]:.0f} '
-                                f'(threshold {m["threshold"]:.0f})'})
+    rel = sorted([c for c in changes if c["service_id"] in scope],
+                 key=lambda c: c["deployed_at"], reverse=True)
+    if rel:
+        ch = rel[0]
+        key = f'CHG:{ch["id"]}'
+        conf = "high" if (inc and inc["status"] == "open") else "medium"
+        out.append({
+            "type": "change", "key": key, "service": ch["service_id"],
+            "owner": ch["owner"] or services[ch["service_id"]]["owner"],
+            "confidence": conf, "status": "confirmed" if confirmed == key else "suspected",
+            "evidence": f'change {ch["id"]} deployed {ch["deployed_at"]} by {ch["owner"]}',
+            "text": f'{ch["service_id"]} change {ch["id"]} ("{ch["description"]}") deployed {ch["deployed_at"]}',
+        })
+    breaching = [m for m in metrics if m["service_id"] in scope and m["value"] > m["threshold"]]
+    for m in sorted(breaching, key=lambda m: m["value"] / m["threshold"], reverse=True):
+        ratio = m["value"] / m["threshold"]
+        conf = "high" if ratio >= 1.3 else ("medium" if ratio >= 1.1 else "low")
+        key = f'METRIC:{m["id"]}'
+        out.append({
+            "type": "metric", "key": key, "service": m["service_id"],
+            "owner": services[m["service_id"]]["owner"],
+            "confidence": conf, "status": "confirmed" if confirmed == key else "suspected",
+            "evidence": f'{m["metric"]} = {m["value"]:.0f} vs threshold {m["threshold"]:.0f} on {m["service_id"]}',
+            "text": f'{m["service_id"]} {m["metric"]} at {m["value"]:.0f} (threshold {m["threshold"]:.0f})',
+        })
     return out
 
 
@@ -115,7 +160,10 @@ def change_risk(change, G, services, incidents):
             "blast": [services[n]["name"] for n in down], "correlated": correlated, "rationale": rationale}
 
 
-def similar(incidents, inc, k=3):
+def similar(incidents, inc, k=3, threshold=0.25):
+    """Related incidents above a minimum similarity threshold."""
+    if not inc:
+        return []
     docs = [i["summary"] for i in incidents]
     ids = [i["id"] for i in incidents]
     tf = TfidfVectorizer(stop_words="english").fit(docs + [inc["summary"]])
@@ -123,7 +171,7 @@ def similar(incidents, inc, k=3):
     order = sorted(range(len(ids)), key=lambda i: -sim[i])
     out = []
     for i in order:
-        if ids[i] == inc["id"]:
+        if ids[i] == inc["id"] or sim[i] < threshold:
             continue
         out.append(f'{ids[i]} · {incidents[i]["title"]}  (similarity {sim[i]:.2f})')
         if len(out) >= k:

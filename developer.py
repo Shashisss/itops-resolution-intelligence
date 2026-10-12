@@ -46,6 +46,7 @@ def context(ticket_id):
     rec = E.recommend(inc, causes) if inc else None
     similar = E.similar(incidents, inc, 2) if inc else []
     kpi = _kpi_now()
+    krow = next((k for k in E.load_kpis() if k["business_service"] == biz), None) if biz else None
     sla, sla_h = (_sla(inc) if inc else ("n/a", None))
     change = next((c for c in changes if c["service_id"] == sid), None)
 
@@ -73,6 +74,8 @@ def context(ticket_id):
         "causes": [c["text"] for c in causes],
         "similar": similar,
         "kpi": kpi,
+        "metric_name": (krow["metric"].replace("_", " ") if krow else "checkout success"),
+        "baseline": (krow["baseline"] if krow else 98.5),
         "sla": sla,
         "change": change,
         "acceptance": ticket["acceptance"],

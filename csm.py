@@ -85,10 +85,11 @@ def _latest_incident(sid, incidents, G):
     return sorted(pool, key=lambda i: i["created_at"], reverse=True)[0] if pool else None
 
 
-def _kpi_now():
+def _kpi_now(metric="checkout_success_pct"):
     try:
         con = duckdb.connect(DB_HIST)
-        v = con.execute("SELECT value FROM kpi WHERE scenario='current' ORDER BY ts DESC LIMIT 1").fetchone()[0]
+        v = con.execute("SELECT value FROM kpi WHERE scenario='current' AND metric=? ORDER BY ts DESC LIMIT 1",
+                        [metric]).fetchone()[0]
         con.close()
         return round(float(v), 1)
     except Exception:
@@ -125,7 +126,10 @@ def answer(question, persona=None):
     biz = E.business_service(G, chain, services)
     causes = E.causes(inc, G, changes, metrics, services) if inc else []
     rec = E.recommend(inc, causes) if inc else None
-    kpi = _kpi_now()
+    krow = next((k for k in E.load_kpis() if k["business_service"] == biz), None) if biz else None
+    metric_name = krow["metric"].replace("_", " ") if krow else "checkout success"
+    baseline = krow["baseline"] if krow else 98.5
+    kpi = _kpi_now(krow["metric"]) if krow else _kpi_now()
     similar = E.similar(incidents, inc, 2) if inc else []
     story = " → ".join(services[n]["name"] for n in reversed(chain))
     sla_txt, _ = _sla(inc) if inc else ("n/a", None)
@@ -157,7 +161,8 @@ def answer(question, persona=None):
                      priority=inc["priority"] if inc else "—", status=inc["status"] if inc else "—",
                      causes=[c["text"] for c in causes], rec=rec, similar=similar,
                      business=services[biz]["name"] if biz else None, kpi=kpi, path=story,
-                     sla=sla_txt, n_evidence=len(evidence), cite=cite)
+                     sla=sla_txt, n_evidence=len(evidence), cite=cite,
+                     metric_name=metric_name, baseline=baseline)
         text = nlg.narrative(facts, intent, persona)
 
     return {"answer": text, "evidence": evidence, "intent": intent, "target": sid, "persona": persona}

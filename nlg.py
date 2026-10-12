@@ -45,7 +45,9 @@ def narrative(f, intent="status", persona=None):
     s["path"] = f'Dependency path: {path}.'
 
     if biz and kpi is not None:
-        s["impact"] = (f'Business impact: **{biz}** — checkout success is **{kpi}%** against a 98.5% baseline, '
+        mn = f.get("metric_name", "checkout success")
+        base = f.get("baseline", 98.5)
+        s["impact"] = (f'Business impact: **{biz}** — {mn} is **{kpi}%** against a {base}% baseline, '
                        f'so this is customer-impacting.')
     elif biz:
         s["impact"] = f'Business impact: **{biz}** (downstream of the affected service).'
