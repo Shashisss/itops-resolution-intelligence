@@ -126,10 +126,11 @@ def answer(question, persona=None):
     biz = E.business_service(G, chain, services)
     causes = E.causes(inc, G, changes, metrics, services) if inc else []
     rec = E.recommend(inc, causes) if inc else None
+    # Business KPI is scenario-specific: only used when one is mapped to this business service.
     krow = next((k for k in E.load_kpis() if k["business_service"] == biz), None) if biz else None
-    metric_name = krow["metric"].replace("_", " ") if krow else "checkout success"
-    baseline = krow["baseline"] if krow else 98.5
-    kpi = _kpi_now(krow["metric"]) if krow else _kpi_now()
+    metric_name = krow["metric"].replace("_", " ") if krow else None
+    baseline = krow["baseline"] if krow else None
+    kpi = _kpi_now(krow["metric"]) if krow else None
     similar = E.similar(incidents, inc, 2) if inc else []
     story = " → ".join(services[n]["name"] for n in reversed(chain))
     sla_txt, _ = _sla(inc) if inc else ("n/a", None)
@@ -160,7 +161,7 @@ def answer(question, persona=None):
         facts = dict(subject=services[sid]["name"], open=bool(inc and inc["status"] == "open"),
                      priority=inc["priority"] if inc else "—", status=inc["status"] if inc else "—",
                      causes=[c["text"] for c in causes], rec=rec, similar=similar,
-                     business=services[biz]["name"] if biz else None, kpi=kpi, path=story,
+                     business=services[biz]["name"] if (biz and krow) else None, kpi=kpi, path=story,
                      sla=sla_txt, n_evidence=len(evidence), cite=cite,
                      metric_name=metric_name, baseline=baseline)
         text = nlg.narrative(facts, intent, persona)

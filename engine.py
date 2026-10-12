@@ -80,6 +80,18 @@ def impacted(G, node):
     return set(nx.ancestors(G, node)) | {node} | set(nx.descendants(G, node))
 
 
+def in_scope_changes(inc, G, changes):
+    """Single source of truth: changes touching the impacted subgraph, newest first."""
+    scope = impacted(G, inc["service_id"])
+    return sorted([c for c in changes if c["service_id"] in scope],
+                  key=lambda c: c["deployed_at"], reverse=True)
+
+
+def latest_change(inc, G, changes):
+    cs = in_scope_changes(inc, G, changes)
+    return cs[0] if cs else None
+
+
 def business_service(G, chain, services):
     for n in chain:
         if services[n]["type"] == "business_service":
@@ -160,8 +172,11 @@ def change_risk(change, G, services, incidents):
             "blast": [services[n]["name"] for n in down], "correlated": correlated, "rationale": rationale}
 
 
-def similar(incidents, inc, k=3, threshold=0.25):
-    """Related incidents above a minimum similarity threshold."""
+SIMILARITY_THRESHOLD = 0.15  # weak matches are rejected
+
+
+def similar(incidents, inc, k=3, threshold=SIMILARITY_THRESHOLD):
+    """Related incidents ABOVE the relevance threshold (weak matches are rejected)."""
     if not inc:
         return []
     docs = [i["summary"] for i in incidents]

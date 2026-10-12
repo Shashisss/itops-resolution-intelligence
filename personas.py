@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Persona views — one governed record, shaped per role.
+Deterministic graph + rule-based resolution intelligence (NOT autonomous/learned RCA).
 Sample data · simulated integrations and actions."""
 import datetime as dt
 import duckdb
@@ -12,6 +13,10 @@ import developer
 SLA_HOURS = {"P1": 4, "P2": 8, "P3": 24, "P4": 72}
 STAGES = ["Detected", "Triaged", "Diagnosed", "Change raised", "Fix in progress", "Fix applied", "Verified", "Closed"]
 PERSONAS = ["Incident intelligence", "CSM", "L1 Engineer", "L2 / L3 Engineer", "Developer", "Incident Manager"]
+METRIC_LABELS = {"p95_latency_ms": "Latency (p95, ms)", "error_rate_pct": "Error rate (%)",
+                 "active_connections": "DB connections", "cpu_pct": "DB CPU (%)"}
+SLA_ASSUMPTION = ("Priority-based estimate: clock from incident creation, target hours by priority. "
+                  "It does NOT model pause rules, business calendars or actual SLA events.")
 
 
 # ---------------------------------------------------------------- helpers
@@ -23,8 +28,7 @@ def _stepper(stage):
 def _sla_detail(inc):
     target = SLA_HOURS.get(inc["priority"], 8)
     try:
-        created = dt.datetime.fromisoformat(inc["created_at"])
-        elapsed = (dt.datetime.now() - created).total_seconds() / 3600
+        elapsed = (dt.datetime.now() - dt.datetime.fromisoformat(inc["created_at"])).total_seconds() / 3600
     except Exception:
         elapsed = 0.0
     rem = target - elapsed
@@ -43,8 +47,12 @@ def _kpi_df():
     return df
 
 
+def _latest_change(inc, ctx):
+    return E.latest_change(inc, ctx["G"], ctx["changes"])
+
+
 def context_header(inc, ctx):
-    """Carried context + lifecycle — shown on every persona."""
+    """Carried context + lifecycle + SLA semantics — shown on every persona."""
     services, G = ctx["services"], ctx["G"]
     chain = E.dependency_paths(G, inc["service_id"])[0]
     biz = E.business_service(G, chain, services)
@@ -56,15 +64,15 @@ def context_header(inc, ctx):
     c3.metric("SLA", sla_txt)
     k = _kpi(ctx, biz)
     c4.metric("Business KPI", f'{k["metric"].replace("_"," ")} {k["current"]:.0f}{k["unit"]}' if k
-              else (services[biz]["name"] if biz else "—"))
-    line = (f'**Blocker:** {inc["blocker"] or "—"}   ·   **Business service:** '
-            f'{services[biz]["name"] if biz else "—"}   ·   **Priority:** {inc["priority"]}')
-    st.markdown(line)
+              else "not mapped")
+    st.markdown(f'**Blocker:** {inc["blocker"] or "—"}   ·   **Business service:** '
+                f'{services[biz]["name"] if biz else "—"}   ·   **Priority:** {inc["priority"]}')
     tk = next((t for t in ctx["tickets"] if t["incident_id"] == inc["id"]), None)
     if tk:
         st.markdown(f'**Dev ticket:** {tk["id"]} ({tk["status"]}) · {tk["assignee"]}')
-    st.caption(f'SLA assumption: clock from incident creation ({inc["created_at"]}); target {target}h for '
-               f'{inc["priority"]}; no business-hours pause modelled.')
+    st.caption(f'SLA — {SLA_ASSUMPTION}')
+    if not k:
+        st.caption("No business KPI is mapped for this scenario — impact shown as service-level only.")
 
 
 def handoff(text):
@@ -73,10 +81,23 @@ def handoff(text):
                 unsafe_allow_html=True)
 
 
+def _carried(inc, ctx, biz, sla_txt):
+    k = _kpi(ctx, biz)
+    bits = [f'incident **{inc["id"]}**', f'service **{ctx["services"][inc["service_id"]]["name"]}**',
+            f'owner **{inc["owner_team"]}**', f'blocker **{inc["blocker"] or "—"}**', f'SLA **{sla_txt}**']
+    if k:
+        bits.append(f'business KPI **{k["metric"].replace("_"," ")} {k["current"]:.0f}{k["unit"]}**')
+    tk = next((t for t in ctx["tickets"] if t["incident_id"] == inc["id"]), None)
+    if tk:
+        bits.append(f'ticket **{tk["id"]}**')
+    return ", ".join(bits)
+
+
 def hypotheses(inc, ctx):
     services, changes, metrics, G = ctx["services"], ctx["changes"], ctx["metrics"], ctx["G"]
+    st.markdown("**RCA hypotheses — suspected vs confirmed, with evidence & confidence**")
+    st.caption("Deterministic graph traversal + rule-based scoring — not autonomous/learned root-cause analysis.")
     hyps = E.causes(inc, G, changes, metrics, services)
-    st.markdown("**RCA hypotheses — suspected vs confirmed (with evidence & confidence)**")
     if not hyps:
         st.info("No change or metric breach is linked to this incident yet.")
         return hyps
@@ -86,44 +107,51 @@ def hypotheses(inc, ctx):
                     f'  ↳ **evidence:** {h["evidence"]}')
     top = hyps[0]
     if top["status"] != "confirmed":
-        if st.button(f'Confirm top hypothesis as root cause', key="confirm_" + inc["id"]):
+        if st.button("Confirm top hypothesis as root cause", key="confirm_" + inc["id"]):
             E.confirm_cause(inc["id"], top["key"])
             st.session_state["flash"] = "Root cause CONFIRMED and recorded against the incident."
             st.rerun()
     return hyps
 
 
-def action_panel(inc, ctx):
+def _verification(inc, ctx, applied):
     services, changes, metrics, G = ctx["services"], ctx["changes"], ctx["metrics"], ctx["G"]
+    scope = E.impacted(G, inc["service_id"])
+    breaching = {m["metric"]: m for m in metrics if m["service_id"] in scope and m["value"] > m["threshold"]}
+    rows = []
+    for key in ["p95_latency_ms", "error_rate_pct", "active_connections", "cpu_pct"]:
+        if key in breaching:
+            m = breaching[key]
+            rows.append({"check": METRIC_LABELS.get(key, key), "before": f'{m["value"]:.1f}',
+                         "threshold checked": f'< {m["threshold"]:.0f}',
+                         "after (simulated)": f'{min(m["threshold"]*0.9, m["value"]):.1f}' if applied else "—",
+                         "result": "✅ pass" if applied else "⏳ pending"})
+    biz = E.business_service(G, E.dependency_paths(G, inc["service_id"])[0], services)
+    k = _kpi(ctx, biz)
+    if k:
+        rows.append({"check": f'Business KPI — {k["metric"].replace("_"," ")}',
+                     "before": f'{k["current"]:.1f}{k["unit"]}', "threshold checked": f'≥ {k["baseline"]:.1f}{k["unit"]}',
+                     "after (simulated)": f'{k["baseline"]:.1f}{k["unit"]}' if applied else "—",
+                     "result": "✅ pass" if applied else "⏳ pending"})
+    return rows, k
+
+
+def action_panel(inc, ctx):
+    changes, metrics, G = ctx["changes"], ctx["metrics"], ctx["G"]
     st.markdown("---")
     st.markdown("#### Remediation & verification   ·   🧪 **SIMULATED**")
     st.caption("Simulation only — no real systems are touched. Approval is enforced before high-risk actions.")
-    hyps = E.causes(inc, G, changes, metrics, services)
-    rec = E.recommend(inc, hyps)
-    scope = E.impacted(G, inc["service_id"])
-    breaching = [m for m in metrics if m["service_id"] in scope and m["value"] > m["threshold"]]
-    biz = E.business_service(G, E.dependency_paths(G, inc["service_id"])[0], services)
-    k = _kpi(ctx, biz)
+    rec = E.recommend(inc, E.causes(inc, G, changes, metrics, ctx["services"]))
     applied = st.session_state.get(f'applied_{inc["id"]}', False)
 
-    st.markdown("**Verification criteria (must pass to close)**")
-    crits = [f'{m["service_id"]} {m["metric"]} back under {m["threshold"]:.0f}' for m in breaching]
-    if k:
-        crits.append(f'{k["metric"].replace("_"," ")} back to {k["baseline"]:.1f}{k["unit"]}')
-    for ccrit in (crits or ["No breaching metrics."]):
-        st.write(f'- {ccrit}')
-
-    rows = []
-    for m in breaching:
-        after = f'{min(m["threshold"]*0.9, m["value"]):.0f}' if applied else "—"
-        rows.append({"metric": f'{m["service_id"]} {m["metric"]}', "before": f'{m["value"]:.0f}',
-                     "target": f'< {m["threshold"]:.0f}', "after": after})
-    if k:
-        rows.append({"metric": k["metric"].replace("_", " "), "before": f'{k["current"]:.1f}{k["unit"]}',
-                     "target": f'≥ {k["baseline"]:.1f}{k["unit"]}',
-                     "after": f'{k["baseline"]:.1f}{k["unit"]}' if applied else "—"})
-    st.markdown("**Before / after (simulated)**")
+    rows, k = _verification(inc, ctx, applied)
+    st.markdown("**Verification — before / after, with the thresholds that were checked**")
     st.dataframe(pd.DataFrame(rows), hide_index=True)
+    if k:
+        st.caption(f'Recovery is **simulated**. Thresholds checked: latency, error rate, DB connections and '
+                   f'{k["metric"].replace("_"," ")} ≥ {k["baseline"]:.1f}{k["unit"]}.')
+    else:
+        st.caption("Recovery is **simulated**. Thresholds checked: latency, error rate and DB connections.")
 
     approved = True
     if rec["mode"] in ("Human approval", "Policy controlled"):
@@ -135,7 +163,8 @@ def action_panel(inc, ctx):
                  key="apply_" + inc["id"]):
         st.session_state[f'applied_{inc["id"]}'] = True
         E.set_stage(inc["id"], "Verified")
-        st.session_state["flash"] = "Simulated remediation applied → outcome verified → incident advanced to 'Verified'."
+        st.session_state["flash"] = ("Simulated remediation applied → verification passed → "
+                                     "incident advanced to 'Verified'. Evidence captured for learning.")
         st.rerun()
 
 
@@ -145,44 +174,36 @@ def incident_view(inc, ctx):
                                                  ctx["incidents"], ctx["G"])
     st.subheader("Incident intelligence — full walkthrough")
     context_header(inc, ctx)
-    handoff("to L2/L3 for diagnosis, Developer for the fix, and back to the Incident Manager to verify.")
-    paths = E.dependency_paths(G, inc["service_id"])
+    handoff("to L2/L3 (diagnosis), Developer (fix via ticket), and back to the Incident Manager to verify.")
     st.subheader("1 · The operational story")
-    st.write(" → ".join(services[n]["name"] for n in paths[0]))
+    st.write(" → ".join(services[n]["name"] for n in E.dependency_paths(G, inc["service_id"])[0]))
     st.info(inc["summary"])
-
     st.subheader("2 · Business impact (computed over the graph)")
     df = _kpi_df()
-    cur = df[df.scenario == "current"]
-    st.line_chart(cur.set_index("ts")["value"], height=150)
-
+    st.line_chart(df[df.scenario == "current"].set_index("ts")["value"], height=150)
     st.subheader("3 · Root cause — hypotheses with evidence")
     hypotheses(inc, ctx)
-
     st.subheader("4 · Recommended action (policy-governed)")
     rec = E.recommend(inc, E.causes(inc, G, changes, metrics, services))
-    st.write(f'**Recommended:** {rec["action"]}')
-    st.write(f'Risk: **{rec["risk"]}**  ·  Gate: **{rec["mode"]}**  ·  Next actor: **{rec["actor"]}**')
-
+    st.write(f'**Recommended:** {rec["action"]}  ·  Risk: **{rec["risk"]}**  ·  Gate: **{rec["mode"]}**  ·  '
+             f'Next actor: **{rec["actor"]}**')
     st.subheader("5 · Related incidents")
     sim = E.similar(incidents, inc)
     if sim:
+        st.caption(f'Above the relevance threshold ({E.SIMILARITY_THRESHOLD}); weak matches rejected.')
         for s in sim:
             st.write(f'- {s}')
     else:
-        st.caption("No related incidents above the similarity threshold (0.12).")
-
+        st.caption(f'No related incidents above the relevance threshold ({E.SIMILARITY_THRESHOLD}).')
     st.subheader("6 · Change risk")
-    scope = E.impacted(G, inc["service_id"])
-    rel = sorted([c for c in changes if c["service_id"] in scope], key=lambda c: c["deployed_at"], reverse=True)
-    if rel:
-        ch = rel[0]
+    ch = _latest_change(inc, ctx)
+    if ch:
         cr = E.change_risk(ch, G, services, incidents)
-        st.write(f'**{ch["id"]}** · {ch["description"]}  ·  risk **{cr["risk"]}** (gate {cr["gate"]})')
+        st.write(f'**{ch["id"]}** · {ch["description"]}  (deployed {ch["deployed_at"]})  ·  risk **{cr["risk"]}** '
+                 f'(gate {cr["gate"]})')
         st.write("Blast radius: " + (", ".join(cr["blast"]) or "—"))
     else:
         st.caption("No recent change in the impacted subgraph.")
-
     action_panel(inc, ctx)
 
 
@@ -210,8 +231,8 @@ def csm_view(inc, ctx):
         if r.get("target"):
             with st.expander("✍️ Draft customer update (validate & edit)", expanded=True):
                 st.text_area("Message", value=csm.customer_narrative(r["target"]), height=200, key="narr")
-    handoff("to the Incident Manager (status/impact) and L1 (first response) — customer impact, blocker "
-            "and owner travel with the incident.")
+    biz = E.business_service(G_ := ctx["G"], E.dependency_paths(ctx["G"], inc["service_id"])[0], services)
+    handoff(f'to Incident Manager / L1 — {_carried(inc, ctx, biz, _sla_detail(inc)[0])}.')
 
 
 def l1_view(inc, ctx):
@@ -219,8 +240,7 @@ def l1_view(inc, ctx):
                                                  ctx["incidents"], ctx["G"])
     st.subheader("L1 / Service Desk — triage & first response")
     context_header(inc, ctx)
-    chain = E.dependency_paths(G, inc["service_id"])[0]
-    biz = E.business_service(G, chain, services)
+    biz = E.business_service(G, E.dependency_paths(G, inc["service_id"])[0], services)
     st.markdown(f'**What happened:** {inc["summary"]}')
     causes = E.causes(inc, G, changes, metrics, services)
     rec = E.recommend(inc, causes)
@@ -230,11 +250,11 @@ def l1_view(inc, ctx):
         st.error(f'🔴 **Escalate — requires {rec["mode"]}:** {rec["action"]}')
     st.markdown("**Triage checklist**")
     st.write(f'- Affected service: **{services[inc["service_id"]]["name"]}**')
-    st.write(f'- Business impact: {"customer-impacting — see CSM narrative" if biz else "internal only"}')
+    st.write(f'- Business impact: {"customer-impacting — see CSM narrative" if biz else "service-level only"}')
     st.write(f'- Next actor: **{rec["actor"]}**')
-    st.markdown("**Related / known errors**")
     sim = E.similar(incidents, inc)
-    for s in (sim or ["No related incidents above threshold."]):
+    st.markdown("**Related / known errors**")
+    for s in (sim or [f"No related incidents above the relevance threshold ({E.SIMILARITY_THRESHOLD})."]):
         st.write(f'- {s}')
     with st.expander("Runbook steps (L1)"):
         for step in ["Check recent deployments on the affected service",
@@ -242,32 +262,34 @@ def l1_view(inc, ctx):
                      "Apply known remediation if policy allows",
                      "If unresolved in 15 min → escalate to L2 / owning team"]:
             st.write(f'- {step}')
-    handoff("to L2/L3 with the triage notes, evidence and the failing checks.")
+    handoff(f'to L2/L3 — {_carried(inc, ctx, biz, _sla_detail(inc)[0])}.')
 
 
 def l2_view(inc, ctx):
     st.subheader("L2 / L3 — diagnosis & root cause")
     context_header(inc, ctx)
     hypotheses(inc, ctx)
-    services, changes, metrics, incidents, G = (ctx["services"], ctx["changes"], ctx["metrics"],
-                                                 ctx["incidents"], ctx["G"])
+    services, changes, metrics, G = ctx["services"], ctx["changes"], ctx["metrics"], ctx["G"]
     scope = E.impacted(G, inc["service_id"])
-    paths = E.dependency_paths(G, inc["service_id"])
-    st.markdown("**Dependency path(s)** (handles multiple parents)")
-    for p in paths:
+    st.markdown("**Dependency path(s)** — handles multiple parents")
+    for p in E.dependency_paths(G, inc["service_id"]):
         st.write("→ " + " → ".join(services[n]["name"] for n in p))
     st.markdown("**Telemetry (breaching)**")
     rows = [{"service": m["service_id"], "metric": m["metric"], "value": m["value"], "threshold": m["threshold"]}
             for m in metrics if m["service_id"] in scope and m["value"] > m["threshold"]]
     st.dataframe(pd.DataFrame(rows), hide_index=True)
-    handoff("to the Developer with the dependency path, breaching metrics and the suspect change.")
+    ch = _latest_change(inc, ctx)
+    if ch:
+        cr = E.change_risk(ch, G, services, ctx["incidents"])
+        st.markdown(f'**Suspect change:** {ch["id"]} · {ch["description"]} · risk **{cr["risk"]}** ({cr["gate"]})')
+    biz = E.business_service(G, E.dependency_paths(G, inc["service_id"])[0], services)
+    handoff(f'to the Developer — {_carried(inc, ctx, biz, _sla_detail(inc)[0])}.')
 
 
 def developer_view(ctx):
     st.subheader("Developer — Jira ticket context")
     st.caption("The evidence bundle that travels with the work — no context-transfer calls.")
-    tickets = ctx["tickets"]
-    tmap = {t["id"]: f'{t["id"]} · {t["title"]}' for t in tickets}
+    tmap = {t["id"]: f'{t["id"]} · {t["title"]}' for t in ctx["tickets"]}
     tsel = st.selectbox("Jira ticket", list(tmap), format_func=lambda x: tmap[x])
     b = developer.context(tsel)
     if not b:
@@ -284,8 +306,10 @@ def developer_view(ctx):
     st.markdown(f'**Affected service:** {b["service"]}   ·   **Business service:** {b["business"] or "—"}')
     st.markdown(f'**Dependency path:** {b["path"]}')
     if b["kpi"] is not None:
-        st.markdown(f'**Business impact:** {b.get("metric_name","checkout success")} **{b["kpi"]}%** '
-                    f'(baseline {b.get("baseline",98.5)}%)')
+        st.markdown(f'**Business impact (scenario KPI):** {b.get("metric_name","checkout success")} '
+                    f'**{b["kpi"]}%** (baseline {b.get("baseline",98.5)}%)')
+    else:
+        st.caption("No business KPI mapped for this scenario.")
     st.markdown("**RCA hypotheses:**")
     for cch in (b["causes"] or ["no change or metric breach found"]):
         st.write("- " + cch)
@@ -295,7 +319,7 @@ def developer_view(ctx):
     with st.expander("📎 Evidence ledger", expanded=True):
         for e in b["evidence"]:
             st.write("· " + e)
-    handoff("back to L2/L3 and the Incident Manager once the fix is ready — evidence, owner and blocker carry over.")
+    handoff("back to L2/L3 and the Incident Manager once the fix is ready — context, owner and blocker carry over.")
 
 
 def im_view(inc, ctx):
@@ -306,26 +330,41 @@ def im_view(inc, ctx):
     causes = E.causes(inc, G, changes, metrics, services)
     rec = E.recommend(inc, causes)
     rel_ticket = next((t for t in tickets if t["incident_id"] == inc["id"]), None)
-    rel_change = sorted([c for c in changes if c["service_id"] in E.impacted(G, inc["service_id"])],
-                        key=lambda c: c["deployed_at"], reverse=True)[:1]
+    ch = _latest_change(inc, ctx)
     sla_txt, rem, target, elapsed = _sla_detail(inc)
+    biz = E.business_service(G, E.dependency_paths(G, inc["service_id"])[0], services)
+
     st.markdown(f'**Why isn’t this moving?** Blocker: **{inc["blocker"] or "—"}**')
     st.markdown(f'**Next actor:** **{rec["actor"]}**  ·  **Action:** {rec["action"]} ({rec["mode"]})')
     st.markdown("**Who is working on it**")
     st.write(f'- Owner team: **{inc["owner_team"]}**')
     if rel_ticket:
         st.write(f'- Dev ticket: **{rel_ticket["id"]}** ({rel_ticket["status"]}) · {rel_ticket["assignee"]}')
-    if rel_change:
-        st.write(f'- Change owner: **{rel_change[0]["owner"]}** ({rel_change[0]["id"]})')
+    if ch:
+        st.write(f'- Change owner: **{ch["owner"]}** ({ch["id"]}, deployed {ch["deployed_at"]})')
     st.markdown("**Escalation signal**")
     if inc["status"] == "open" and rem is not None and rem < target * 0.5:
         st.error(f'🔴 Escalate — {sla_txt}; customer-impacting.')
     else:
         st.success("🟢 On track — no escalation required.")
+
+    st.markdown("#### Hand off a specific action")
+    target_who = st.radio("Hand off to", ["L2 / L3 Engineer", "Developer (via ticket)"],
+                          key="im_target_" + inc["id"], horizontal=True)
+    st.markdown(f'- **Action handed off:** {rec["action"]}')
+    st.markdown(f'- **Owner:** {rec["actor"]}   ·   **Blocker:** {inc["blocker"] or "—"}')
+    if rel_ticket:
+        st.markdown(f'- **Developer ticket:** {rel_ticket["id"]} ({rel_ticket["status"]}) · {rel_ticket["assignee"]}')
+    st.markdown(f'- **Carried context:** {_carried(inc, ctx, biz, sla_txt)}')
+    if st.button("Record handoff (simulated)", key="handoff_" + inc["id"]):
+        st.session_state["flash"] = (f'Handoff recorded → **{target_who}**: “{rec["action"]}” '
+                                     f'(owner {rec["actor"]}, blocker {inc["blocker"] or "—"}).')
+        st.rerun()
+
     st.markdown("**Timeline**")
     st.write(f'- Incident raised: {inc["created_at"]}')
-    if rel_change:
-        st.write(f'- Suspect change deployed: {rel_change[0]["deployed_at"]}')
+    if ch:
+        st.write(f'- Suspect change deployed: {ch["deployed_at"]}')
     if rel_ticket:
         st.write(f'- Dev ticket created: {rel_ticket["created_at"]}')
-    handoff("to L2/L3 for diagnosis and the Developer for the fix; approve high-risk actions here.")
+    handoff("to L2/L3 (diagnosis) and the Developer (fix); approve high-risk actions here.")
