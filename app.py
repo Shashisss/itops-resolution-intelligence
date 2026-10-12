@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """ITOps Resolution Intelligence — Streamlit POC.
-Tab 1: CSM Assistant (ask anything -> evidence-led answer).
-Tab 2: Incident intelligence (story -> impact -> cause -> recommendation -> verify)."""
+Tab 1: CSM Assistant — context-aware questions per incident + free-text ask, evidence-led answers.
+Tab 2: Incident intelligence — story -> impact -> cause -> recommendation -> change risk -> verify."""
 import os
 import duckdb
 import streamlit as st
@@ -17,47 +17,52 @@ st.title("IT Operations Resolution & Intelligence")
 st.caption("Signal → Context → Reason → Recommend → Verify   ·   demo on sample data")
 
 services, edges, incidents, changes, metrics, G = E.load()
-titles = {i["id"]: f'{i["id"]} · {i["title"]}' for i in incidents}
+titles = {i["id"]: f'{i["id"]} · {i["title"]} ({i["status"]})' for i in incidents}
+
+# ---- global context selector (drives both tabs) ----
+sel = st.sidebar.selectbox("Context incident", list(titles), format_func=lambda x: titles[x])
+st.sidebar.caption("Changing this updates the suggested questions and the incident view.")
+inc = next(i for i in incidents if i["id"] == sel)
+svc_name = services[inc["service_id"]]["name"]
 
 tab_csm, tab_inc = st.tabs(["💬  CSM Assistant", "🛠  Incident intelligence"])
 
 # ------------------------------------------------------------------ CSM Assistant
 with tab_csm:
-    st.subheader("Ask about any service or incident")
-    st.caption("Evidence-led answers, grounded in the operational record — every claim cites its source.")
+    st.subheader("CSM Assistant")
+    st.caption(f"Context: **{inc['id']}** · {svc_name} — questions update with the incident; ask your own too.")
 
-    if "q" not in st.session_state:
-        st.session_state["q"] = "What is the status of Payments?"
+    # reset the question when the context incident changes
+    if st.session_state.get("ctx") != inc["id"]:
+        st.session_state["ctx"] = inc["id"]
+        st.session_state["q"] = f"What is the status of {svc_name}?"
 
-    examples = ["What is the status of Payments?",
-                "Why is checkout slow?",
-                "Who is working on INC-8841?",
-                "Is there SLA risk on payments?"]
-    cols = st.columns(4)
-    for c, ex in zip(cols, examples):
-        if c.button(ex, use_container_width=True):
-            st.session_state["q"] = ex
-            st.rerun()
+    sugg = csm.suggestions(inc, services)
+    for row in [sugg[i:i + 3] for i in range(0, len(sugg), 3)]:
+        cols = st.columns(3)
+        for c, s in zip(cols, row):
+            if c.button(s, use_container_width=True, key="sg_" + s):
+                st.session_state["q"] = s
+                st.rerun()
 
-    q = st.text_input("Question", key="q")
+    q = st.text_input("Ask anything about this service or incident", key="q")
     if q:
         r = csm.answer(q)
-        st.markdown(r["answer"])
+        if r["intent"] == "customer":
+            st.markdown(r["answer"].replace("\n", "  \n"))
+        else:
+            st.markdown(r["answer"])
         with st.expander("📎 Evidence ledger (citations)", expanded=True):
             for e in r["evidence"]:
                 st.write("· " + e)
-        with st.expander("✍️ Draft customer update (validate & edit)", expanded=True):
+        with st.expander("✍️ Draft customer update (validate & edit)", expanded=False):
             if r.get("target"):
-                st.caption("Customer-safe draft, grounded in the same evidence — edit before sending.")
                 st.text_area("Message", value=csm.customer_narrative(r["target"]), height=210, key="narr")
             else:
                 st.write("No service identified for a customer update.")
 
 # ------------------------------------------------------------------ Incident intelligence
 with tab_inc:
-    sel = st.sidebar.selectbox("Incident", list(titles), format_func=lambda x: titles[x])
-    st.sidebar.caption("Pick an incident to assemble its operational story.")
-    inc = next(i for i in incidents if i["id"] == sel)
     chain = E.impact_chain(G, inc["service_id"])
     biz = E.business_service(G, chain, services)
 

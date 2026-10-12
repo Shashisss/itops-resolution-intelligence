@@ -1,12 +1,33 @@
 #!/usr/bin/env python3
-"""CSM Assistant — answers 'what's the status of …?' with an evidence-led narrative.
-Retrieval + intent over the same governed graph. No LLM required."""
+"""CSM Assistant — answers questions with an evidence-led narrative.
+Context-aware: suggestions follow the selected incident. No LLM required."""
 import duckdb
 import engine as E
 
 DB_HIST = "data/history.duckdb"
 KEYWORDS = {"payment": "its_payment_api", "checkout": "app_checkout",
             "database": "db_payments", "db": "db_payments", "api": "its_payment_api"}
+
+
+def customer_narrative(sid):
+    """Customer-safe update drafted from the same evidence (validate/edit before sending)."""
+    services, edges, incidents, changes, metrics, G = E.load()
+    chain = E.impact_chain(G, sid)
+    biz = E.business_service(G, chain, services)
+    kpi = _kpi_now()
+    svc = services[biz]["name"] if biz else services[sid]["name"]
+    impact = (f"a small share of transactions (around {max(1, round(100 - kpi))}%) may be slow or fail"
+              if kpi is not None else "some transactions may be slow or fail")
+    return "\n".join([
+        f"Customer update — {svc}",
+        "",
+        f"We are aware of intermittent issues affecting {svc}, and our teams are actively working to resolve them.",
+        f"Impact: {impact}. There is no data loss or security impact.",
+        "What we are doing: we have identified the likely contributor and are applying a corrective change "
+        "under our standard change control and validation.",
+        "Next update: within 60 minutes — or sooner if service returns to normal.",
+        "We will confirm once performance is fully restored.",
+    ])
 
 
 def _target(q, services, incidents):
@@ -20,7 +41,6 @@ def _target(q, services, incidents):
     for k, v in KEYWORDS.items():
         if k in ql:
             return "service", v
-    # default: most recent open incident
     open_ = [i for i in incidents if i["status"] == "open"]
     if open_:
         return "incident", sorted(open_, key=lambda i: i["created_at"], reverse=True)[0]
@@ -29,7 +49,10 @@ def _target(q, services, incidents):
 
 def _intent(q):
     ql = q.lower()
-    if any(w in ql for w in ["impact", "business", "customer", "revenue", "kpi", "checkout success"]):
+    if any(w in ql for w in ["tell the customer", "customer update", "say to the customer",
+                             "tell my customer", "customer message", "update for the customer"]):
+        return "customer"
+    if any(w in ql for w in ["impact", "business", "revenue", "kpi", "checkout success"]):
         return "impact"
     if any(w in ql for w in ["why", "cause", "root", "reason", "happening"]):
         return "cause"
@@ -61,25 +84,19 @@ def _kpi_now():
         return None
 
 
-def customer_narrative(sid):
-    """Customer-safe update drafted from the same evidence (validate/edit before sending)."""
-    services, edges, incidents, changes, metrics, G = E.load()
-    chain = E.impact_chain(G, sid)
-    biz = E.business_service(G, chain, services)
-    kpi = _kpi_now()
-    svc = services[biz]["name"] if biz else services[sid]["name"]
-    impact = (f"a small share of transactions (around {max(1, round(100 - kpi))}%) may be slow or fail"
-              if kpi is not None else "some transactions may be slow or fail")
-    return "\n".join([
-        f"Customer update — {svc}",
-        "",
-        f"We are aware of intermittent issues affecting {svc}, and our teams are actively working to resolve them.",
-        f"Impact: {impact}. There is no data loss or security impact.",
-        "What we are doing: we have identified the likely contributor and are applying a corrective change "
-        "under our standard change control and validation.",
-        "Next update: within 60 minutes — or sooner if service returns to normal.",
-        "We will confirm once performance is fully restored.",
-    ])
+def suggestions(inc, services):
+    """Context-aware suggested questions for the selected incident."""
+    svc = services[inc["service_id"]]["name"]
+    iid = inc["id"]
+    return [
+        f"What is the status of {svc}?",
+        f"Why is {svc} impacted?",
+        f"Who is working on {iid}?",
+        f"What is the business impact of {iid}?",
+        f"Is there an SLA risk on {svc}?",
+        "Will this recur?",
+        "What should I tell the customer?",
+    ]
 
 
 def answer(question):
@@ -102,30 +119,32 @@ def answer(question):
     story = " → ".join(services[n]["name"] for n in reversed(chain))
     cause_txt = "; ".join(c["text"] for c in causes) if causes else "no change or metric breach found"
 
-    if inc and inc["status"] == "open":
-        head = f'**{services[biz]["name"] if biz else services[sid]["name"]} — AT RISK.**'
-    elif inc:
-        head = f'{services[biz]["name"] if biz else services[sid]["name"]} — steady.'
+    if intent == "customer":
+        parts = [customer_narrative(sid)]
     else:
-        head = f'{services[sid]["name"]} — no incident found.'
-
-    parts = [head]
-    if inc:
-        parts.append(f'{inc["title"]} ({inc["id"]}, {inc["priority"]}, {inc["status"]}).')
-    parts.append(f'Service path: {story}.')
-    if biz and kpi is not None:
-        parts.append(f'Business impact: **{services[biz]["name"]}** — checkout success {kpi}% (from ~98.5%).')
-    if intent in ("status", "cause"):
-        parts.append(f'Likely cause / blockers: {cause_txt}.')
-    if intent in ("status", "who") and rec:
-        parts.append(f'Next actor: **{rec["actor"]}**.')
-    if intent in ("status", "sla"):
-        parts.append('SLA risk: **elevated** — customer-impacting and still open.'
-                     if (inc and inc["status"] == "open") else 'SLA risk: low.')
-    if intent in ("status", "recur") and similar:
-        parts.append('Precedent: ' + "; ".join(similar) + '.')
-    if rec:
-        parts.append(f'Recommended action ({rec["mode"]}): {rec["action"]}')
+        if inc and inc["status"] == "open":
+            head = f'**{services[biz]["name"] if biz else services[sid]["name"]} — AT RISK.**'
+        elif inc:
+            head = f'{services[biz]["name"] if biz else services[sid]["name"]} — steady.'
+        else:
+            head = f'{services[sid]["name"]} — no incident found.'
+        parts = [head]
+        if inc:
+            parts.append(f'{inc["title"]} ({inc["id"]}, {inc["priority"]}, {inc["status"]}).')
+        parts.append(f'Service path: {story}.')
+        if biz and kpi is not None:
+            parts.append(f'Business impact: **{services[biz]["name"]}** — checkout success {kpi}% (from ~98.5%).')
+        if intent in ("status", "cause"):
+            parts.append(f'Likely cause / blockers: {cause_txt}.')
+        if intent in ("status", "who") and rec:
+            parts.append(f'Next actor: **{rec["actor"]}**.')
+        if intent in ("status", "sla"):
+            parts.append('SLA risk: **elevated** — customer-impacting and still open.'
+                         if (inc and inc["status"] == "open") else 'SLA risk: low.')
+        if intent in ("status", "recur") and similar:
+            parts.append('Precedent: ' + "; ".join(similar) + '.')
+        if rec:
+            parts.append(f'Recommended action ({rec["mode"]}): {rec["action"]}')
 
     evidence = []
     if inc:
