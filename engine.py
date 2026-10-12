@@ -85,6 +85,28 @@ def recommend(inc, causes):
     return {"action": "Gather more evidence.", "risk": "Low", "mode": "Autonomous", "actor": "On-call"}
 
 
+def change_risk(change, G, services, incidents):
+    """Change intelligence: risk class, blast radius and gate for a given change."""
+    sid = change["service_id"]
+    down = set(nx.descendants(G, sid))
+    up = set(nx.ancestors(G, sid))
+    biz = next((n for n in up if services[n]["type"] == "business_service"), None)
+    scope = {sid} | down | up
+    correlated = any(i["service_id"] in scope and i["status"] == "open" for i in incidents)
+    score = 1 + min(len(down), 3) + (2 if biz else 0) + (3 if correlated else 0)
+    risk = "High" if score >= 6 else ("Medium" if score >= 3 else "Low")
+    gate = {"High": "Human approval", "Medium": "Policy controlled", "Low": "Auto"}[risk]
+    rationale = []
+    if correlated:
+        rationale.append("correlated with an open incident")
+    if biz:
+        rationale.append(f"affects business service {services[biz]['name']}")
+    if down:
+        rationale.append("downstream: " + ", ".join(services[n]["name"] for n in down))
+    return {"risk": risk, "gate": gate, "business": services[biz]["name"] if biz else None,
+            "blast": [services[n]["name"] for n in down], "correlated": correlated, "rationale": rationale}
+
+
 def similar(incidents, inc, k=3):
     docs = [i["summary"] for i in incidents]
     ids = [i["id"] for i in incidents]

@@ -61,6 +61,27 @@ def _kpi_now():
         return None
 
 
+def customer_narrative(sid):
+    """Customer-safe update drafted from the same evidence (validate/edit before sending)."""
+    services, edges, incidents, changes, metrics, G = E.load()
+    chain = E.impact_chain(G, sid)
+    biz = E.business_service(G, chain, services)
+    kpi = _kpi_now()
+    svc = services[biz]["name"] if biz else services[sid]["name"]
+    impact = (f"a small share of transactions (around {max(1, round(100 - kpi))}%) may be slow or fail"
+              if kpi is not None else "some transactions may be slow or fail")
+    return "\n".join([
+        f"Customer update — {svc}",
+        "",
+        f"We are aware of intermittent issues affecting {svc}, and our teams are actively working to resolve them.",
+        f"Impact: {impact}. There is no data loss or security impact.",
+        "What we are doing: we have identified the likely contributor and are applying a corrective change "
+        "under our standard change control and validation.",
+        "Next update: within 60 minutes — or sooner if service returns to normal.",
+        "We will confirm once performance is fully restored.",
+    ])
+
+
 def answer(question):
     services, edges, incidents, changes, metrics, G = E.load()
     kind, tgt = _target(question, services, incidents)

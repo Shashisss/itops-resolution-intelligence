@@ -46,6 +46,12 @@ with tab_csm:
         with st.expander("📎 Evidence ledger (citations)", expanded=True):
             for e in r["evidence"]:
                 st.write("· " + e)
+        with st.expander("✍️ Draft customer update (validate & edit)", expanded=True):
+            if r.get("target"):
+                st.caption("Customer-safe draft, grounded in the same evidence — edit before sending.")
+                st.text_area("Message", value=csm.customer_narrative(r["target"]), height=210, key="narr")
+            else:
+                st.write("No service identified for a customer update.")
 
 # ------------------------------------------------------------------ Incident intelligence
 with tab_inc:
@@ -93,7 +99,22 @@ with tab_inc:
     for s in E.similar(incidents, inc):
         st.write(f'- {s}')
 
-    st.subheader("6 · Act & verify")
+    st.subheader("6 · Change risk (change intelligence)")
+    scope = E.impacted(G, inc["service_id"])
+    rel_changes = sorted([c for c in changes if c["service_id"] in scope],
+                         key=lambda c: c["deployed_at"], reverse=True)
+    if rel_changes:
+        ch = rel_changes[0]
+        cr = E.change_risk(ch, G, services, incidents)
+        st.write(f'**{ch["id"]}** · {ch["description"]}')
+        st.write(f'Risk: **{cr["risk"]}**  ·  Gate: **{cr["gate"]}**  ·  '
+                 f'Business: {cr["business"] or "—"}  ·  Correlated: {"yes" if cr["correlated"] else "no"}')
+        st.write("Blast radius: " + (", ".join(cr["blast"]) or "—"))
+        st.write("Why: " + "; ".join(cr["rationale"]))
+    else:
+        st.write("No recent change in the impacted subgraph.")
+
+    st.subheader("7 · Act & verify")
     approved = True
     if rec["mode"] in ("Human approval", "Policy controlled"):
         approved = st.checkbox("Operator approval required (production / high blast radius)")
