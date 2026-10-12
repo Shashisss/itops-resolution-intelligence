@@ -25,7 +25,7 @@ if _needs_seed():
 
 st.set_page_config(page_title="ITOps Resolution Intelligence — POC", layout="wide")
 st.title("IT Operations Resolution & Intelligence")
-st.caption("Signal → Context → Reason → Recommend → Verify   ·   one governed record, shaped per persona   ·   build v4")
+st.caption("Signal → Context → Reason → Recommend → Verify   ·   one governed record, shaped per persona   ·   build v5")
 
 services, edges, incidents, changes, metrics, G = E.load()
 tickets = E.load_tickets()
@@ -41,7 +41,9 @@ st.sidebar.caption("Switch persona to see each role's day-to-day view of the sam
 inc = next(i for i in incidents if i["id"] == sel)
 
 # ---- dispatch to the persona view ----
-if persona == "CSM":
+if persona == "Incident intelligence":
+    personas.incident_view(inc, ctx)
+elif persona == "CSM":
     personas.csm_view(inc, ctx)
 elif persona == "L1 Engineer":
     personas.l1_view(inc, ctx)

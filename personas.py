@@ -9,7 +9,7 @@ import csm
 import developer
 
 SLA_HOURS = {"P1": 4, "P2": 8, "P3": 24, "P4": 72}
-PERSONAS = ["CSM", "L1 Engineer", "L2 / L3 Engineer", "Developer", "Incident Manager"]
+PERSONAS = ["Incident intelligence", "CSM", "L1 Engineer", "L2 / L3 Engineer", "Developer", "Incident Manager"]
 
 
 def _kpi_df():
@@ -35,6 +35,73 @@ def _head(inc, ctx, sla_txt, biz):
     c2.metric("Priority", inc["priority"])
     c3.metric("SLA", sla_txt)
     c4.metric("Business service", services[biz]["name"] if biz else "—")
+
+
+# ------------------------------------------------------------------ Incident intelligence (full walkthrough)
+def incident_view(inc, ctx):
+    services, changes, metrics, incidents, G = (ctx["services"], ctx["changes"], ctx["metrics"],
+                                                 ctx["incidents"], ctx["G"])
+    st.subheader("Incident intelligence — full walkthrough")
+    chain = E.impact_chain(G, inc["service_id"])
+    biz = E.business_service(G, chain, services)
+    sla_txt, _ = _sla(inc)
+    _head(inc, ctx, sla_txt, biz)
+
+    st.subheader("1 · The operational story")
+    st.write(" → ".join(services[n]["name"] + f' ({services[n]["type"].replace("_"," ")})'
+                       for n in reversed(chain)))
+    st.info(inc["summary"])
+
+    st.subheader("2 · Business impact (computed over the graph)")
+    df = _kpi_df()
+    cur = df[df.scenario == "current"]
+    st.line_chart(cur.set_index("ts")["value"], height=150)
+    if biz:
+        st.warning(f'Business KPI at risk: Checkout success ↓ to {cur["value"].iloc[-1]:.1f}% '
+                   f'(from ~98.5%) on {services[biz]["name"]}.')
+
+    st.subheader("3 · Likely cause & blockers (RCA over the graph)")
+    causes = E.causes(inc, G, changes, metrics, services)
+    for cch in (causes or [{"text": "No change or metric breach found in the chain."}]):
+        st.write(f'- {cch["text"]}')
+
+    st.subheader("4 · Recommended action (policy-governed)")
+    rec = E.recommend(inc, causes)
+    st.write(f'**Recommended:** {rec["action"]}')
+    mode = {"Autonomous": "🟢 Autonomous", "Auto": "🟠 Auto",
+            "Policy controlled": "🟠 Policy controlled", "Human approval": "🔴 Human approval"}
+    st.write(f'Risk class: **{rec["risk"]}**  ·  Mode: **{mode.get(rec["mode"], rec["mode"])}**'
+             f'  ·  Next actor: **{rec["actor"]}**')
+
+    st.subheader("5 · Similar past incidents (retrieval)")
+    for s in E.similar(incidents, inc):
+        st.write(f'- {s}')
+
+    st.subheader("6 · Change risk (change intelligence)")
+    scope = E.impacted(G, inc["service_id"])
+    rel = sorted([c for c in changes if c["service_id"] in scope],
+                 key=lambda c: c["deployed_at"], reverse=True)
+    if rel:
+        ch = rel[0]
+        cr = E.change_risk(ch, G, services, incidents)
+        st.write(f'**{ch["id"]}** · {ch["description"]}')
+        st.write(f'Risk: **{cr["risk"]}**  ·  Gate: **{cr["gate"]}**  ·  '
+                 f'Business: {cr["business"] or "—"}  ·  Correlated: {"yes" if cr["correlated"] else "no"}')
+        st.write("Blast radius: " + (", ".join(cr["blast"]) or "—"))
+        st.write("Why: " + "; ".join(cr["rationale"]))
+    else:
+        st.write("No recent change in the impacted subgraph.")
+
+    st.subheader("7 · Act & verify")
+    approved = True
+    if rec["mode"] in ("Human approval", "Policy controlled"):
+        approved = st.checkbox("Operator approval required (production / high blast radius)")
+    if st.button("Apply recommended action", disabled=not approved, type="primary"):
+        st.success("Action executed (simulated): change rolled back, DB connections relaxed.")
+        fixed = df[df.scenario == "fixed"]
+        st.line_chart(fixed.set_index("ts")["value"], height=150)
+        st.success(f'VERIFIED: Checkout success recovered to {fixed["value"].iloc[-1]:.1f}%. '
+                   f'Evidence captured → knowledge / policy learning.')
 
 
 # ------------------------------------------------------------------ CSM
