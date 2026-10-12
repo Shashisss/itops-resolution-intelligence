@@ -36,9 +36,9 @@ if _needs_seed():
 
 st.set_page_config(page_title="ITOps Resolution Intelligence — POC", layout="wide")
 st.title("IT Operations Resolution & Intelligence")
-st.caption("Signal → Context → Reason → Recommend → Verify   ·   one governed record, shaped per persona   ·   build v9")
+st.caption("Signal → Context → Reason → Recommend → Verify   ·   one governed record, shaped per persona   ·   build v10")
 
-st.info("🧪 **Demo scenario:** a customer-impacting payment incident (**INC-8841**). "
+st.info("🧪 **Scenario:** a customer-impacting payment incident (**INC-8841**). "
         "Synthetic sample data; integrations and remediation are **simulated**.")
 
 flash = st.session_state.pop("flash", None)
@@ -57,7 +57,7 @@ titles = {i["id"]: f'{i["id"]} · {i["title"]} ({i["status"]})' for i in ordered
 persona = st.sidebar.selectbox("Persona", personas.PERSONAS)
 sel = st.sidebar.selectbox("Context incident", list(titles), format_func=lambda x: titles[x])
 st.sidebar.caption("Switch persona to see each role's day-to-day view of the same incident.")
-if st.sidebar.button("↺ Reset demo data", key="reset_side"):
+if st.sidebar.button("↺ Reset sample data", key="reset_side"):
     _reset()
     st.rerun()
 
