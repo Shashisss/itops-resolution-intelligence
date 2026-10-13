@@ -16,6 +16,10 @@ import realtime
 THREAD = ["Detect", "Correlate", "Coordinate", "Verify", "Close"]
 
 
+def _metric_label(m):
+    return m.replace("_pct", "").replace("_", " ").strip().capitalize()
+
+
 def _rail(inc, rec):
     st.markdown("#### 📡 Live event feed · simulated")
     viz.feed(realtime.recent(8))
@@ -87,15 +91,29 @@ def it_command(inc, ctx):
     with main:
         t = st.tabs(tab_labels)
         with t[0]:
+            vcol = {"Verified": "#16a34a", "Mitigated": "#d97706", "Recovery failed": "#dc2626"}.get(
+                verdict, "#2563eb")
             viz.kpi_row([
-                ("Affected service", services[inc["service_id"]]["name"], "IT service", "#dc2626"),
                 ("Business impact", bizname, "customer-facing", "#dc2626"),
-                ("Business KPI", (f'{k["metric"].replace("_"," ")} {k["current"]:.0f}{k["unit"]}' if k else "n/a"),
-                 (f'baseline {k["baseline"]:.1f}{k["unit"]}' if k else ""), "#7c3aed"),
-                ("Top hypothesis", (causes[0]["type"].title() if causes else "—"),
-                 (f'{causes[0]["confidence"]} confidence' if causes else ""), "#d97706"),
+                ("Status", verdict, inc["stage"], vcol),
+                ("Next owner", rec["actor"], f'gate: {rec["mode"]}', "#0891b2"),
+                ("Next action", (rec["action"][:64] + ("…" if len(rec["action"]) > 64 else "")),
+                 "recommended", "#4f46e5"),
             ])
+            st.markdown("#### What connects the failure (cross-domain)")
+            if corr:
+                viz.causal([("Schema mismatch", "DataOps"), ("Pipeline failure", "DataOps"),
+                            ("Stale payments data", "DataOps"), ("Payment API impact", "IT Ops")])
+                st.caption(f'🔗 IT Ops **{inc["id"]}** ↔ DataOps **{corr["other_id"]}** · shared cause '
+                           f'**{corr["shared_cause"]}** · evidence flows left → right.')
+            else:
+                viz.chain(chain, {n: services[n]["name"] for n in services}, highlight=(inc["service_id"],))
             st.info(inc["summary"])
+            if k:
+                viz.impact_summary(_metric_label(k["metric"]), k["baseline"], k["current"], k["unit"],
+                                   "incident onset", inc["created_at"].split("T")[-1][:5])
+            st.caption(f'Affected service: {services[inc["service_id"]]["name"]} '
+                       f'({services[inc["service_id"]]["type"].replace("_"," ")})')
         with t[1]:
             P.hypotheses(inc, ctx)
             with st.expander("Related incidents"):
@@ -107,13 +125,15 @@ def it_command(inc, ctx):
                     cr = E.change_risk(ch, G, services, incidents)
                     st.write(f'**{ch["id"]}** · {ch["description"]} · risk **{cr["risk"]}** (gate {cr["gate"]})')
         with t[2]:
-            st.markdown("#### Business impact")
-            df = P._kpi_df()
-            st.line_chart(df[df.scenario == "current"].set_index("ts")["value"], height=140)
-            st.markdown("#### Dependency & impact path")
-            viz.chain(chain, {n: services[n]["name"] for n in services}, highlight=(inc["service_id"],))
+            st.markdown("#### Cross-domain causal chain")
             if corr:
-                st.caption("Cross-domain: the upstream data failure is the reason for the service impact.")
+                viz.causal([("Schema mismatch", "DataOps"), ("Pipeline failure", "DataOps"),
+                            ("Stale payments data", "DataOps"), ("Payment API impact", "IT Ops")])
+            st.markdown("#### Dependency & impact path (IT service)")
+            viz.chain(chain, {n: services[n]["name"] for n in services}, highlight=(inc["service_id"],))
+            if k:
+                viz.impact_summary(_metric_label(k["metric"]), k["baseline"], k["current"], k["unit"],
+                                   "incident onset", inc["created_at"].split("T")[-1][:5])
         with t[3]:
             st.markdown("#### Team & ownership")
             st.markdown(f'- **{inc["owner_team"]}** — owner')

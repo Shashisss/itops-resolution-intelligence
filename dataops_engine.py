@@ -99,14 +99,14 @@ def causes(inc, data):
     run = latest_run(pid, data["runs"])
     if run and run["status"] == "failed":
         key = f'RUN:{run["id"]}'
-        hyps.append({"type": "pipeline", "key": key, "confidence": "high",
+        hyps.append({"type": "pipeline", "key": key, "label": "Pipeline run failed", "confidence": "high",
                      "status": "confirmed" if confirmed == key else "suspected",
                      "evidence": f'run {run["id"]} failed {run["started_at"]}: {run["error"]}',
                      "text": f'pipeline run {run["id"]} failed — {run["error"]}'})
     for d in data["dq"]:
         if d["dataset_id"] == ds and d["value"] > d["threshold"]:
             key = f'DQ:{d["id"]}'
-            hyps.append({"type": "data quality", "key": key, "confidence": "high",
+            hyps.append({"type": "data quality", "key": key, "label": "Data quality breach", "confidence": "high",
                          "status": "confirmed" if confirmed == key else "suspected",
                          "evidence": f'{d["rule"]} = {d["value"]:.1f} vs threshold {d["threshold"]:.1f} on {ds}',
                          "text": f'data-quality rule {d["rule"]} breached at {d["value"]:.1f} '
@@ -115,7 +115,7 @@ def causes(inc, data):
     if f and _lag_min(f) > f["sla_min"]:
         lag = _lag_min(f)
         key = f'FRESH:{ds}'
-        hyps.append({"type": "freshness", "key": key,
+        hyps.append({"type": "freshness", "key": key, "label": "Freshness breach",
                      "confidence": "high" if lag > 2 * f["sla_min"] else "medium",
                      "status": "confirmed" if confirmed == key else "suspected",
                      "evidence": f'last updated {lag} min ago vs {f["sla_min"]} min SLA on {ds}',

@@ -121,7 +121,7 @@ def causes(inc, G, changes, metrics, services):
         key = f'CHG:{ch["id"]}'
         conf = "high" if (inc and inc["status"] == "open") else "medium"
         out.append({
-            "type": "change", "key": key, "service": ch["service_id"],
+            "type": "change", "key": key, "service": ch["service_id"], "label": "Recent change",
             "owner": ch["owner"] or services[ch["service_id"]]["owner"],
             "confidence": conf, "status": "confirmed" if confirmed == key else "suspected",
             "evidence": f'change {ch["id"]} deployed {ch["deployed_at"]} by {ch["owner"]}',
@@ -134,6 +134,7 @@ def causes(inc, G, changes, metrics, services):
         key = f'METRIC:{m["id"]}'
         out.append({
             "type": "metric", "key": key, "service": m["service_id"],
+            "label": _CAUSE_LABELS.get(m["metric"], f'{m["metric"].replace("_"," ")} breach'),
             "owner": services[m["service_id"]]["owner"],
             "confidence": conf, "status": "confirmed" if confirmed == key else "suspected",
             "evidence": f'{m["metric"]} = {m["value"]:.0f} vs threshold {m["threshold"]:.0f} on {m["service_id"]}',
@@ -154,7 +155,8 @@ def causes(inc, G, changes, metrics, services):
                 lag = 0
             if lag > fr["sla_min"]:
                 key = f'UPSTREAM:{dsi}'
-                out.append({"type": "upstream data", "key": key, "service": dsi, "owner": "Data Platform",
+                out.append({"type": "upstream data", "key": key, "service": dsi, "label": "Stale upstream data",
+                            "owner": "Data Platform",
                             "confidence": "high", "status": "confirmed" if confirmed == key else "suspected",
                             "evidence": f'{nm["name"]} last updated {lag} min ago (SLA {fr["sla_min"]} min) '
                                         f'— see DataOps DOP-1001',
@@ -227,6 +229,8 @@ IT_REMEDIATION = [
 ]
 _METRIC_LABELS = {"data_age_min": "Data age (min)", "error_rate_pct": "Error rate (%)",
                   "active_connections": "DB connections", "p95_latency_ms": "Latency (p95, ms)"}
+_CAUSE_LABELS = {"p95_latency_ms": "Latency breach", "error_rate_pct": "Error rate breach",
+                 "active_connections": "DB connection saturation", "data_age_min": "Stale data served"}
 
 
 def it_verification(inc, ctx, option, applied=True):

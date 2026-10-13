@@ -43,6 +43,8 @@ CSS = """
 .ri-brand{background:linear-gradient(100deg,#0b1220,#3b1d6e);border-radius:12px;padding:12px 14px;color:#fff;margin-bottom:10px}
 .ri-brand .t{font-weight:800;font-size:15px}
 .ri-brand .s{color:#c7d2fe;font-size:11px}
+.block-container{padding-top:1.0rem;padding-bottom:1.25rem}
+div[data-testid="stVerticalBlock"]{gap:0.5rem}
 </style>
 """
 
@@ -113,7 +115,8 @@ def hypothesis_cards(hyps):
             f'<div style="border:1px solid #e5e7eb;border-left:7px solid {col};border-radius:12px;'
             f'padding:12px 15px;margin:9px 0;background:{bg};box-shadow:0 1px 2px rgba(0,0,0,.05)">'
             f'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">'
-            f'<div style="font-size:14px;font-weight:700;color:#0f172a">{icon} {h.get("type","").title()}'
+            f'<div style="font-size:14px;font-weight:700;color:#0f172a">{icon} '
+            f'{h.get("label") or h.get("type","").title()}'
             f'{top}<div style="font-weight:500;color:#334155;margin-top:3px">{h.get("text","")}</div></div>'
             f'<span style="white-space:nowrap;background:{badgecol};color:#fff;font-weight:700;font-size:11px;'
             f'padding:3px 10px;border-radius:999px">{badge}</span></div>'
@@ -219,6 +222,42 @@ def brand():
                         unsafe_allow_html=True)
 
 
+_DOM = {"DataOps": "#0d9488", "IT Ops": "#4f46e5"}
+
+
+def causal(steps):
+    """Cross-domain causal chain. steps: list of (label, domain)."""
+    html = ['<div class="ri-flowbox">']
+    for i, (lab, dom) in enumerate(steps):
+        c = _DOM.get(dom, "#64748b")
+        html.append(f'<div style="text-align:center">'
+                    f'<div style="background:{c}1a;border:1px solid {c};border-radius:10px;padding:8px 12px;'
+                    f'color:#0f172a;font-weight:600;font-size:13px">{lab}</div>'
+                    f'<div style="font-size:10px;color:{c};margin-top:2px;text-transform:uppercase;'
+                    f'letter-spacing:.05em">{dom}</div></div>')
+        if i < len(steps) - 1:
+            html.append('<span class="ri-arrow2">➜</span>')
+    html.append("</div>")
+    st.markdown("".join(html), unsafe_allow_html=True)
+
+
+def impact_summary(metric, baseline, current, unit, onset_label, onset):
+    delta = (current or 0) - (baseline or 0)
+    st.markdown(
+        f'<div class="ri-card"><div style="font-size:10.5px;color:#64748b;text-transform:uppercase;'
+        f'letter-spacing:.04em">{metric}</div>'
+        f'<div style="display:flex;gap:30px;align-items:baseline;margin-top:8px;flex-wrap:wrap">'
+        f'<div><div style="font-size:11px;color:#64748b">baseline</div>'
+        f'<div style="font-size:18px;font-weight:700;color:#0f172a">{baseline}{unit}</div></div>'
+        f'<div><div style="font-size:11px;color:#64748b">current</div>'
+        f'<div style="font-size:26px;font-weight:800;color:#dc2626">{current}{unit}</div></div>'
+        f'<div><div style="font-size:11px;color:#64748b">delta</div>'
+        f'<div style="font-size:18px;font-weight:700;color:#d97706">{delta:+.1f}{unit}</div></div>'
+        f'<div><div style="font-size:11px;color:#64748b">{onset_label}</div>'
+        f'<div style="font-size:18px;font-weight:700;color:#0f172a">{onset}</div></div>'
+        f'</div></div>', unsafe_allow_html=True)
+
+
 def thread_spine(items):
     """items: list of (title, status, detail); status in done/current/todo."""
     cols = {"done": "#16a34a", "current": "#4f46e5", "todo": "#cbd5e1"}
@@ -305,10 +344,11 @@ def feed(events):
         dc = DOM_COLOR.get(e.get("domain"), "#64748b")
         dom = "IT" if e.get("domain") == "itops" else "Data"
         ts = str(e.get("ts", ""))
+        hhmm = ts.split("T")[-1][:5] if "T" in ts else ts
         st.markdown(
             f'<div class="ri-feed" style="border-left-color:{col}">'
             f'<div style="display:flex;justify-content:space-between;gap:8px;align-items:center">'
-            f'<span style="font-size:12px;color:#64748b">{ts[11:19] if len(ts)>=19 else ts}</span>'
+            f'<span title="{ts}" style="font-size:12px;color:#64748b">{hhmm}</span>'
             f'<span><span class="ri-tag" style="background:{dc}">{dom}</span> '
             f'<span class="ri-tag" style="background:{col}">{e.get("severity","")}</span></span></div>'
             f'<div style="margin-top:4px;font-size:13px"><b>{e.get("source","")}</b> — '
