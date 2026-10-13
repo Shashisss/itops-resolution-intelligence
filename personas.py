@@ -230,8 +230,7 @@ def csm_view(inc, ctx):
         r = csm.answer(q, persona="CSM")
         st.markdown(r["answer"].replace("\n", "  \n") if r["intent"] == "customer" else r["answer"])
         with st.expander("📎 Evidence ledger", expanded=True):
-            for e in r["evidence"]:
-                st.write("· " + e)
+            viz.evidence(r["evidence"])
         if r.get("target"):
             with st.expander("✍️ Draft customer update (validate & edit)", expanded=True):
                 st.text_area("Message", value=csm.customer_narrative(r["target"]), height=200, key="narr")
@@ -327,8 +326,7 @@ def developer_view(ctx):
     st.info(f'**Acceptance / definition of done:** {b["acceptance"]}')
     st.markdown(f'**How it is verified:** {b["verify"]}')
     with st.expander("📎 Evidence ledger", expanded=True):
-        for e in b["evidence"]:
-            st.write("· " + e)
+        viz.evidence(b["evidence"])
     handoff("back to L2/L3 and the Incident Manager once the fix is ready — context, owner and blocker carry over.")
 
 

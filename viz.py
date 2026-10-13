@@ -20,6 +20,12 @@ CSS = """
 .ri-nbox{padding:9px 14px;border-radius:12px;font-weight:600;font-size:13px;color:#fff;background:#4f46e5}
 .ri-nbox.alt{background:#0d9488}.ri-nbox.warn{background:#d97706}.ri-nbox.bad{background:#dc2626}.ri-nbox.good{background:#16a34a}
 .ri-arrow2{font-size:20px;color:#4f46e5}
+.ri-tl{position:relative;padding-left:26px;border-left:2px solid #e5e7eb;margin:8px 0 12px}
+.ri-tl-item{position:relative;margin:0 0 15px}
+.ri-tl-dot{position:absolute;left:-33px;top:3px;width:13px;height:13px;border-radius:50%;border:2px solid #fff}
+.ri-ev-grp{font-size:12px;font-weight:700;margin:10px 0 5px;letter-spacing:.02em}
+.ri-ev-chip{border-left:4px solid #94a3b8;background:#f8fafc;padding:6px 11px;border-radius:8px;margin:4px 0;font-size:12.5px;color:#334155}
+.ri-tl-kind{color:#fff;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;text-transform:capitalize}
 </style>
 """
 
@@ -101,6 +107,48 @@ def hypothesis_cards(hyps):
             f'<div style="font-size:12.5px;color:#475569">🔎 evidence: {h.get("evidence","")}</div>'
             f'</div>',
             unsafe_allow_html=True)
+
+
+import re
+
+TL_COLOR = {"change": "#7c3aed", "alert": "#dc2626", "incident": "#4f46e5", "ticket": "#0891b2",
+            "impact": "#d97706", "repair": "#16a34a", "verify": "#16a34a", "detect": "#2563eb"}
+TL_ICON = {"change": "🔧", "alert": "🚨", "incident": "📟", "ticket": "🎫", "impact": "📉",
+           "repair": "🛠️", "verify": "✅", "detect": "🔎"}
+
+
+def timeline(rows):
+    html = ['<div class="ri-tl">']
+    for r in rows:
+        col = TL_COLOR.get(r["kind"], "#94a3b8")
+        ic = TL_ICON.get(r["kind"], "•")
+        ts = str(r.get("ts", ""))
+        tshow = ts[11:16] if len(ts) >= 16 else ts
+        html.append(
+            f'<div class="ri-tl-item"><span class="ri-tl-dot" style="background:{col};'
+            f'box-shadow:0 0 0 2px {col}"></span>'
+            f'<div style="font-size:12px;color:#64748b">{tshow}</div>'
+            f'<div style="margin-top:3px"><span class="ri-tl-kind" style="background:{col}">{ic} {r["kind"]}</span>'
+            f' <span style="color:#334155;font-size:13px">{r["detail"]}</span></div></div>')
+    html.append("</div>")
+    st.markdown("".join(html), unsafe_allow_html=True)
+
+
+EVID_COLOR = {"INC": "#4f46e5", "JIRA": "#2563eb", "CHG": "#7c3aed", "METRIC": "#d97706",
+              "KPI": "#0d9488", "GRAPH": "#475569", "SIMILAR": "#94a3b8", "UPSTREAM": "#dc2626"}
+
+
+def evidence(items):
+    groups = {}
+    for it in items:
+        m = re.match(r"\[(\w+)\]\s*(.*)", str(it))
+        t, body = (m.group(1), m.group(2)) if m else ("OTHER", str(it))
+        groups.setdefault(t, []).append(body)
+    for t, rows in groups.items():
+        col = EVID_COLOR.get(t, "#64748b")
+        st.markdown(f'<div class="ri-ev-grp" style="color:{col}">{t} · {len(rows)}</div>', unsafe_allow_html=True)
+        for b in rows:
+            st.markdown(f'<div class="ri-ev-chip" style="border-left-color:{col}">{b}</div>', unsafe_allow_html=True)
 
 
 def chain(seq, labels, stale=(), highlight=(), arrows=True):

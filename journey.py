@@ -90,10 +90,8 @@ def render_detection(inc_id, verifier):
 
 
 def render_timeline(inc_id):
-    rows = timeline(inc_id)
     st.markdown("**Operational timeline (time-correlated across systems)**")
-    for r in rows:
-        st.write(f'- `{r["ts"]}` {KIND_ICON.get(r["kind"], "•")} **{r["kind"]}** — {r["detail"]}')
+    viz.timeline(timeline(inc_id))
 
 
 def render_hypotheses(hyps, title="Root cause — ranked hypotheses (suspected vs confirmed)"):
