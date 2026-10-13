@@ -59,6 +59,19 @@ def _sla_countdown(ref, it, ddata):
         render()
 
 
+def _replay_feed():
+    def render():
+        i = st.session_state.get("lo_ridx", 0)
+        if st.session_state.get("lo_playing") and i < len(realtime.REPLAY_SCRIPT):
+            realtime.emit_replay_event(realtime.REPLAY_SCRIPT[i])
+            st.session_state["lo_ridx"] = i + 1
+        viz.feed(realtime.recent(14))
+    if hasattr(st, "fragment"):
+        st.fragment(run_every=2)(render)()
+    else:
+        render()
+
+
 def _live_feed():
     def render():
         realtime.tick()
@@ -95,8 +108,28 @@ def render(name, role):
 
     left, right = st.columns([3, 2])
     with left:
-        st.markdown("#### 📡 Live event stream")
-        _live_feed()
+        mode = st.radio("Stream mode", ["Live", "Replay"], horizontal=True, key="lo_mode",
+                        label_visibility="collapsed")
+        if mode == "Replay":
+            c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
+            if c1.button("⏮ Reset", key="lo_rst"):
+                realtime.clear_events(); st.session_state["lo_ridx"] = 0
+                st.session_state["lo_playing"] = False; st.rerun()
+            if c2.button("⏭ Next", key="lo_next"):
+                i = st.session_state.get("lo_ridx", 0)
+                if i < len(realtime.REPLAY_SCRIPT):
+                    realtime.emit_replay_event(realtime.REPLAY_SCRIPT[i])
+                    st.session_state["lo_ridx"] = i + 1
+                st.rerun()
+            playing = st.session_state.get("lo_playing", False)
+            if c3.button("⏸ Pause" if playing else "▶ Play", key="lo_pp"):
+                st.session_state["lo_playing"] = not playing; st.rerun()
+            c4.caption(f'replay step {st.session_state.get("lo_ridx", 0)}/'
+                       f'{len(realtime.REPLAY_SCRIPT)} — deterministic for recording')
+            _replay_feed()
+        else:
+            st.markdown("#### 📡 Live event stream")
+            _live_feed()
         st.markdown("#### 🗂️ Incident queue (IT Ops + DataOps)")
         rows = [{"ref": i["id"], "domain": "IT Ops", "title": i["title"],
                  "priority": i["priority"], "owner": i["owner_team"]} for i in it_open]

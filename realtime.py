@@ -58,6 +58,36 @@ def events_last_15min():
         return 0
 
 
+# Deterministic, scripted scenario for replay/fast-forward (the connected story).
+REPLAY_SCRIPT = [
+    ("dataops", "change", "core_ledger", "source schema change: new column 'region_code'", "DOP-1001"),
+    ("dataops", "critical", "payments_bronze_ingest", "run R-9001 FAILED (SCHEMA_MISMATCH 'region_code')", "DOP-1001"),
+    ("dataops", "warning", "payments_gold", "freshness 45 min > 15 min SLA", "DOP-1001"),
+    ("itops", "warning", "payment-api", "data_age_min 45 > 15 (serving stale risk data)", "INC-8841"),
+    ("itops", "critical", "payment-api", "error_rate_pct 8.1 > 1.0", "INC-8841"),
+    ("itops", "info", "monitoring", "business impact: checkout success 90% (baseline 98.5%)", "INC-8841"),
+    ("dataops", "info", "payments_bronze_ingest", "delegated to Data Engineer: reconcile schema + replay", "DOP-1001"),
+    ("dataops", "info", "payments_gold", "repair applied — replaying batch", "DOP-1001"),
+    ("itops", "info", "monitoring", "verification passed: checkout success restored to 98.5%", "INC-8841"),
+]
+
+
+def clear_events():
+    con = sqlite3.connect(DB)
+    con.execute("DELETE FROM live_events")
+    con.commit()
+    con.close()
+
+
+def emit_replay_event(ev):
+    d, sev, src, msg, ref = ev
+    con = sqlite3.connect(DB)
+    con.execute("INSERT INTO live_events(ts,domain,severity,source,message,ref_id) VALUES(?,?,?,?,?,?)",
+                (dt.datetime.now().replace(microsecond=0).isoformat(timespec="seconds"), d, sev, src, msg, ref))
+    con.commit()
+    con.close()
+
+
 def tick_timeline(ref_id, domain, severity, message):
     """Push a live event into the durable operational timeline too."""
     con = sqlite3.connect(DB)
