@@ -26,6 +26,10 @@ CSS = """
 .ri-ev-grp{font-size:12px;font-weight:700;margin:10px 0 5px;letter-spacing:.02em}
 .ri-ev-chip{border-left:4px solid #94a3b8;background:#f8fafc;padding:6px 11px;border-radius:8px;margin:4px 0;font-size:12.5px;color:#334155}
 .ri-tl-kind{color:#fff;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;text-transform:capitalize}
+@keyframes rislidein{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+.ri-feed{border-left:5px solid #94a3b8;background:#f8fafc;border-radius:10px;padding:8px 12px;margin:6px 0;animation:rislidein .5s ease}
+.ri-qcard{border:1px solid #e5e7eb;border-left:6px solid #94a3b8;border-radius:12px;padding:10px 14px;margin:8px 0;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.ri-tag{color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px}
 </style>
 """
 
@@ -149,6 +153,42 @@ def evidence(items):
         st.markdown(f'<div class="ri-ev-grp" style="color:{col}">{t} · {len(rows)}</div>', unsafe_allow_html=True)
         for b in rows:
             st.markdown(f'<div class="ri-ev-chip" style="border-left-color:{col}">{b}</div>', unsafe_allow_html=True)
+
+
+SEV_COLOR = {"info": "#16a34a", "warning": "#d97706", "critical": "#dc2626"}
+PRI_COLOR = {"P1": "#dc2626", "P2": "#d97706", "P3": "#0891b2", "P4": "#64748b"}
+DOM_COLOR = {"itops": "#4f46e5", "IT Ops": "#4f46e5", "dataops": "#0d9488", "DataOps": "#0d9488"}
+
+
+def feed(events):
+    for e in events:
+        col = SEV_COLOR.get(e.get("severity"), "#94a3b8")
+        dc = DOM_COLOR.get(e.get("domain"), "#64748b")
+        dom = "IT" if e.get("domain") == "itops" else "Data"
+        ts = str(e.get("ts", ""))
+        st.markdown(
+            f'<div class="ri-feed" style="border-left-color:{col}">'
+            f'<div style="display:flex;justify-content:space-between;gap:8px;align-items:center">'
+            f'<span style="font-size:12px;color:#64748b">{ts[11:19] if len(ts)>=19 else ts}</span>'
+            f'<span><span class="ri-tag" style="background:{dc}">{dom}</span> '
+            f'<span class="ri-tag" style="background:{col}">{e.get("severity","")}</span></span></div>'
+            f'<div style="margin-top:4px;font-size:13px"><b>{e.get("source","")}</b> — '
+            f'{e.get("message","")}</div></div>', unsafe_allow_html=True)
+
+
+def queue_cards(rows):
+    for r in rows:
+        pc = PRI_COLOR.get(r["priority"], "#64748b")
+        dc = DOM_COLOR.get(r["domain"], "#64748b")
+        st.markdown(
+            f'<div class="ri-qcard" style="border-left-color:{pc}">'
+            f'<div style="display:flex;justify-content:space-between;gap:8px;align-items:center">'
+            f'<div style="font-weight:700;color:#0f172a;font-size:14px">{r["ref"]} '
+            f'<span class="ri-tag" style="background:{dc}">{r["domain"]}</span></div>'
+            f'<span class="ri-tag" style="background:{pc}">{r["priority"]}</span></div>'
+            f'<div style="color:#334155;font-size:13px;margin-top:4px">{r["title"]}</div>'
+            f'<div style="color:#64748b;font-size:12px;margin-top:3px">Owner: {r["owner"]}</div></div>',
+            unsafe_allow_html=True)
 
 
 def chain(seq, labels, stale=(), highlight=(), arrows=True):

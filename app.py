@@ -43,7 +43,7 @@ if _needs_seed():
 st.set_page_config(page_title="Resolution Intelligence — POC", layout="wide")
 viz.inject_css()
 st.title("Resolution Intelligence")
-st.caption("Operational intelligence across IT Ops and DataOps — one governed platform   ·   build v18")
+st.caption("Operational intelligence across IT Ops and DataOps — one governed platform   ·   build v19")
 
 flash = st.session_state.pop("flash", None)
 if flash:

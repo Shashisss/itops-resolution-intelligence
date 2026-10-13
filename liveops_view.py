@@ -62,10 +62,7 @@ def _sla_countdown(ref, it, ddata):
 def _live_feed():
     def render():
         realtime.tick()
-        for e in realtime.recent(14):
-            icon = realtime.SEV_ICON.get(e["severity"], "•")
-            dom = "IT" if e["domain"] == "itops" else "Data"
-            st.markdown(f"{icon} `{e['ts'][11:]}` **{e['source']}** — {e['message']}  ·  _{dom}_")
+        viz.feed(realtime.recent(14))
     if hasattr(st, "fragment"):
         st.fragment(run_every=3)(render)()
     else:  # older Streamlit: manual refresh
@@ -105,7 +102,7 @@ def render(name, role):
                  "priority": i["priority"], "owner": i["owner_team"]} for i in it_open]
         rows += [{"ref": i["id"], "domain": "DataOps", "title": i["title"],
                   "priority": i["priority"], "owner": i["owner_team"]} for i in dop_open]
-        st.dataframe(pd.DataFrame(rows), hide_index=True)
+        viz.queue_cards(rows)
 
     with right:
         refs = [r["ref"] for r in rows]
