@@ -18,6 +18,13 @@ DOP_STEP_HELP = {
     "Act": "Run the chosen repair (simulated) — production data changes require human approval.",
     "Verify": "An independent re-check of freshness, DQ and downstream health → Verified / Mitigated / Recovery failed.",
 }
+DOP_HANDOFFS = {
+    "Detect": "Data observability → Data Engineer  (failing run + freshness/DQ alerts detected)",
+    "Diagnose": "Data Engineer → Data Owner  (root-cause context shared)",
+    "Decide": "Data Engineer + Data Owner  (repair recommendation and ownership)",
+    "Act": "Data Owner → Data Engineer / Platform Engineer  (execution under the approval gate)",
+    "Verify": "Verification service → Data Owner sign-off → Data Consumer update",
+}
 
 
 def _stepper(stage):
@@ -191,12 +198,11 @@ def pipeline_view(inc, data):
         rec = DE.recommend(inc, DE.causes(inc, data), data)
         viz.rec_card(rec["action"], rec["risk"], rec["mode"], journey.actors(rec))
         journey.engage_block(inc["id"], rec["action"], journey.actors(rec))
-        handoff("to the Data Engineer (fix), Platform Engineer (scale/backfill) and Data Owner (impact).")
 
     journey.wizard("dop_step_" + inc["id"], viz.RESOLUTION_FLOW,
                    {"Detect": detect, "Diagnose": diagnose, "Decide": decide,
                     "Act": lambda: action_panel(inc, data), "Verify": lambda: verify_panel(inc, data)},
-                   default=0, help=DOP_STEP_HELP)
+                   default=0, help=DOP_STEP_HELP, handoffs=DOP_HANDOFFS)
 
 
 def data_engineer_view(inc, data):

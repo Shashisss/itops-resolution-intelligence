@@ -200,6 +200,14 @@ def fact_cards(items):
             unsafe_allow_html=True)
 
 
+def handshake(text):
+    st.markdown(
+        f'<div style="display:flex;align-items:center;gap:9px;background:#EEF2FF;border-left:4px solid '
+        f'#4f46e5;padding:8px 12px;border-radius:8px;margin:2px 0 10px;font-size:13px">'
+        f'<span style="font-size:16px">🤝</span><span><b>Handshake</b> — {text}</span></div>',
+        unsafe_allow_html=True)
+
+
 def status_bar(text):
     st.markdown(f'<div style="position:sticky;top:0;z-index:99;background:#0b1220;color:#fff;'
                 f'padding:7px 14px;border-radius:10px;font-size:13px;font-weight:600;margin:2px 0 10px">'

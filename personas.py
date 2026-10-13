@@ -25,6 +25,13 @@ IT_STEP_HELP = {
     "Verify": "An independent re-check of telemetry against thresholds → Verified / Mitigated / Recovery failed. "
               "Only Verified closes the incident.",
 }
+IT_HANDOFFS = {
+    "Detect": "Monitoring → Service Desk  (auto-detected; incident raised in ServiceNow)",
+    "Diagnose": "Service Desk (L1) → L2 / L3  (escalated with the assembled context)",
+    "Decide": "L2 / L3 + Incident Manager  (recommendation and next-actor coordination)",
+    "Act": "Incident Manager → owning team  (execution under the approval gate)",
+    "Verify": "Verification service → Incident Manager sign-off → CSM update",
+}
 METRIC_LABELS = {"p95_latency_ms": "Latency (p95, ms)", "error_rate_pct": "Error rate (%)",
                  "active_connections": "DB connections", "cpu_pct": "DB CPU (%)"}
 SLA_ASSUMPTION = ("Priority-based estimate: clock from incident creation, target hours by priority. "
@@ -255,12 +262,11 @@ def incident_view(inc, ctx):
         rec = E.recommend(inc, E.causes(inc, G, changes, metrics, services))
         viz.rec_card(rec["action"], rec["risk"], rec["mode"], journey.actors(rec))
         journey.engage_block(inc["id"], rec["action"], journey.actors(rec))
-        handoff("to L2/L3 (diagnosis), Developer (fix via ticket), and back to the Incident Manager to verify.")
 
     journey.wizard("it_step_" + inc["id"], viz.RESOLUTION_FLOW,
                    {"Detect": detect, "Diagnose": diagnose, "Decide": decide,
                     "Act": lambda: action_panel(inc, ctx), "Verify": lambda: verify_panel(inc, ctx)},
-                   default=0, help=IT_STEP_HELP)
+                   default=0, help=IT_STEP_HELP, handoffs=IT_HANDOFFS)
 
 
 def csm_view(inc, ctx):
