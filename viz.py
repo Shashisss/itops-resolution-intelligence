@@ -30,6 +30,18 @@ CSS = """
 .ri-feed{border-left:5px solid #94a3b8;background:#f8fafc;border-radius:10px;padding:8px 12px;margin:6px 0;animation:rislidein .5s ease}
 .ri-qcard{border:1px solid #e5e7eb;border-left:6px solid #94a3b8;border-radius:12px;padding:10px 14px;margin:8px 0;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.04)}
 .ri-tag{color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px}
+.ri-hero{border-radius:16px;padding:18px 22px;color:#fff;background:linear-gradient(100deg,#0b1220 0%,#2a1a63 60%,#4f46e5 130%);margin:0 0 12px}
+.ri-hero .id{font-size:22px;font-weight:800;letter-spacing:-.01em;margin:8px 0 2px}
+.ri-hero .meta{color:#c7d2fe;font-size:12.5px}
+.ri-kpi{border:1px solid #e5e7eb;border-left:5px solid #2563eb;border-radius:12px;padding:11px 13px;background:#fff;height:100%}
+.ri-kpi .l{font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.04em}
+.ri-kpi .v{font-size:18px;font-weight:800;color:#0f172a;margin-top:2px}
+.ri-kpi .s{font-size:11.5px;color:#64748b;margin-top:2px}
+.ri-rail{border:1px solid #e5e7eb;border-radius:14px;padding:12px 14px;background:#fff;margin-bottom:12px}
+.ri-rail h4{margin:0 0 8px;font-size:13px;color:#0f172a}
+.ri-brand{background:linear-gradient(100deg,#0b1220,#3b1d6e);border-radius:12px;padding:12px 14px;color:#fff;margin-bottom:10px}
+.ri-brand .t{font-weight:800;font-size:15px}
+.ri-brand .s{color:#c7d2fe;font-size:11px}
 </style>
 """
 
@@ -198,6 +210,38 @@ def fact_cards(items):
             f'<div style="font-size:14px;font-weight:700;color:#0f172a;white-space:normal;'
             f'word-break:break-word;margin-top:2px">{value}</div></div>',
             unsafe_allow_html=True)
+
+
+def brand():
+    st.sidebar.markdown('<div class="ri-brand"><div class="t">Resolution Intelligence</div>'
+                        '<div class="s">IT Ops + DataOps · unified operational resolution</div></div>',
+                        unsafe_allow_html=True)
+
+
+def hero(priority, inc_id, title, meta, sla_text, verdict, chips):
+    chip_html = " ".join(f'<span class="ri-tag" style="background:#1e293b;border:1px solid #334155">{c}</span>'
+                         for c in chips)
+    vcol = {"Verified": "#16a34a", "Mitigated": "#d97706", "Recovery failed": "#dc2626"}.get(verdict, "#2563eb")
+    st.markdown(
+        f'<div class="ri-hero"><div style="display:flex;justify-content:space-between;gap:16px">'
+        f'<div><span class="ri-tag" style="background:#dc2626">{priority}</span> '
+        f'<span class="ri-tag" style="background:{vcol}">{verdict}</span>'
+        f'<div class="id">{inc_id} · {title}</div>'
+        f'<div class="meta">{meta}</div></div>'
+        f'<div style="text-align:right;white-space:nowrap">'
+        f'<div class="meta">SLA remaining</div>'
+        f'<div style="font-size:26px;font-weight:800;color:#fca5a5">{sla_text}</div>'
+        f'<div style="margin-top:6px">{chip_html}</div></div></div></div>',
+        unsafe_allow_html=True)
+
+
+def kpi_row(items):
+    """items: list of (label, value, sub, color)."""
+    cols = st.columns(len(items))
+    for col, (label, value, sub, color) in zip(cols, items):
+        col.markdown(f'<div class="ri-kpi" style="border-left-color:{color}" title="{label}: {value}">'
+                     f'<div class="l">{label}</div><div class="v">{value}</div>'
+                     f'<div class="s">{sub}</div></div>', unsafe_allow_html=True)
 
 
 def handshake(text):

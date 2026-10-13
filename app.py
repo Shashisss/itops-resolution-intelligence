@@ -9,6 +9,7 @@ import personas
 import dataops_engine as DE
 import dataops_views as DV
 import liveops_view
+import command_center
 import viz
 
 ROLES_UNION = ["CSM", "L1 Engineer", "L2 / L3 Engineer", "Developer", "Incident Manager",
@@ -69,6 +70,7 @@ domain = st.radio("Operations domain", ["IT Ops", "DataOps", "Live Operations"],
                   key="ops_domain")
 
 # ---- one identity + one autonomy setting (shared across all domains) ----
+viz.brand()
 you_role = st.sidebar.selectbox("👤 Signed in as (role)", ROLES_UNION, key="you_role")
 st.sidebar.checkbox("🤖 Auto-coordinate on open (autonomous)", key="auto_coord",
                     help="Coordination (assign + notify) is autonomous under policy; production changes "
@@ -85,7 +87,7 @@ def render_itops():
                tickets=E.load_tickets(), kpis=E.load_kpis(), G=G)
     ordered = sorted(incidents, key=lambda i: (i["status"] != "open", i["id"]))
     titles = {i["id"]: f'{i["id"]} · {i["title"]} ({i["status"]})' for i in ordered}
-    view = st.sidebar.radio("View", ["End-to-end journey", "By role"], key="it_view")
+    view = st.sidebar.radio("View", ["Overview", "Guided journey", "By role"], key="it_view")
     persona = None
     if view == "By role":
         default = you_role if you_role in personas.PERSONAS else personas.PERSONAS[0]
@@ -94,7 +96,9 @@ def render_itops():
     sel = st.sidebar.selectbox("Context incident", list(titles), format_func=lambda x: titles[x], key="it_inc")
     _reset_control("it")
     inc = next(i for i in incidents if i["id"] == sel)
-    if view == "End-to-end journey":
+    if view == "Overview":
+        command_center.it_command(inc, ctx)
+    elif view == "Guided journey":
         personas.incident_view(inc, ctx)
     else:
         {"CSM": personas.csm_view, "L1 Engineer": personas.l1_view, "L2 / L3 Engineer": personas.l2_view,
@@ -107,7 +111,7 @@ def render_dataops():
     data = DE.load()
     ordered = sorted(data["incidents"], key=lambda i: (i["status"] != "open", i["id"]))
     titles = {i["id"]: f'{i["id"]} · {i["title"]} ({i["status"]})' for i in ordered}
-    view = st.sidebar.radio("View", ["End-to-end journey", "By role"], key="dop_view")
+    view = st.sidebar.radio("View", ["Overview", "Guided journey", "By role"], key="dop_view")
     persona = None
     if view == "By role":
         default = you_role if you_role in DV.PERSONAS else DV.PERSONAS[0]
@@ -116,7 +120,9 @@ def render_dataops():
     sel = st.sidebar.selectbox("Pipeline incident", list(titles), format_func=lambda x: titles[x], key="dop_inc")
     _reset_control("dop")
     inc = next(i for i in data["incidents"] if i["id"] == sel)
-    if view == "End-to-end journey":
+    if view == "Overview":
+        command_center.dop_command(inc, data)
+    elif view == "Guided journey":
         DV.pipeline_view(inc, data)
     else:
         {"Data Engineer": DV.data_engineer_view, "Data Owner": DV.data_owner_view,
@@ -138,4 +144,4 @@ else:
     render_liveops()
 
 st.divider()
-st.caption("Sample data · simulated actions · build v30 — proof of concept, not production.")
+st.caption("Sample data · simulated actions · build v31 — proof of concept, not production.")
