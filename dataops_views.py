@@ -61,10 +61,8 @@ def hypotheses(inc, data):
     if not hyps:
         st.info("No failing run, DQ breach or freshness breach linked yet.")
         return hyps
-    for h in hyps:
-        badge = "✅ CONFIRMED" if h["status"] == "confirmed" else "🔶 SUSPECTED"
-        st.markdown(f'- {badge} · *{h["type"]}* · confidence **{h["confidence"]}** — {h["text"]}  \n'
-                    f'  ↳ **evidence:** {h["evidence"]}')
+    hyps = journey.rank(hyps)
+    viz.hypothesis_cards(hyps)
     top = hyps[0]
     if top["status"] != "confirmed":
         if st.button("Confirm top hypothesis as root cause", key="dop_confirm_" + inc["id"]):

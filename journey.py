@@ -102,10 +102,7 @@ def render_hypotheses(hyps, title="Root cause — ranked hypotheses (suspected v
     if not hyps:
         st.info("No signal linked yet.")
         return hyps
-    for i, h in enumerate(hyps, 1):
-        badge = "✅ CONFIRMED" if h["status"] == "confirmed" else "🔶 SUSPECTED"
-        st.markdown(f'{i}. {badge} · *{h["type"]}* · confidence **{h["confidence"]}** — {h["text"]}  \n'
-                    f'   ↳ evidence: {h["evidence"]}')
+    viz.hypothesis_cards(hyps)
     st.caption(confidence_note(hyps))
     return hyps
 

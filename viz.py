@@ -67,6 +67,42 @@ def resolution_flow(current=None):
     st.markdown("".join(html), unsafe_allow_html=True)
 
 
+CONF_PCT = {"high": 85, "medium": 55, "low": 30}
+CONF_COLOR = {"high": "#16a34a", "medium": "#d97706", "low": "#94a3b8"}
+TYPE_ICON = {"pipeline": "🛠️", "data quality": "🧪", "freshness": "⏱️", "upstream data": "🔗",
+             "change": "🔧", "metric": "📈"}
+
+
+def hypothesis_cards(hyps):
+    """Render RCA hypotheses as visual cards with confidence bars, badges and evidence."""
+    for i, h in enumerate(hyps):
+        conf = h.get("confidence", "low")
+        pct = CONF_PCT.get(conf, 30)
+        col = CONF_COLOR.get(conf, "#94a3b8")
+        confirmed = h.get("status") == "confirmed"
+        badge = "✅ CONFIRMED" if confirmed else "🔶 SUSPECTED"
+        badgecol = "#16a34a" if confirmed else "#d97706"
+        bg = "#f0fdf4" if confirmed else "#ffffff"
+        icon = TYPE_ICON.get(h.get("type", ""), "🔎")
+        top = ('<span style="background:#4f46e5;color:#fff;font-size:10px;font-weight:700;'
+               'padding:2px 8px;border-radius:999px;margin-left:8px">MOST LIKELY</span>') if i == 0 else ""
+        st.markdown(
+            f'<div style="border:1px solid #e5e7eb;border-left:7px solid {col};border-radius:12px;'
+            f'padding:12px 15px;margin:9px 0;background:{bg};box-shadow:0 1px 2px rgba(0,0,0,.05)">'
+            f'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">'
+            f'<div style="font-size:14px;font-weight:700;color:#0f172a">{icon} {h.get("type","").title()}'
+            f'{top}<div style="font-weight:500;color:#334155;margin-top:3px">{h.get("text","")}</div></div>'
+            f'<span style="white-space:nowrap;background:{badgecol};color:#fff;font-weight:700;font-size:11px;'
+            f'padding:3px 10px;border-radius:999px">{badge}</span></div>'
+            f'<div style="margin:9px 0 3px"><div style="height:8px;background:#e5e7eb;border-radius:999px;'
+            f'overflow:hidden"><div style="height:8px;width:{pct}%;background:{col};border-radius:999px">'
+            f'</div></div><div style="font-size:12px;color:#64748b;margin-top:4px">confidence: '
+            f'<b>{conf}</b> ({pct}%)</div></div>'
+            f'<div style="font-size:12.5px;color:#475569">🔎 evidence: {h.get("evidence","")}</div>'
+            f'</div>',
+            unsafe_allow_html=True)
+
+
 def chain(seq, labels, stale=(), highlight=(), arrows=True):
     """Horizontal, animated arrow chain of nodes (source → … → consumer)."""
     html = ['<div class="ri-flowbox">']
