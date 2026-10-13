@@ -20,7 +20,9 @@ def _needs_seed():
         return True
     try:
         con = sqlite3.connect("data/ops.db")
-        for t in ("tickets", "kpis", "incidents", "pipelines", "dop_incidents"):
+        required = ("tickets", "kpis", "incidents", "pipelines", "dop_incidents", "timeline",
+                    "correlations", "service_data", "live_events", "comments", "delegations", "notifications")
+        for t in required:
             con.execute(f"SELECT 1 FROM {t} LIMIT 1")
         con.close()
         return False
@@ -41,7 +43,7 @@ if _needs_seed():
 st.set_page_config(page_title="Resolution Intelligence — POC", layout="wide")
 viz.inject_css()
 st.title("Resolution Intelligence")
-st.caption("Operational intelligence across IT Ops and DataOps — one governed platform   ·   build v15")
+st.caption("Operational intelligence across IT Ops and DataOps — one governed platform   ·   build v16")
 
 flash = st.session_state.pop("flash", None)
 if flash:

@@ -17,11 +17,14 @@ SEV_ICON = {"info": "🟢", "warning": "🟠", "critical": "🔴"}
 
 
 def recent(limit=14):
-    con = sqlite3.connect(DB)
-    con.row_factory = sqlite3.Row
-    rows = [dict(r) for r in con.execute("SELECT * FROM live_events ORDER BY id DESC LIMIT ?", (limit,))]
-    con.close()
-    return rows
+    try:
+        con = sqlite3.connect(DB)
+        con.row_factory = sqlite3.Row
+        rows = [dict(r) for r in con.execute("SELECT * FROM live_events ORDER BY id DESC LIMIT ?", (limit,))]
+        con.close()
+        return rows
+    except Exception:
+        return []
 
 
 def tick():
@@ -45,11 +48,14 @@ def tick():
 
 
 def events_last_15min():
-    con = sqlite3.connect(DB)
-    n = con.execute("SELECT COUNT(*) FROM live_events WHERE ts >= ?",
-                    ((dt.datetime.now() - dt.timedelta(minutes=15)).isoformat(timespec="seconds"),)).fetchone()[0]
-    con.close()
-    return n
+    try:
+        con = sqlite3.connect(DB)
+        n = con.execute("SELECT COUNT(*) FROM live_events WHERE ts >= ?",
+                        ((dt.datetime.now() - dt.timedelta(minutes=15)).isoformat(timespec="seconds"),)).fetchone()[0]
+        con.close()
+        return n
+    except Exception:
+        return 0
 
 
 def tick_timeline(ref_id, domain, severity, message):
