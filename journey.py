@@ -63,7 +63,9 @@ def render_verdict(state):
 
 
 def rank(hyps):
-    return sorted(hyps, key=lambda h: (h["status"] == "confirmed", CONF_RANK.get(h["confidence"], 0)), reverse=True)
+    # root-cause data dependency ranks first, then confirmed, then confidence
+    return sorted(hyps, key=lambda h: (h["type"] == "upstream data", h["status"] == "confirmed",
+                                       CONF_RANK.get(h["confidence"], 0)), reverse=True)
 
 
 def confidence_note(hyps):
@@ -121,6 +123,11 @@ def render_resolution(inc_id, applied, sla_txt, owner, extra=""):
     st.markdown("**Resolution record**")
     st.success(f'Incident **{inc_id}** independently verified and closed · SLA outcome: **{sla_txt}** · owner: {owner}.')
     st.markdown(f'**Learning:** evidence captured → runbook / known-error updated.{(" " + extra) if extra else ""}')
+
+
+def render_recovery_update(title, body):
+    st.markdown(f"**{title} — evidence-backed recovery update**")
+    st.success(body)
 
 
 def render_correlation(inc_id):

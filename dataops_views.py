@@ -151,6 +151,8 @@ def data_engineer_view(inc, data):
     if run:
         st.markdown(f'**Latest run:** {run["id"]} · **{run["status"]}** · {run["started_at"]} · '
                     f'{run["duration_min"]} min' + (f' · `{run["error"]}`' if run["error"] else ''))
+    rec = DE.recommend(inc, DE.causes(inc, data), data)
+    st.info(f'**Diagnostic recommendation:** {rec["action"]}  ·  Gate: **{rec["mode"]}**  ·  Owner: **{rec["actor"]}**')
     hypotheses(inc, data)
     action_panel(inc, data)
     handoff("to the Platform Engineer if capacity/backfill is needed, then the Data Owner to confirm impact.")
@@ -173,6 +175,13 @@ def data_owner_view(inc, data):
         ft, br, _, _ = _fresh(data, d)
         rows.append({"dataset": data["datasets"][d]["name"], "freshness": ft, "status": "🔴 breach" if br else "🟢 ok"})
     st.dataframe(pd.DataFrame(rows), hide_index=True)
+    if st.session_state.get(f'dop_opt_applied_{inc["id"]}'):
+        v = st.session_state.get(f'verdict_{inc["id"]}', "")
+        journey.render_recovery_update(
+            "Data Owner update",
+            f'payments_gold refreshed — freshness back within SLA; downstream consumers '
+            f'(Payment service (checkout-api), Finance close) healthy. Independent verification: **{v}**. '
+            f'(Simulated.)')
     handoff("to the Data Consumer with a status/ETA once the repair is validated.")
 
 

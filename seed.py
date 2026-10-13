@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
-"""Seed SAMPLE data for the ITOps Resolution Intelligence POC.
-NOTE: all data here is synthetic sample data; all actions in the app are simulated."""
+"""Seed SAMPLE data for the Resolution Intelligence POC.
+
+ONE connected story across two domains:
+  core_ledger source schema change  →  payments_bronze_ingest pipeline FAILS (schema drift)
+  →  payments_gold is stale  →  the customer-facing payment service serves stale risk data
+  →  business incident (INC-8841) on the Payments service.
+
+All data is synthetic; all actions are simulated."""
 import os, sqlite3, datetime as dt
 import duckdb
 
@@ -11,6 +17,7 @@ for f in (DB, HIST):
     if os.path.exists(f):
         os.remove(f)
 now = dt.datetime.now().replace(second=0, microsecond=0)
+M = lambda mins: (now - dt.timedelta(minutes=mins)).isoformat(timespec="minutes")
 
 con = sqlite3.connect(DB)
 c = con.cursor()
@@ -26,13 +33,14 @@ CREATE TABLE tickets(id TEXT PRIMARY KEY, incident_id TEXT, service_id TEXT, tit
                      assignee TEXT, created_at TEXT, acceptance TEXT, fix_hint TEXT);
 CREATE TABLE kpis(id TEXT PRIMARY KEY, business_service TEXT, metric TEXT, unit TEXT,
                   baseline REAL, current REAL);
+CREATE TABLE service_data(service_id TEXT, dataset_id TEXT);   -- which dataset a service consumes
 
--- ---------- DataOps domain (separate model; not forced into the IT incident schema) ----------
+-- DataOps domain
 CREATE TABLE pipelines(id TEXT PRIMARY KEY, name TEXT, owner_team TEXT, criticality TEXT,
                        schedule TEXT, freshness_sla_min INT);
 CREATE TABLE dop_datasets(id TEXT PRIMARY KEY, name TEXT, layer TEXT, owner_team TEXT);
-CREATE TABLE dop_lineage(src TEXT, dst TEXT);                       -- upstream dataset -> downstream
-CREATE TABLE pipeline_io(pipeline_id TEXT, dataset_id TEXT, direction TEXT);  -- produces | reads
+CREATE TABLE dop_lineage(src TEXT, dst TEXT);
+CREATE TABLE pipeline_io(pipeline_id TEXT, dataset_id TEXT, direction TEXT);
 CREATE TABLE dop_runs(id TEXT PRIMARY KEY, pipeline_id TEXT, status TEXT, started_at TEXT,
                       duration_min REAL, rows INT, error TEXT);
 CREATE TABLE dop_dq(id TEXT PRIMARY KEY, dataset_id TEXT, rule TEXT, value REAL, threshold REAL);
@@ -43,11 +51,12 @@ CREATE TABLE dop_incidents(id TEXT PRIMARY KEY, title TEXT, pipeline_id TEXT, da
                            priority TEXT, status TEXT, created_at TEXT, stage TEXT, owner_team TEXT,
                            blocker TEXT, confirmed_cause TEXT, summary TEXT);
 
--- ---------- shared: operational timeline + cross-domain correlation ----------
+-- shared
 CREATE TABLE timeline(id TEXT PRIMARY KEY, ref_id TEXT, domain TEXT, ts TEXT, kind TEXT, detail TEXT);
 CREATE TABLE correlations(id TEXT PRIMARY KEY, it_id TEXT, dop_id TEXT, shared_cause TEXT, note TEXT);
 """)
 
+# ------------------------------------------------------------------ IT Ops
 services = [
     ("bs_payments",     "Payments",       "business_service", "Payments Ops"),
     ("its_payment_api", "Payment API",    "it_service",       "Platform Engineering"),
@@ -56,196 +65,128 @@ services = [
     ("infra_prod",      "prod-cluster",   "infrastructure",   "Cloud Platform"),
 ]
 c.executemany("INSERT INTO services VALUES(?,?,?,?)", services)
-
 edges = [
-    ("bs_payments",     "supported_by", "its_payment_api"),
-    ("its_payment_api", "depends_on",   "app_checkout"),
-    ("app_checkout",    "depends_on",   "db_payments"),
-    ("app_checkout",    "runs_on",      "infra_prod"),
+    ("bs_payments", "supported_by", "its_payment_api"),
+    ("its_payment_api", "depends_on", "app_checkout"),
+    ("app_checkout", "depends_on", "db_payments"),
+    ("app_checkout", "runs_on", "infra_prod"),
 ]
 c.executemany("INSERT INTO edges VALUES(?,?,?)", edges)
 
-changes = [
-    ("CHG-1042", "app_checkout", "Deploy checkout-api v1.42 (retry/timeout change)",
-     (now - dt.timedelta(hours=2)).isoformat(timespec="minutes"), "Checkout Team"),
-    ("CHG-1039", "db_payments", "DB parameter tuning",
-     (now - dt.timedelta(days=3)).isoformat(timespec="minutes"), "DBA Team"),
-]
-c.executemany("INSERT INTO changes VALUES(?,?,?,?,?)", changes)
+# no IT-side change explains this — the trigger is an upstream data change (see DOP-1001)
+c.executemany("INSERT INTO changes VALUES(?,?,?,?,?)", [])
 
-# id, title, service, priority, status, created, summary, stage, owner, blocker, confirmed_cause
 incidents = [
-    ("INC-8841", "Payment API errors up / checkout slow", "its_payment_api", "P2", "open",
-     (now - dt.timedelta(minutes=48)).isoformat(timespec="minutes"),
-     "Payment failures up 8%; API latency +42%; DB connection saturation; no broader impact yet.",
-     "Fix in progress", "Platform Engineering", "DB connection validation pending", ""),
-    ("INC-8802", "Checkout latency after deploy", "app_checkout", "P2", "closed",
-     (now - dt.timedelta(days=6)).isoformat(timespec="minutes"),
-     "Latency spike after deployment; connection pool exhausted.",
-     "Closed", "Checkout Team", "", "CHG-app"),
-    ("INC-8711", "DB connection pool exhaustion", "db_payments", "P3", "closed",
-     (now - dt.timedelta(days=14)).isoformat(timespec="minutes"),
-     "Connection pool exhaustion caused API timeouts.",
-     "Closed", "DBA Team", "", ""),
-    ("INC-8655", "Payment service deployment rollback", "its_payment_api", "P1", "closed",
-     (now - dt.timedelta(days=21)).isoformat(timespec="minutes"),
-     "Bad deployment caused payment failures; rolled back.",
-     "Closed", "Platform Engineering", "", ""),
+    ("INC-8841", "Payment API failures — serving stale risk data", "its_payment_api", "P2", "open",
+     M(42), "Payment failures up 8%; the service is using stale risk/limit data; business service Payments at risk.",
+     "Diagnosed", "Platform Engineering", "Risk data (payments_gold) is stale", ""),
+    ("INC-8802", "Checkout latency after deploy", "app_checkout", "P2", "closed", M(6 * 24 * 60),
+     "Latency spike after deployment; connection pool exhausted.", "Closed", "Checkout Team", "", ""),
+    ("INC-8711", "DB connection pool exhaustion", "db_payments", "P3", "closed", M(14 * 24 * 60),
+     "Connection pool exhaustion caused API timeouts.", "Closed", "DBA Team", "", ""),
+    ("INC-8655", "Payment service deployment rollback", "its_payment_api", "P1", "closed", M(21 * 24 * 60),
+     "Bad deployment caused payment failures; rolled back.", "Closed", "Platform Engineering", "", ""),
 ]
 c.executemany("INSERT INTO incidents VALUES(?,?,?,?,?,?,?,?,?,?,?)", incidents)
 
+# competing signals: the real cause (stale data) ranks above a mild DB signal (red herring)
 metrics = [
-    ("M1", "db_payments",     "cpu_pct",            94.0, 80.0,  now.isoformat(timespec="minutes")),
-    ("M2", "db_payments",     "active_connections", 980.0, 700.0, now.isoformat(timespec="minutes")),
-    ("M3", "its_payment_api", "p95_latency_ms",     640.0, 300.0, now.isoformat(timespec="minutes")),
-    ("M4", "app_checkout",    "error_rate_pct",      8.1, 1.0,   now.isoformat(timespec="minutes")),
+    ("M1", "its_payment_api", "error_rate_pct",      8.1, 1.0,   now.isoformat(timespec="minutes")),
+    ("M2", "its_payment_api", "data_age_min",       45.0, 15.0,  now.isoformat(timespec="minutes")),
+    ("M3", "db_payments",     "active_connections", 720.0, 700.0, now.isoformat(timespec="minutes")),
 ]
 c.executemany("INSERT INTO metrics VALUES(?,?,?,?,?,?)", metrics)
+c.executemany("INSERT INTO service_data VALUES(?,?)",
+              [("its_payment_api", "ds_pay_gd"), ("app_checkout", "ds_pay_gd")])
 
 tickets = [
-    ("JIRA-5521", "INC-8841", "app_checkout",
-     "checkout-api: connection pool exhaustion under retry storm",
-     "In Progress", "Checkout Team", (now - dt.timedelta(minutes=25)).isoformat(timespec="minutes"),
-     "Pool must not exhaust under retry; p95 latency < 300ms; error rate < 1%.",
-     "Tune pool size + backoff; guard retry amplification; stay under payments-db connection cap."),
-    ("JIRA-5488", "INC-8711", "db_payments",
-     "payments-db: connection leak on long-running transactions",
-     "Done", "DBA Team", (now - dt.timedelta(days=13)).isoformat(timespec="minutes"),
-     "No connection growth over a 24h soak test.",
-     "Audit long-running transactions; enforce statement timeout."),
+    ("JIRA-5521", "INC-8841", "its_payment_api",
+     "Payment service serving stale risk data (upstream payments_gold)",
+     "In Progress", "Data Platform", M(20),
+     "Payments_gold fresh (≤15 min) and reconciled; payment error rate < 1%.",
+     "Restore the upstream feed (payments_bronze_ingest) so payments_gold is fresh again."),
 ]
 c.executemany("INSERT INTO tickets VALUES(?,?,?,?,?,?,?,?,?)", tickets)
-
-kpis = [
-    ("K1", "bs_payments", "checkout_success_pct", "%", 98.5, 90.0),
-]
+kpis = [("K1", "bs_payments", "checkout_success_pct", "%", 98.5, 90.0)]
 c.executemany("INSERT INTO kpis VALUES(?,?,?,?,?,?)", kpis)
 
-# ---------- DataOps data ----------
+# ------------------------------------------------------------------ DataOps
 pipelines = [
-    ("P-ORD", "orders_bronze_ingest", "Data Platform", "high", "every 15m", 30),
-    ("P-CUST", "customer_360_build", "Analytics Engineering", "high", "hourly", 60),
-    ("P-PAY", "payments_gold_agg", "Finance Data", "critical", "every 15m", 15),
+    ("P-PAY-ING", "payments_bronze_ingest", "Data Platform", "critical", "every 15m", 15),
+    ("P-PAY-AGG", "payments_gold_agg", "Finance Data", "critical", "every 15m", 15),
 ]
 c.executemany("INSERT INTO pipelines VALUES(?,?,?,?,?,?)", pipelines)
 
 datasets = [
-    ("ds_ord_bz", "orders_bronze", "bronze", "Data Platform"),
-    ("ds_ord_sv", "orders_silver", "silver", "Analytics Engineering"),
-    ("ds_ord_gd", "orders_gold", "gold", "Analytics Engineering"),
-    ("ds_cust_bz", "customer_bronze", "bronze", "Data Platform"),
-    ("ds_cust_sv", "customer_silver", "silver", "Analytics Engineering"),
-    ("ds_cust_360", "customer_360", "gold", "Analytics Engineering"),
-    ("ds_pay_bz", "payments_bronze", "bronze", "Finance Data"),
+    ("core_ledger", "core_ledger", "source", "Core Banking"),
+    ("ds_pay_bz", "payments_bronze", "bronze", "Data Platform"),
+    ("ds_pay_sv", "payments_silver", "silver", "Data Platform"),
     ("ds_pay_gd", "payments_gold", "gold", "Finance Data"),
 ]
 c.executemany("INSERT INTO dop_datasets VALUES(?,?,?,?)", datasets)
-
-lineage = [
-    ("ds_ord_bz", "ds_ord_sv"), ("ds_ord_sv", "ds_ord_gd"),
-    ("ds_cust_bz", "ds_cust_sv"), ("ds_cust_sv", "ds_cust_360"),
-    ("ds_pay_bz", "ds_pay_gd"),
-]
-c.executemany("INSERT INTO dop_lineage VALUES(?,?)", lineage)
-
-pipeline_io = [
-    ("P-ORD", "ds_ord_bz", "produces"),
-    ("P-CUST", "ds_cust_bz", "reads"), ("P-CUST", "ds_cust_360", "produces"),
-    ("P-PAY", "ds_pay_bz", "reads"), ("P-PAY", "ds_pay_gd", "produces"),
-]
-c.executemany("INSERT INTO pipeline_io VALUES(?,?,?)", pipeline_io)
+c.executemany("INSERT INTO dop_lineage VALUES(?,?)",
+              [("core_ledger", "ds_pay_bz"), ("ds_pay_bz", "ds_pay_sv"), ("ds_pay_sv", "ds_pay_gd")])
+c.executemany("INSERT INTO pipeline_io VALUES(?,?,?)",
+              [("P-PAY-ING", "core_ledger", "reads"), ("P-PAY-ING", "ds_pay_bz", "produces"),
+               ("P-PAY-AGG", "ds_pay_sv", "reads"), ("P-PAY-AGG", "ds_pay_gd", "produces")])
 
 runs = [
-    ("R-9001", "P-ORD", "failed", (now - dt.timedelta(minutes=35)).isoformat(timespec="minutes"), 3.0, 0,
-     "SCHEMA_MISMATCH: unexpected column 'region_code' in source"),
-    ("R-9000", "P-ORD", "success", (now - dt.timedelta(minutes=50)).isoformat(timespec="minutes"), 4.2, 118400, ""),
-    ("R-9101", "P-PAY", "success", (now - dt.timedelta(minutes=48)).isoformat(timespec="minutes"), 26.0, 220100, ""),
-    ("R-9100", "P-PAY", "success", (now - dt.timedelta(minutes=30)).isoformat(timespec="minutes"), 9.0, 220300, ""),
-    ("R-9200", "P-CUST", "success", (now - dt.timedelta(minutes=40)).isoformat(timespec="minutes"), 12.0, 54000, ""),
+    ("R-9001", "P-PAY-ING", "failed", M(36), 2.0, 0,
+     "SCHEMA_MISMATCH: unexpected column 'region_code' in source core_ledger"),
+    ("R-9000", "P-PAY-ING", "success", M(51), 3.1, 240500, ""),
+    ("R-8801", "P-PAY-AGG", "success", M(40), 6.0, 240100, ""),
 ]
 c.executemany("INSERT INTO dop_runs VALUES(?,?,?,?,?,?,?)", runs)
 
-dop_dq = [
-    ("DQ-1", "ds_cust_360", "null_customer_id_pct", 6.0, 1.0),
-    ("DQ-2", "ds_ord_gd", "reconciliation_variance_pct", 0.2, 0.5),
-    ("DQ-3", "ds_pay_gd", "row_count_drift_pct", 3.0, 10.0),
-]
-c.executemany("INSERT INTO dop_dq VALUES(?,?,?,?,?)", dop_dq)
+c.executemany("INSERT INTO dop_dq VALUES(?,?,?,?,?)", [
+    ("DQ-1", "ds_pay_gd", "row_count_drift_pct", 1.5, 10.0),
+    ("DQ-2", "ds_pay_gd", "reconciliation_variance_pct", 0.3, 0.5),
+])
+c.executemany("INSERT INTO dop_freshness VALUES(?,?,?)", [
+    ("core_ledger", M(5), 15),
+    ("ds_pay_bz", M(40), 15),
+    ("ds_pay_sv", M(42), 15),
+    ("ds_pay_gd", M(45), 15),
+])
+c.executemany("INSERT INTO dop_contracts VALUES(?,?,?,?,?)", [
+    ("DC-1", "ds_pay_bz", "payments_bronze", "v3", "Data Platform"),
+    ("DC-2", "ds_pay_gd", "payments_gold", "v2", "Finance Data"),
+])
+c.executemany("INSERT INTO dop_consumers VALUES(?,?)", [
+    ("ds_pay_gd", "Payment service (checkout-api)"), ("ds_pay_gd", "Finance close"),
+    ("ds_pay_gd", "Risk & limits"), ("ds_pay_sv", "Fraud analytics"),
+])
 
-dop_fresh = [
-    ("ds_ord_bz", (now - dt.timedelta(minutes=40)).isoformat(timespec="minutes"), 30),
-    ("ds_ord_gd", (now - dt.timedelta(minutes=45)).isoformat(timespec="minutes"), 60),
-    ("ds_cust_360", (now - dt.timedelta(minutes=70)).isoformat(timespec="minutes"), 60),
-    ("ds_pay_gd", (now - dt.timedelta(minutes=45)).isoformat(timespec="minutes"), 15),
-]
-c.executemany("INSERT INTO dop_freshness VALUES(?,?,?)", dop_fresh)
+c.executemany("INSERT INTO dop_incidents VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", [
+    ("DOP-1001", "payments_bronze_ingest failed — source schema drift", "P-PAY-ING", "ds_pay_bz",
+     "P1", "open", M(35), "Diagnosed", "Data Platform",
+     "core_ledger added column 'region_code' not reconciled in the contract", "",
+     "Run R-9001 failed (SCHEMA_MISMATCH 'region_code'); payments_gold is stale → the payment service "
+     "serves stale risk data (business impact)."),
+])
 
-dop_contracts = [
-    ("DC-1", "ds_ord_bz", "orders_bronze", "v3", "Data Platform"),
-    ("DC-2", "ds_cust_360", "customer_360", "v5", "Analytics Engineering"),
-    ("DC-3", "ds_pay_gd", "payments_gold", "v2", "Finance Data"),
-]
-c.executemany("INSERT INTO dop_contracts VALUES(?,?,?,?,?)", dop_contracts)
-
-consumers = [
-    ("ds_ord_gd", "Ops reporting"), ("ds_ord_gd", "Revenue dashboard"),
-    ("ds_cust_360", "CSM 360"), ("ds_cust_360", "Marketing"),
-    ("ds_pay_gd", "Finance close"), ("ds_pay_gd", "Payments KPI"),
-]
-c.executemany("INSERT INTO dop_consumers VALUES(?,?)", consumers)
-
-dop_incidents = [
-    ("DOP-1001", "orders_bronze ingestion failed — source schema drift", "P-ORD", "ds_ord_bz", "P2", "open",
-     (now - dt.timedelta(minutes=34)).isoformat(timespec="minutes"), "Fix in progress", "Data Platform",
-     "Upstream schema drift not reconciled in contract", "",
-     "Run R-9001 failed with SCHEMA_MISMATCH (new column 'region_code'); downstream orders_gold is stale."),
-    ("DOP-1002", "customer_360 data-quality breach — null keys spike", "P-CUST", "ds_cust_360", "P2", "open",
-     (now - dt.timedelta(hours=2)).isoformat(timespec="minutes"), "Diagnosed", "Analytics Engineering",
-     "Null customer_id at 6% (> 1% rule)", "",
-     "DQ rule null_customer_id_pct breached at 6% (threshold 1%); customer_360 is consumed by CSM 360 and Marketing."),
-    ("DOP-1003", "payments_gold freshness SLA breach", "P-PAY", "ds_pay_gd", "P1", "open",
-     (now - dt.timedelta(minutes=45)).isoformat(timespec="minutes"), "Change raised", "Finance Data",
-     "Upstream backlog delaying the aggregation job", "",
-     "Freshness is 45m against a 15m SLA; Finance close depends on payments_gold."),
-]
-c.executemany("INSERT INTO dop_incidents VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", dop_incidents)
-
-# ---------- one connected story across both domains ----------
+# ------------------------------------------------------------------ shared: timeline + correlation
 timeline = [
-    ("T-IT-1", "INC-8841", "itops", (now - dt.timedelta(minutes=120)).isoformat(timespec="minutes"),
-     "change", "CHG-1042 deployed — checkout-api v1.42 (changed the request/event contract)"),
-    ("T-IT-2", "INC-8841", "itops", (now - dt.timedelta(minutes=55)).isoformat(timespec="minutes"),
-     "alert", "payments-db active_connections 980 > 700 (threshold)"),
-    ("T-IT-3", "INC-8841", "itops", (now - dt.timedelta(minutes=52)).isoformat(timespec="minutes"),
-     "alert", "Payment API p95 latency 640ms > 300ms"),
-    ("T-IT-4", "INC-8841", "itops", (now - dt.timedelta(minutes=48)).isoformat(timespec="minutes"),
-     "incident", "INC-8841 raised (P2) — owner Platform Engineering"),
-    ("T-IT-5", "INC-8841", "itops", (now - dt.timedelta(minutes=25)).isoformat(timespec="minutes"),
-     "ticket", "JIRA-5521 raised for Checkout Team"),
-    ("T-DOP-1", "DOP-1001", "dataops", (now - dt.timedelta(minutes=120)).isoformat(timespec="minutes"),
-     "change", "CHG-1042 (same release) changed the event contract"),
-    ("T-DOP-2", "DOP-1001", "dataops", (now - dt.timedelta(minutes=36)).isoformat(timespec="minutes"),
-     "alert", "run R-9001 failed — SCHEMA_MISMATCH: unexpected column 'region_code'"),
-    ("T-DOP-3", "DOP-1001", "dataops", (now - dt.timedelta(minutes=35)).isoformat(timespec="minutes"),
-     "alert", "orders_bronze freshness 40 min > 30 min SLA"),
-    ("T-DOP-4", "DOP-1001", "dataops", (now - dt.timedelta(minutes=34)).isoformat(timespec="minutes"),
-     "incident", "DOP-1001 raised (P2) — owner Data Platform"),
-    ("T-DOP-5", "DOP-1001", "dataops", (now - dt.timedelta(minutes=33)).isoformat(timespec="minutes"),
-     "impact", "orders_gold stale → Ops reporting & Revenue dashboard at risk"),
+    ("T-1", "DOP-1001", "dataops", M(60), "change", "core_ledger source schema changed — new column 'region_code'"),
+    ("T-2", "DOP-1001", "dataops", M(36), "alert", "run R-9001 failed — SCHEMA_MISMATCH 'region_code'"),
+    ("T-3", "DOP-1001", "dataops", M(35), "incident", "DOP-1001 raised (P1) — owner Data Platform"),
+    ("T-4", "DOP-1001", "dataops", M(45), "impact", "payments_gold stale (45 min > 15 min SLA)"),
+    ("T-5", "INC-8841", "itops", M(44), "alert", "Payment API data_age_min 45 > 15 (serving stale risk data)"),
+    ("T-6", "INC-8841", "itops", M(43), "alert", "Payment API error_rate_pct 8.1 > 1.0"),
+    ("T-7", "INC-8841", "itops", M(42), "incident", "INC-8841 raised (P2) — owner Platform Engineering"),
+    ("T-8", "INC-8841", "itops", M(20), "ticket", "JIRA-5521 raised for Data Platform"),
 ]
 c.executemany("INSERT INTO timeline VALUES(?,?,?,?,?,?)", timeline)
-
-correlations = [
-    ("CORR-1", "INC-8841", "DOP-1001", "CHG-1042",
-     "checkout-api v1.42 changed the event contract — the same change caused the payment API retry storm "
-     "(INC-8841) and broke orders_bronze ingestion via schema drift (DOP-1001)."),
-]
-c.executemany("INSERT INTO correlations VALUES(?,?,?,?,?)", correlations)
+c.executemany("INSERT INTO correlations VALUES(?,?,?,?,?)", [
+    ("CORR-1", "INC-8841", "DOP-1001", "core_ledger schema change (new column 'region_code')",
+     "Root cause flows DataOps → IT Ops: the pipeline failure (DOP-1001) left payments_gold stale, so the "
+     "customer-facing payment service served stale risk data (INC-8841). Affected business service: Payments."),
+])
 
 con.commit()
 con.close()
 
-# KPI history (DuckDB) — keyed by metric so it can be scenario-specific
+# KPI history
 d = duckdb.connect(HIST)
 d.execute("CREATE TABLE kpi(ts TIMESTAMP, metric VARCHAR, value DOUBLE, scenario VARCHAR)")
 rows = []
@@ -257,4 +198,4 @@ for i in range(37):
     rows.append((t, "checkout_success_pct", 98.5, "fixed"))
 d.executemany("INSERT INTO kpi VALUES(?,?,?,?)", rows)
 d.close()
-print("Seeded sample data (data/ops.db + data/history.duckdb) — synthetic, all actions simulated")
+print("Seeded one connected scenario (source schema change → pipeline failure → stale data → business incident).")

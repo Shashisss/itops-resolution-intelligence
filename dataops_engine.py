@@ -143,14 +143,13 @@ def recommend(inc, hyps, data):
 
 # Remediation options — outcome depends on the action chosen (not scripted to pass).
 DOP_REMEDIATION = [
-    {"id": "A", "label": "Reconcile schema (contract v4) and replay the failed batch",
+    {"id": "A", "label": "Reconcile source schema (contract v4) and replay payments_bronze_ingest",
      "mode": "Human approval", "risk": "High (production data)",
      "outcomes": {"freshness": (5, True), "dq": (0.0, True), "downstream": ("healthy", True)}},
-    {"id": "B", "label": "Replay the batch without a contract update", "mode": "Policy controlled",
-     "risk": "Medium",
-     "outcomes": {"freshness": (8, True), "dq": (6.0, False), "downstream": ("stale", False)}},
+    {"id": "B", "label": "Replay without a contract update", "mode": "Policy controlled", "risk": "Medium",
+     "outcomes": {"freshness": (8, True), "dq": (0.0, True), "downstream": ("stale", False)}},
     {"id": "C", "label": "Skip the run and monitor", "mode": "Human approval", "risk": "High",
-     "outcomes": {"freshness": (40, False), "dq": (6.0, False), "downstream": ("stale", False)}},
+     "outcomes": {"freshness": (45, False), "dq": (0.0, True), "downstream": ("stale", False)}},
 ]
 
 

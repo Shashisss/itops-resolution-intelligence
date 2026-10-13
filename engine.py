@@ -2,6 +2,7 @@
 """Resolution-intelligence engine: graph reasoning, RCA, policy, retrieval.
 Pure-Python + embedded data — no servers."""
 import sqlite3
+import datetime as dt
 import networkx as nx
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -130,10 +131,38 @@ def causes(inc, G, changes, metrics, services):
             "evidence": f'{m["metric"]} = {m["value"]:.0f} vs threshold {m["threshold"]:.0f} on {m["service_id"]}',
             "text": f'{m["service_id"]} {m["metric"]} at {m["value"]:.0f} (threshold {m["threshold"]:.0f})',
         })
+    # Cross-domain: is an upstream dataset this service consumes stale? (bridge to DataOps)
+    con = sqlite3.connect(DB)
+    con.row_factory = sqlite3.Row
+    links = [r["dataset_id"] for r in
+             con.execute("SELECT dataset_id FROM service_data WHERE service_id=?", (inc["service_id"],))]
+    for dsi in links:
+        fr = con.execute("SELECT last_updated, sla_min FROM dop_freshness WHERE dataset_id=?", (dsi,)).fetchone()
+        nm = con.execute("SELECT name FROM dop_datasets WHERE id=?", (dsi,)).fetchone()
+        if fr and nm:
+            try:
+                lag = int((dt.datetime.now() - dt.datetime.fromisoformat(fr["last_updated"])).total_seconds() / 60)
+            except Exception:
+                lag = 0
+            if lag > fr["sla_min"]:
+                key = f'UPSTREAM:{dsi}'
+                out.append({"type": "upstream data", "key": key, "service": dsi, "owner": "Data Platform",
+                            "confidence": "high", "status": "confirmed" if confirmed == key else "suspected",
+                            "evidence": f'{nm["name"]} last updated {lag} min ago (SLA {fr["sla_min"]} min) '
+                                        f'— see DataOps DOP-1001',
+                            "text": f'upstream dataset {nm["name"]} is stale ({lag} min) — the service is serving '
+                                    f'stale data'})
+    con.close()
     return out
 
 
 def recommend(inc, causes):
+    data = next((c for c in causes if c["type"] == "upstream data"), None)
+    if data:
+        return {"action": f'Reconcile the source schema (contract v4) and replay the pipeline to refresh '
+                          f'{data["service"]}, then restart the payment service.',
+                "risk": "High (production data + service)", "mode": "Human approval",
+                "actor": "Data Platform + Platform Engineering"}
     change = next((c for c in causes if c["type"] == "change"), None)
     metric = next((c for c in causes if c["type"] == "metric"), None)
     if change and metric:
@@ -175,21 +204,21 @@ def change_risk(change, G, services, incidents):
 # Remediation options — the OUTCOME depends on the action chosen (not scripted to pass).
 # outcomes map metric-key -> (observed value after, passed?)
 IT_REMEDIATION = [
-    {"id": "A", "label": "Roll back CHG-1042 and scale DB connections", "mode": "Human approval",
-     "risk": "High (production rollback + DB change)",
-     "outcomes": {"p95_latency_ms": (250.0, True), "error_rate_pct": (0.4, True),
+    {"id": "A", "label": "Reconcile source schema (contract v4), replay the pipeline, refresh payments_gold",
+     "mode": "Human approval", "risk": "High (production data + service)",
+     "outcomes": {"data_age_min": (5.0, True), "error_rate_pct": (0.4, True),
                   "active_connections": (600.0, True), "kpi": (98.5, True)}},
-    {"id": "B", "label": "Scale DB connections only (no rollback)", "mode": "Policy controlled",
+    {"id": "B", "label": "Restart the payment service only (no data fix)", "mode": "Policy controlled",
      "risk": "Medium",
-     "outcomes": {"p95_latency_ms": (280.0, True), "error_rate_pct": (0.8, True),
-                  "active_connections": (620.0, True), "kpi": (94.0, False)}},
+     "outcomes": {"data_age_min": (45.0, False), "error_rate_pct": (0.9, True),
+                  "active_connections": (690.0, True), "kpi": (93.0, False)}},
     {"id": "C", "label": "Dismiss as transient (no fix)", "mode": "Human approval",
      "risk": "High",
-     "outcomes": {"p95_latency_ms": (620.0, False), "error_rate_pct": (7.9, False),
-                  "active_connections": (975.0, False), "kpi": (90.0, False)}},
+     "outcomes": {"data_age_min": (45.0, False), "error_rate_pct": (8.0, False),
+                  "active_connections": (720.0, False), "kpi": (90.0, False)}},
 ]
-_METRIC_LABELS = {"p95_latency_ms": "Latency (p95, ms)", "error_rate_pct": "Error rate (%)",
-                  "active_connections": "DB connections"}
+_METRIC_LABELS = {"data_age_min": "Data age (min)", "error_rate_pct": "Error rate (%)",
+                  "active_connections": "DB connections", "p95_latency_ms": "Latency (p95, ms)"}
 
 
 def it_verification(inc, ctx, option, applied=True):
@@ -200,7 +229,7 @@ def it_verification(inc, ctx, option, applied=True):
     biz = business_service(G, dependency_paths(G, inc["service_id"])[0], services)
     k = next((x for x in kpis if x["business_service"] == biz), None)
     rows = []
-    for key in ["p95_latency_ms", "error_rate_pct", "active_connections"]:
+    for key in ["data_age_min", "error_rate_pct", "active_connections"]:
         if key in breaching:
             m = breaching[key]
             after, ok = option["outcomes"].get(key, (m["value"], False))

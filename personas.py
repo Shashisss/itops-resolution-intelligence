@@ -233,6 +233,12 @@ def csm_view(inc, ctx):
         if r.get("target"):
             with st.expander("✍️ Draft customer update (validate & edit)", expanded=True):
                 st.text_area("Message", value=csm.customer_narrative(r["target"]), height=200, key="narr")
+    if st.session_state.get(f'it_opt_applied_{inc["id"]}'):
+        v = st.session_state.get(f'verdict_{inc["id"]}', "")
+        journey.render_recovery_update(
+            "Customer success / Data Owner update",
+            f'Payments service restored — the upstream data feed is fresh again and payment error rates are '
+            f'normal. Independent verification: **{v}**. (Simulated.)')
     biz = E.business_service(G_ := ctx["G"], E.dependency_paths(ctx["G"], inc["service_id"])[0], services)
     handoff(f'to Incident Manager / L1 — {_carried(inc, ctx, biz, _sla_detail(inc)[0])}.')
 
