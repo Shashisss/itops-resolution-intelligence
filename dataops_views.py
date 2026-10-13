@@ -116,18 +116,28 @@ def verify_panel(inc, data):
                "downstream health).")
     a = DE.analytics(inc, data)
     a1, a2, a3, a4 = st.columns(4)
-    a1.metric("Recovery time", f'{a["recovery_time_min"]} min')
+    a1.metric("Incident age", f'{a["incident_age_min"]} min')
     a2.metric("Freshness lag", f'{a["freshness_lag_min"]} min')
     a3.metric("Data quality", a["quality"])
     a4.metric("Pipeline reliability", f'{a["reliability_pct"]}%')
     applied_any = bool(st.session_state.get(f'dop_opt_applied_{inc["id"]}'))
+    verdict = st.session_state.get(f'verdict_{inc["id"]}', journey.verdict(rows, applied))
     fresh_txt, _, _, _ = _fresh(data, inc["dataset_id"])
-    journey.render_resolution(inc["id"], applied_any, f'freshness {fresh_txt}', inc["owner_team"])
-    if applied_any:
+    journey.render_resolution(inc["id"], applied_any, f'freshness {fresh_txt}', inc["owner_team"], verdict=verdict)
+    if applied_any and verdict == "Verified":
+        journey.render_recovery_update(
+            "Data Owner update — evidence-backed recovery",
+            'payments_gold refreshed — freshness within SLA and downstream consumers healthy. '
+            'Outcome independently verified. (Simulated.)')
+    elif applied_any and verdict == "Mitigated":
         journey.render_recovery_update(
             "Data Owner update",
-            f'payments_gold refreshed — freshness within SLA and downstream consumers healthy. '
-            f'Independent verification: **{st.session_state.get(f"verdict_{inc["id"]}", "")}**. (Simulated.)')
+            'Partial recovery only — freshness improved but downstream is **not fully healthy**; repair '
+            'ongoing. (Simulated.)', kind="warning")
+    elif applied_any and verdict == "Recovery failed":
+        journey.render_recovery_update(
+            "Data Owner update",
+            'The repair **did not restore** freshness/quality — escalated. (Simulated.)', kind="error")
     journey.render_correlation(inc["id"])
 
 

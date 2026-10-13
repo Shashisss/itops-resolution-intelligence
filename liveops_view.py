@@ -109,7 +109,8 @@ def render(name, role):
     left, right = st.columns([3, 2])
     with left:
         mode = st.radio("Stream mode", ["Live", "Replay"], horizontal=True, key="lo_mode")
-        st.caption("**Live** = always-moving random stream  ·  **Replay** = the same story, step-through or play.")
+        st.caption("**Live** = always-moving random stream  ·  **Replay** = a **fixed scripted walkthrough** of the "
+                   "story (step-through or play) — independent of the remediation option you pick later.")
         if mode == "Replay":
             c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
             if c1.button("⏮ Reset", key="lo_rst"):
@@ -155,6 +156,15 @@ def render(name, role):
         refs = [r["ref"] for r in rows]
         if refs:
             ref = st.selectbox("Focus incident", refs, key="lo_focus")
+            if st.session_state.get("auto_coord") and not collab.delegations(ref):
+                _r = _rec(ref, it, ddata)
+                for a in journey.actors(_r):
+                    collab.add_delegation(ref, "Recommendation engine", a, _r["action"])
+                    collab.add_notification(collab.ACTOR_TO_ROLE.get(a, a), ref,
+                                            f'Auto-coordinated (policy): {a} — {_r["action"]}')
+                collab.add_comment(ref, "Recommendation engine", "System",
+                                   f'Auto-coordinated under policy: {", ".join(journey.actors(_r))}')
+                st.caption("🤖 Auto-coordinate is ON — the next actor was engaged automatically under policy.")
             st.markdown("#### ⏱️ Live SLA countdown")
             _sla_countdown(ref, it, ddata)
 

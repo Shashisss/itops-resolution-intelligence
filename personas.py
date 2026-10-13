@@ -175,12 +175,23 @@ def verify_panel(inc, ctx):
     st.caption("Recovery is **simulated**; the thresholds checked are shown above (latency, error rate, DB "
                "connections, business KPI).")
     applied_any = bool(st.session_state.get(f'it_opt_applied_{inc["id"]}'))
-    journey.render_resolution(inc["id"], applied_any, _sla_detail(inc)[0], inc["owner_team"])
-    if applied_any:
+    verdict = st.session_state.get(f'verdict_{inc["id"]}', journey.verdict(rows, applied))
+    journey.render_resolution(inc["id"], applied_any, _sla_detail(inc)[0], inc["owner_team"], verdict=verdict)
+    if applied_any and verdict == "Verified":
+        journey.render_recovery_update(
+            "Customer success / Data Owner update — evidence-backed recovery",
+            'Payments service restored — the upstream data is fresh and error rates are normal. '
+            'Outcome independently verified. (Simulated.)')
+    elif applied_any and verdict == "Mitigated":
         journey.render_recovery_update(
             "Customer success / Data Owner update",
-            f'Payments service restored — the upstream data is fresh and error rates are normal. '
-            f'Independent verification: **{st.session_state.get(f"verdict_{inc["id"]}", "")}**. (Simulated.)')
+            'Partial improvement only — the service is better but **not fully restored**; teams are still '
+            'working. (Simulated.)', kind="warning")
+    elif applied_any and verdict == "Recovery failed":
+        journey.render_recovery_update(
+            "Customer success / Data Owner update",
+            'The attempted repair **did not restore** service — escalated for immediate action; next update '
+            'shortly. (Simulated.)', kind="error")
     journey.render_correlation(inc["id"])
 
 

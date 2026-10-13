@@ -112,12 +112,23 @@ def render_verification(rows, verifier):
     st.dataframe(pd.DataFrame(rows), hide_index=True)
 
 
-def render_resolution(inc_id, applied, sla_txt, owner, extra=""):
+def render_resolution(inc_id, applied, sla_txt, owner, verdict="", extra=""):
+    """Only CLOSE when verification says Verified. Mitigated/Failed stay OPEN."""
     if not applied:
         return
     st.markdown("**Resolution record**")
-    st.success(f'Incident **{inc_id}** independently verified and closed · SLA outcome: **{sla_txt}** · owner: {owner}.')
-    st.markdown(f'**Learning:** evidence captured → runbook / known-error updated.{(" " + extra) if extra else ""}')
+    if verdict == "Verified":
+        st.success(f'Incident **{inc_id}** independently **verified and closed** · SLA outcome: **{sla_txt}** '
+                   f'· owner: {owner}.')
+        st.markdown(f'**Learning:** evidence captured → runbook / known-error updated.{(" " + extra) if extra else ""}')
+    elif verdict == "Mitigated":
+        st.warning(f'Fix applied but **NOT verified** — incident **{inc_id}** remains **OPEN** · SLA {sla_txt} · '
+                   f'owner {owner}. Partial recovery only — further action required.')
+    elif verdict == "Recovery failed":
+        st.error(f'Recovery **FAILED** — incident **{inc_id}** remains **OPEN** · SLA {sla_txt} · owner {owner}. '
+                 f'Escalate.')
+    else:
+        st.info(f'Incident **{inc_id}** — status: {verdict or "investigating"} (not closed).')
 
 
 _STATUS_COLOR = {"assigned": "#d97706", "accepted": "#0891b2", "done": "#16a34a"}
@@ -170,9 +181,10 @@ def _engage(ref, action, actors_list, auto=False):
                                  f'are tracked on the incident; the production change still needs approval.')
 
 
-def render_recovery_update(title, body):
-    st.markdown(f"**{title} — evidence-backed recovery update**")
-    st.success(body)
+def render_recovery_update(title, body, kind="success"):
+    st.markdown(f"**{title}**"
+                + ("" if kind == "success" else " — *not a closure*"))
+    {"success": st.success, "warning": st.warning, "error": st.error}[kind](body)
 
 
 def _nav(key, steps, delta):

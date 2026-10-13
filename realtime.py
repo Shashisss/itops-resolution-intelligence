@@ -45,6 +45,8 @@ def tick():
                 (now.replace(microsecond=0).isoformat(timespec="seconds"), d, sev, src, msg, ref))
     con.commit()
     con.close()
+    if sev in ("warning", "critical") and ref:      # link meaningful live events into the incident timeline
+        tick_timeline(ref, d, sev, f'live: {src} — {msg}')
 
 
 def events_last_15min():
@@ -68,7 +70,7 @@ REPLAY_SCRIPT = [
     ("itops", "info", "monitoring", "business impact: checkout success 90% (baseline 98.5%)", "INC-8841"),
     ("dataops", "info", "payments_bronze_ingest", "delegated to Data Engineer: reconcile schema + replay", "DOP-1001"),
     ("dataops", "info", "payments_gold", "repair applied — replaying batch", "DOP-1001"),
-    ("itops", "info", "monitoring", "verification passed: checkout success restored to 98.5%", "INC-8841"),
+    ("itops", "info", "monitoring", "verification recorded — see the incident Verify step for the outcome", "INC-8841"),
 ]
 
 
@@ -86,6 +88,8 @@ def emit_replay_event(ev):
                 (dt.datetime.now().replace(microsecond=0).isoformat(timespec="seconds"), d, sev, src, msg, ref))
     con.commit()
     con.close()
+    if ref:                                          # one auditable history: link into the incident timeline
+        tick_timeline(ref, d, sev, msg)
 
 
 def tick_timeline(ref_id, domain, severity, message):

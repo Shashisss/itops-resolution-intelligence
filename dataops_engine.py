@@ -193,6 +193,6 @@ def analytics(inc, data):
         elapsed = int((dt.datetime.now() - dt.datetime.fromisoformat(inc["created_at"])).total_seconds() / 60)
     except Exception:
         elapsed = 0
-    return {"recovery_time_min": elapsed, "freshness_lag_min": lag,
+    return {"incident_age_min": elapsed, "freshness_lag_min": lag,
             "freshness_sla_min": f.get("sla_min"), "quality": quality,
             "reliability_pct": reliability, "downstream": len(downstream(ds, data["G"]))}
