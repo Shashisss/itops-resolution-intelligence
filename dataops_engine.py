@@ -141,27 +141,43 @@ def recommend(inc, hyps, data):
     return {"action": "Gather more evidence.", "risk": "Low", "mode": "Autonomous", "actor": owner}
 
 
-def verification(inc, data, applied):
+# Remediation options — outcome depends on the action chosen (not scripted to pass).
+DOP_REMEDIATION = [
+    {"id": "A", "label": "Reconcile schema (contract v4) and replay the failed batch",
+     "mode": "Human approval", "risk": "High (production data)",
+     "outcomes": {"freshness": (5, True), "dq": (0.0, True), "downstream": ("healthy", True)}},
+    {"id": "B", "label": "Replay the batch without a contract update", "mode": "Policy controlled",
+     "risk": "Medium",
+     "outcomes": {"freshness": (8, True), "dq": (6.0, False), "downstream": ("stale", False)}},
+    {"id": "C", "label": "Skip the run and monitor", "mode": "Human approval", "risk": "High",
+     "outcomes": {"freshness": (40, False), "dq": (6.0, False), "downstream": ("stale", False)}},
+]
+
+
+def verification(inc, data, option, applied=True):
+    """Independent re-check of freshness, DQ and downstream health after a chosen action."""
     ds = inc["dataset_id"]
     rows = []
     f = data["fresh"].get(ds)
     if f:
-        lag = _lag_min(f)
-        rows.append({"check": f'Freshness — {data["datasets"][ds]["name"]}', "before": f'{lag} min',
+        after, ok = option["outcomes"].get("freshness", (_lag_min(f), False))
+        rows.append({"check": f'Freshness — {data["datasets"][ds]["name"]}', "before": f'{_lag_min(f)} min',
                      "threshold checked": f'≤ {f["sla_min"]} min',
-                     "after (simulated)": f'{max(1, f["sla_min"]//3)} min' if applied else "—",
-                     "result": "✅ pass" if applied else "⏳ pending"})
+                     "after (simulated)": f'{after} min' if applied else "—",
+                     "result": ("✅ pass" if ok else "❌ fail") if applied else "⏳ pending"})
     for d in data["dq"]:
         if d["dataset_id"] == ds and d["value"] > d["threshold"]:
+            after, ok = option["outcomes"].get("dq", (d["value"], False))
             rows.append({"check": f'DQ — {d["rule"]}', "before": f'{d["value"]:.1f}',
                          "threshold checked": f'≤ {d["threshold"]:.1f}',
-                         "after (simulated)": f'0.0' if applied else "—",
-                         "result": "✅ pass" if applied else "⏳ pending"})
+                         "after (simulated)": f'{after:.1f}' if applied else "—",
+                         "result": ("✅ pass" if ok else "❌ fail") if applied else "⏳ pending"})
+    after, ok = option["outcomes"].get("downstream", ("stale", False))
     for dsc in downstream(ds, data["G"]):
         rows.append({"check": f'Downstream — {data["datasets"][dsc]["name"]}', "before": "stale",
                      "threshold checked": "fresh & reconciled",
-                     "after (simulated)": "healthy" if applied else "—",
-                     "result": "✅ pass" if applied else "⏳ pending"})
+                     "after (simulated)": after if applied else "—",
+                     "result": ("✅ pass" if ok else "❌ fail") if applied else "⏳ pending"})
     return rows
 
 

@@ -172,6 +172,51 @@ def change_risk(change, G, services, incidents):
             "blast": [services[n]["name"] for n in down], "correlated": correlated, "rationale": rationale}
 
 
+# Remediation options — the OUTCOME depends on the action chosen (not scripted to pass).
+# outcomes map metric-key -> (observed value after, passed?)
+IT_REMEDIATION = [
+    {"id": "A", "label": "Roll back CHG-1042 and scale DB connections", "mode": "Human approval",
+     "risk": "High (production rollback + DB change)",
+     "outcomes": {"p95_latency_ms": (250.0, True), "error_rate_pct": (0.4, True),
+                  "active_connections": (600.0, True), "kpi": (98.5, True)}},
+    {"id": "B", "label": "Scale DB connections only (no rollback)", "mode": "Policy controlled",
+     "risk": "Medium",
+     "outcomes": {"p95_latency_ms": (280.0, True), "error_rate_pct": (0.8, True),
+                  "active_connections": (620.0, True), "kpi": (94.0, False)}},
+    {"id": "C", "label": "Dismiss as transient (no fix)", "mode": "Human approval",
+     "risk": "High",
+     "outcomes": {"p95_latency_ms": (620.0, False), "error_rate_pct": (7.9, False),
+                  "active_connections": (975.0, False), "kpi": (90.0, False)}},
+]
+_METRIC_LABELS = {"p95_latency_ms": "Latency (p95, ms)", "error_rate_pct": "Error rate (%)",
+                  "active_connections": "DB connections"}
+
+
+def it_verification(inc, ctx, option, applied=True):
+    """Independent re-check of raw telemetry against thresholds after a chosen action."""
+    G, changes, metrics, services, kpis = ctx["G"], ctx["changes"], ctx["metrics"], ctx["services"], ctx["kpis"]
+    scope = impacted(G, inc["service_id"])
+    breaching = {m["metric"]: m for m in metrics if m["service_id"] in scope and m["value"] > m["threshold"]}
+    biz = business_service(G, dependency_paths(G, inc["service_id"])[0], services)
+    k = next((x for x in kpis if x["business_service"] == biz), None)
+    rows = []
+    for key in ["p95_latency_ms", "error_rate_pct", "active_connections"]:
+        if key in breaching:
+            m = breaching[key]
+            after, ok = option["outcomes"].get(key, (m["value"], False))
+            rows.append({"check": _METRIC_LABELS[key], "before": f'{m["value"]:.1f}',
+                         "threshold checked": f'< {m["threshold"]:.0f}',
+                         "after (simulated)": f'{after:.1f}' if applied else "—",
+                         "result": ("✅ pass" if ok else "❌ fail") if applied else "⏳ pending"})
+    if k:
+        after, ok = option["outcomes"].get("kpi", (k["current"], False))
+        rows.append({"check": f'Business KPI — {k["metric"].replace("_"," ")}',
+                     "before": f'{k["current"]:.1f}{k["unit"]}', "threshold checked": f'≥ {k["baseline"]:.1f}{k["unit"]}',
+                     "after (simulated)": f'{after:.1f}{k["unit"]}' if applied else "—",
+                     "result": ("✅ pass" if ok else "❌ fail") if applied else "⏳ pending"})
+    return rows
+
+
 SIMILARITY_THRESHOLD = 0.15  # weak matches are rejected
 
 

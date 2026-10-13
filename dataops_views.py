@@ -4,6 +4,7 @@ Separate from IT Ops views; shares the evidence / approval / lifecycle patterns.
 import pandas as pd
 import streamlit as st
 import dataops_engine as DE
+import journey
 
 PERSONAS = ["Pipeline intelligence", "Data Engineer", "Data Owner", "Platform Engineer", "Data Consumer"]
 
@@ -44,6 +45,7 @@ def context_header(inc, data):
         st.markdown(f'**Data contract:** {con["name"]} {con["version"]} · owner {con["owner"]}')
     if breach or _dq(data, ds):
         st.caption("Detection is rule-based (freshness SLA, DQ thresholds, run status) — not autonomous/learned.")
+    journey.render_verdict(st.session_state.get(f'verdict_{inc["id"]}', "Investigating"))
 
 
 def handoff(text):
@@ -74,26 +76,32 @@ def hypotheses(inc, data):
 def action_panel(inc, data):
     st.markdown("---")
     st.markdown("#### Repair & verification   ·   🧪 **SIMULATED**")
-    st.caption("Simulation only — no real pipelines are touched. Approval is enforced before high-risk actions.")
-    hyps = DE.causes(inc, data)
-    rec = DE.recommend(inc, hyps, data)
-    applied = st.session_state.get(f'dop_applied_{inc["id"]}', False)
-    rows = DE.verification(inc, data, applied)
-    st.markdown("**Verification — before / after, with the thresholds that were checked**")
-    st.dataframe(pd.DataFrame(rows), hide_index=True)
-    st.caption("Recovery is **simulated**. Thresholds checked: freshness SLA, data-quality rules and downstream health.")
+    st.caption("The outcome depends on the action chosen; verification is independent. Approval is enforced for "
+               "high-risk actions.")
+    labels = [f'{o["id"]} · {o["label"]}' for o in DE.DOP_REMEDIATION]
+    sel = st.radio("Repair option", labels, key="dop_opt_" + inc["id"])
+    opt = DE.DOP_REMEDIATION[labels.index(sel)]
+    applied = st.session_state.get(f'dop_opt_applied_{inc["id"]}') == opt["id"]
+    rows = DE.verification(inc, data, opt, applied)
+    journey.render_verification(rows, "Data-quality verification service")
+    journey.render_verdict(journey.verdict(rows, applied))
+    st.caption("Recovery is **simulated**; thresholds checked are shown above (freshness SLA, DQ rules, "
+               "downstream health).")
     approved = True
-    if rec["mode"] in ("Human approval", "Policy controlled"):
-        st.warning(f'🔴 **{rec["mode"]} required** — {rec["action"]}')
+    if opt["mode"] in ("Human approval", "Policy controlled"):
+        st.warning(f'🔴 **{opt["mode"]} required** — {opt["label"]}')
         approved = st.checkbox("I approve this action (required before execution)", key="dop_appr_" + inc["id"])
     else:
-        st.info(f'🟢 **{rec["mode"]}** — {rec["action"]}')
-    if st.button("Apply recommended repair (simulated)", disabled=not approved, type="primary",
+        st.info(f'🟢 **{opt["mode"]}** — {opt["label"]}')
+    if st.button("Apply selected repair (simulated)", disabled=not approved, type="primary",
                  key="dop_apply_" + inc["id"]):
-        st.session_state[f'dop_applied_{inc["id"]}'] = True
-        DE.set_stage(inc["id"], "Validated")
-        st.session_state["flash"] = ("Simulated repair applied → pipeline validated → downstream healthy. "
-                                     "Evidence captured for learning.")
+        v = journey.verdict(DE.verification(inc, data, opt, True), True)
+        st.session_state[f'dop_opt_applied_{inc["id"]}'] = opt["id"]
+        st.session_state[f'verdict_{inc["id"]}'] = v
+        DE.set_stage(inc["id"], {"Verified": "Validated", "Mitigated": "Fix applied",
+                                 "Recovery failed": "Diagnosed"}.get(v, "Fix applied"))
+        journey.add_event(inc["id"], "dataops", "repair", f'{opt["label"]} — independent verification: {v}')
+        st.session_state["flash"] = f'Repair applied (simulated). Independent verification → **{v}**.'
         st.rerun()
 
 
@@ -104,6 +112,10 @@ def pipeline_view(inc, data):
     context_header(inc, data)
     handoff("to the Data Engineer (fix), Platform Engineer (scale/backfill) and Data Owner (impact); "
             "context, contract and blocker carry across.")
+    st.subheader("Detection")
+    journey.render_detection(inc["id"], "Data observability")
+    st.subheader("Operational timeline")
+    journey.render_timeline(inc["id"])
     st.subheader("1 · The pipeline story")
     for p in DE.lineage_paths(inc["dataset_id"], data["G"]):
         st.write("→ " + " → ".join(data["datasets"][n]["name"] for n in p))
@@ -126,6 +138,10 @@ def pipeline_view(inc, data):
     a3.metric("Data quality", a["quality"])
     a4.metric("Pipeline reliability", f'{a["reliability_pct"]}%')
     action_panel(inc, data)
+    applied = bool(st.session_state.get(f'dop_opt_applied_{inc["id"]}'))
+    fresh_txt, _, _, _ = _fresh(data, inc["dataset_id"])
+    journey.render_resolution(inc["id"], applied, f'freshness {fresh_txt}', inc["owner_team"])
+    journey.render_correlation(inc["id"])
 
 
 def data_engineer_view(inc, data):

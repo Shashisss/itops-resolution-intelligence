@@ -42,6 +42,10 @@ CREATE TABLE dop_consumers(dataset_id TEXT, consumer TEXT);
 CREATE TABLE dop_incidents(id TEXT PRIMARY KEY, title TEXT, pipeline_id TEXT, dataset_id TEXT,
                            priority TEXT, status TEXT, created_at TEXT, stage TEXT, owner_team TEXT,
                            blocker TEXT, confirmed_cause TEXT, summary TEXT);
+
+-- ---------- shared: operational timeline + cross-domain correlation ----------
+CREATE TABLE timeline(id TEXT PRIMARY KEY, ref_id TEXT, domain TEXT, ts TEXT, kind TEXT, detail TEXT);
+CREATE TABLE correlations(id TEXT PRIMARY KEY, it_id TEXT, dop_id TEXT, shared_cause TEXT, note TEXT);
 """)
 
 services = [
@@ -205,6 +209,38 @@ dop_incidents = [
      "Freshness is 45m against a 15m SLA; Finance close depends on payments_gold."),
 ]
 c.executemany("INSERT INTO dop_incidents VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", dop_incidents)
+
+# ---------- one connected story across both domains ----------
+timeline = [
+    ("T-IT-1", "INC-8841", "itops", (now - dt.timedelta(minutes=120)).isoformat(timespec="minutes"),
+     "change", "CHG-1042 deployed — checkout-api v1.42 (changed the request/event contract)"),
+    ("T-IT-2", "INC-8841", "itops", (now - dt.timedelta(minutes=55)).isoformat(timespec="minutes"),
+     "alert", "payments-db active_connections 980 > 700 (threshold)"),
+    ("T-IT-3", "INC-8841", "itops", (now - dt.timedelta(minutes=52)).isoformat(timespec="minutes"),
+     "alert", "Payment API p95 latency 640ms > 300ms"),
+    ("T-IT-4", "INC-8841", "itops", (now - dt.timedelta(minutes=48)).isoformat(timespec="minutes"),
+     "incident", "INC-8841 raised (P2) — owner Platform Engineering"),
+    ("T-IT-5", "INC-8841", "itops", (now - dt.timedelta(minutes=25)).isoformat(timespec="minutes"),
+     "ticket", "JIRA-5521 raised for Checkout Team"),
+    ("T-DOP-1", "DOP-1001", "dataops", (now - dt.timedelta(minutes=120)).isoformat(timespec="minutes"),
+     "change", "CHG-1042 (same release) changed the event contract"),
+    ("T-DOP-2", "DOP-1001", "dataops", (now - dt.timedelta(minutes=36)).isoformat(timespec="minutes"),
+     "alert", "run R-9001 failed — SCHEMA_MISMATCH: unexpected column 'region_code'"),
+    ("T-DOP-3", "DOP-1001", "dataops", (now - dt.timedelta(minutes=35)).isoformat(timespec="minutes"),
+     "alert", "orders_bronze freshness 40 min > 30 min SLA"),
+    ("T-DOP-4", "DOP-1001", "dataops", (now - dt.timedelta(minutes=34)).isoformat(timespec="minutes"),
+     "incident", "DOP-1001 raised (P2) — owner Data Platform"),
+    ("T-DOP-5", "DOP-1001", "dataops", (now - dt.timedelta(minutes=33)).isoformat(timespec="minutes"),
+     "impact", "orders_gold stale → Ops reporting & Revenue dashboard at risk"),
+]
+c.executemany("INSERT INTO timeline VALUES(?,?,?,?,?,?)", timeline)
+
+correlations = [
+    ("CORR-1", "INC-8841", "DOP-1001", "CHG-1042",
+     "checkout-api v1.42 changed the event contract — the same change caused the payment API retry storm "
+     "(INC-8841) and broke orders_bronze ingestion via schema drift (DOP-1001)."),
+]
+c.executemany("INSERT INTO correlations VALUES(?,?,?,?,?)", correlations)
 
 con.commit()
 con.close()

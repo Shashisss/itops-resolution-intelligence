@@ -9,6 +9,7 @@ import streamlit as st
 import engine as E
 import csm
 import developer
+import journey
 
 SLA_HOURS = {"P1": 4, "P2": 8, "P3": 24, "P4": 72}
 STAGES = ["Detected", "Triaged", "Diagnosed", "Change raised", "Fix in progress", "Fix applied", "Verified", "Closed"]
@@ -73,6 +74,7 @@ def context_header(inc, ctx):
     st.caption(f'SLA — {SLA_ASSUMPTION}')
     if not k:
         st.caption("No business KPI is mapped for this scenario — impact shown as service-level only.")
+    journey.render_verdict(st.session_state.get(f'verdict_{inc["id"]}', "Investigating"))
 
 
 def handoff(text):
@@ -94,21 +96,14 @@ def _carried(inc, ctx, biz, sla_txt):
 
 
 def hypotheses(inc, ctx):
-    services, changes, metrics, G = ctx["services"], ctx["changes"], ctx["metrics"], ctx["G"]
-    st.markdown("**RCA hypotheses — suspected vs confirmed, with evidence & confidence**")
-    st.caption("Deterministic graph traversal + rule-based scoring — not autonomous/learned root-cause analysis.")
-    hyps = E.causes(inc, G, changes, metrics, services)
+    hyps = journey.render_hypotheses(E.causes(inc, ctx["G"], ctx["changes"], ctx["metrics"], ctx["services"]))
     if not hyps:
-        st.info("No change or metric breach is linked to this incident yet.")
         return hyps
-    for h in hyps:
-        badge = "✅ CONFIRMED" if h["status"] == "confirmed" else "🔶 SUSPECTED"
-        st.markdown(f'- {badge} · *{h["type"]}* · confidence **{h["confidence"]}** — {h["text"]}  \n'
-                    f'  ↳ **evidence:** {h["evidence"]}')
-    top = hyps[0]
+    top = journey.rank(hyps)[0]
     if top["status"] != "confirmed":
         if st.button("Confirm top hypothesis as root cause", key="confirm_" + inc["id"]):
             E.confirm_cause(inc["id"], top["key"])
+            journey.add_event(inc["id"], "itops", "verify", f'root cause confirmed: {top["text"]}')
             st.session_state["flash"] = "Root cause CONFIRMED and recorded against the incident."
             st.rerun()
     return hyps
@@ -137,34 +132,34 @@ def _verification(inc, ctx, applied):
 
 
 def action_panel(inc, ctx):
-    changes, metrics, G = ctx["changes"], ctx["metrics"], ctx["G"]
     st.markdown("---")
     st.markdown("#### Remediation & verification   ·   🧪 **SIMULATED**")
-    st.caption("Simulation only — no real systems are touched. Approval is enforced before high-risk actions.")
-    rec = E.recommend(inc, E.causes(inc, G, changes, metrics, ctx["services"]))
-    applied = st.session_state.get(f'applied_{inc["id"]}', False)
-
-    rows, k = _verification(inc, ctx, applied)
-    st.markdown("**Verification — before / after, with the thresholds that were checked**")
-    st.dataframe(pd.DataFrame(rows), hide_index=True)
-    if k:
-        st.caption(f'Recovery is **simulated**. Thresholds checked: latency, error rate, DB connections and '
-                   f'{k["metric"].replace("_"," ")} ≥ {k["baseline"]:.1f}{k["unit"]}.')
-    else:
-        st.caption("Recovery is **simulated**. Thresholds checked: latency, error rate and DB connections.")
-
+    st.caption("The outcome depends on the action chosen; verification is independent. Approval is enforced for "
+               "high-risk actions.")
+    labels = [f'{o["id"]} · {o["label"]}' for o in E.IT_REMEDIATION]
+    sel = st.radio("Remediation option", labels, key="it_opt_" + inc["id"])
+    opt = E.IT_REMEDIATION[labels.index(sel)]
+    applied = st.session_state.get(f'it_opt_applied_{inc["id"]}') == opt["id"]
+    rows = E.it_verification(inc, ctx, opt, applied)
+    journey.render_verification(rows, "SRE verification service")
+    journey.render_verdict(journey.verdict(rows, applied))
+    st.caption("Recovery is **simulated**; the thresholds checked are shown above (latency, error rate, DB "
+               "connections, business KPI).")
     approved = True
-    if rec["mode"] in ("Human approval", "Policy controlled"):
-        st.warning(f'🔴 **{rec["mode"]} required** — {rec["action"]}')
-        approved = st.checkbox("I approve this action (required before execution)", key="appr_" + inc["id"])
+    if opt["mode"] in ("Human approval", "Policy controlled"):
+        st.warning(f'🔴 **{opt["mode"]} required** — {opt["label"]}')
+        approved = st.checkbox("I approve this action (required before execution)", key="it_appr_" + inc["id"])
     else:
-        st.info(f'🟢 **{rec["mode"]}** — {rec["action"]}')
-    if st.button("Apply recommended action (simulated)", disabled=not approved, type="primary",
-                 key="apply_" + inc["id"]):
-        st.session_state[f'applied_{inc["id"]}'] = True
-        E.set_stage(inc["id"], "Verified")
-        st.session_state["flash"] = ("Simulated remediation applied → verification passed → "
-                                     "incident advanced to 'Verified'. Evidence captured for learning.")
+        st.info(f'🟢 **{opt["mode"]}** — {opt["label"]}')
+    if st.button("Apply selected action (simulated)", disabled=not approved, type="primary",
+                 key="it_apply_" + inc["id"]):
+        v = journey.verdict(E.it_verification(inc, ctx, opt, True), True)
+        st.session_state[f'it_opt_applied_{inc["id"]}'] = opt["id"]
+        st.session_state[f'verdict_{inc["id"]}'] = v
+        E.set_stage(inc["id"], {"Verified": "Verified", "Mitigated": "Fix applied",
+                                "Recovery failed": "Fix in progress"}.get(v, "Fix applied"))
+        journey.add_event(inc["id"], "itops", "repair", f'{opt["label"]} — independent verification: {v}')
+        st.session_state["flash"] = f'Action applied (simulated). Independent verification → **{v}**.'
         st.rerun()
 
 
@@ -175,6 +170,10 @@ def incident_view(inc, ctx):
     st.subheader("Incident intelligence — full walkthrough")
     context_header(inc, ctx)
     handoff("to L2/L3 (diagnosis), Developer (fix via ticket), and back to the Incident Manager to verify.")
+    st.subheader("Detection")
+    journey.render_detection(inc["id"], "Monitoring / SRE")
+    st.subheader("Operational timeline")
+    journey.render_timeline(inc["id"])
     st.subheader("1 · The operational story")
     st.write(" → ".join(services[n]["name"] for n in E.dependency_paths(G, inc["service_id"])[0]))
     st.info(inc["summary"])
@@ -205,6 +204,9 @@ def incident_view(inc, ctx):
     else:
         st.caption("No recent change in the impacted subgraph.")
     action_panel(inc, ctx)
+    applied = bool(st.session_state.get(f'it_opt_applied_{inc["id"]}'))
+    journey.render_resolution(inc["id"], applied, _sla_detail(inc)[0], inc["owner_team"])
+    journey.render_correlation(inc["id"])
 
 
 def csm_view(inc, ctx):
