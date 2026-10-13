@@ -14,7 +14,7 @@ import viz
 
 SLA_HOURS = {"P1": 4, "P2": 8, "P3": 24, "P4": 72}
 STAGES = ["Detected", "Triaged", "Diagnosed", "Change raised", "Fix in progress", "Fix applied", "Verified", "Closed"]
-PERSONAS = ["Incident intelligence", "CSM", "L1 Engineer", "L2 / L3 Engineer", "Developer", "Incident Manager"]
+PERSONAS = ["CSM", "L1 Engineer", "L2 / L3 Engineer", "Developer", "Incident Manager"]
 METRIC_LABELS = {"p95_latency_ms": "Latency (p95, ms)", "error_rate_pct": "Error rate (%)",
                  "active_connections": "DB connections", "cpu_pct": "DB CPU (%)"}
 SLA_ASSUMPTION = ("Priority-based estimate: clock from incident creation, target hours by priority. "

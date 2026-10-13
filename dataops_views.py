@@ -7,7 +7,7 @@ import dataops_engine as DE
 import journey
 import viz
 
-PERSONAS = ["Pipeline intelligence", "Data Engineer", "Data Owner", "Platform Engineer", "Data Consumer"]
+PERSONAS = ["Data Engineer", "Data Owner", "Platform Engineer", "Data Consumer"]
 
 
 def _stepper(stage):

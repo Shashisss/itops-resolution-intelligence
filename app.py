@@ -43,7 +43,7 @@ if _needs_seed():
 st.set_page_config(page_title="Resolution Intelligence — POC", layout="wide")
 viz.inject_css()
 st.title("Resolution Intelligence")
-st.caption("Operational intelligence across IT Ops and DataOps — one governed platform   ·   build v23")
+st.caption("Operational intelligence across IT Ops and DataOps — one governed platform   ·   build v24")
 
 flash = st.session_state.pop("flash", None)
 if flash:
@@ -62,19 +62,24 @@ def render_itops():
                tickets=E.load_tickets(), kpis=E.load_kpis(), G=G)
     ordered = sorted(incidents, key=lambda i: (i["status"] != "open", i["id"]))
     titles = {i["id"]: f'{i["id"]} · {i["title"]} ({i["status"]})' for i in ordered}
-    persona = st.sidebar.selectbox("Persona", personas.PERSONAS, key="it_persona")
+    view = st.sidebar.radio("View", ["End-to-end journey", "By role"], key="it_view")
+    persona = None
+    if view == "By role":
+        persona = st.sidebar.selectbox("Persona", personas.PERSONAS, key="it_persona")
     sel = st.sidebar.selectbox("Context incident", list(titles), format_func=lambda x: titles[x], key="it_inc")
-    st.sidebar.caption("Switch persona to see each role's day-to-day view of the same incident.")
+    st.sidebar.caption("End-to-end = the full journey (role-agnostic) · By role = one person's day-to-day slice.")
     st.sidebar.checkbox("🤖 Auto-coordinate on open (autonomous)", key="auto_coord",
                         help="Coordination (assign + notify) is autonomous under policy; production changes "
                              "still require human approval.")
     if st.sidebar.button("↺ Reset sample data", key="reset_it"):
         _reset(); st.rerun()
     inc = next(i for i in incidents if i["id"] == sel)
-    {"Incident intelligence": personas.incident_view, "CSM": personas.csm_view,
-     "L1 Engineer": personas.l1_view, "L2 / L3 Engineer": personas.l2_view,
-     "Developer": lambda i, c: personas.developer_view(c),
-     "Incident Manager": personas.im_view}[persona](inc, ctx)
+    if view == "End-to-end journey":
+        personas.incident_view(inc, ctx)
+    else:
+        {"CSM": personas.csm_view, "L1 Engineer": personas.l1_view, "L2 / L3 Engineer": personas.l2_view,
+         "Developer": lambda i, c: personas.developer_view(c),
+         "Incident Manager": personas.im_view}[persona](inc, ctx)
 
 
 # ================================================================= DataOps
@@ -82,18 +87,23 @@ def render_dataops():
     data = DE.load()
     ordered = sorted(data["incidents"], key=lambda i: (i["status"] != "open", i["id"]))
     titles = {i["id"]: f'{i["id"]} · {i["title"]} ({i["status"]})' for i in ordered}
-    persona = st.sidebar.selectbox("Persona", DV.PERSONAS, key="dop_persona")
+    view = st.sidebar.radio("View", ["End-to-end journey", "By role"], key="dop_view")
+    persona = None
+    if view == "By role":
+        persona = st.sidebar.selectbox("Persona", DV.PERSONAS, key="dop_persona")
     sel = st.sidebar.selectbox("Pipeline incident", list(titles), format_func=lambda x: titles[x], key="dop_inc")
-    st.sidebar.caption("Pipelines, data quality, freshness and lineage — shaped per role.")
+    st.sidebar.caption("End-to-end = the full journey (role-agnostic) · By role = one person's day-to-day slice.")
     st.sidebar.checkbox("🤖 Auto-coordinate on open (autonomous)", key="auto_coord",
                         help="Coordination (assign + notify) is autonomous under policy; production changes "
                              "still require human approval.")
     if st.sidebar.button("↺ Reset sample data", key="reset_dop"):
         _reset(); st.rerun()
     inc = next(i for i in data["incidents"] if i["id"] == sel)
-    {"Pipeline intelligence": DV.pipeline_view, "Data Engineer": DV.data_engineer_view,
-     "Data Owner": DV.data_owner_view, "Platform Engineer": DV.platform_engineer_view,
-     "Data Consumer": DV.data_consumer_view}[persona](inc, data)
+    if view == "End-to-end journey":
+        DV.pipeline_view(inc, data)
+    else:
+        {"Data Engineer": DV.data_engineer_view, "Data Owner": DV.data_owner_view,
+         "Platform Engineer": DV.platform_engineer_view, "Data Consumer": DV.data_consumer_view}[persona](inc, data)
 
 
 def render_liveops():
