@@ -62,6 +62,8 @@ CREATE TABLE comments(id INTEGER PRIMARY KEY AUTOINCREMENT, ref_id TEXT, author 
                       text TEXT, ts TEXT);
 CREATE TABLE delegations(id INTEGER PRIMARY KEY AUTOINCREMENT, ref_id TEXT, frm TEXT, to_ TEXT,
                          action TEXT, status TEXT, ts TEXT);
+CREATE TABLE notifications(id INTEGER PRIMARY KEY AUTOINCREMENT, role TEXT, ref_id TEXT, text TEXT,
+                           ts TEXT, read INTEGER DEFAULT 0);
 """)
 
 # ------------------------------------------------------------------ IT Ops
@@ -205,6 +207,10 @@ c.executemany("INSERT INTO comments(ref_id,author,role,text,ts) VALUES(?,?,?,?,?
 ])
 c.executemany("INSERT INTO delegations(ref_id,frm,to_,action,status,ts) VALUES(?,?,?,?,?,?)", [
     ("DOP-1001", "Data Owner", "Data Engineer", "Reconcile schema (contract v4) + replay", "assigned", M(14)),
+])
+c.executemany("INSERT INTO notifications(role,ref_id,text,ts,read) VALUES(?,?,?,?,?)", [
+    ("Data Engineer", "DOP-1001", "Data Owner delegated to you: Reconcile schema (contract v4) + replay", M(14), 0),
+    ("Data Owner", "INC-8841", "Amit (Incident Manager) mentioned you: business impact on Payments", M(12), 0),
 ])
 
 con.commit()

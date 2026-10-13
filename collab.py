@@ -51,6 +51,47 @@ def set_delegation_status(did, status):
     con.close()
 
 
+MENTIONS = {"@dataengineer": "Data Engineer", "@dataowner": "Data Owner",
+            "@platformengineer": "Platform Engineer", "@incidentmanager": "Incident Manager",
+            "@l2": "L2 / L3 Engineer", "@developer": "Developer", "@csm": "CSM", "@dba": "DBA Team"}
+
+
+def parse_mentions(text):
+    low = text.lower()
+    return sorted({role for token, role in MENTIONS.items() if token in low})
+
+
+def add_notification(role, ref_id, text):
+    con = sqlite3.connect(DB)
+    con.execute("INSERT INTO notifications(role,ref_id,text,ts,read) VALUES(?,?,?,?,0)",
+                (role, ref_id, text, _now()))
+    con.commit()
+    con.close()
+
+
+def notifications_for(role, limit=12):
+    con = sqlite3.connect(DB)
+    con.row_factory = sqlite3.Row
+    rows = [dict(r) for r in con.execute(
+        "SELECT * FROM notifications WHERE role=? ORDER BY id DESC LIMIT ?", (role, limit))]
+    con.close()
+    return rows
+
+
+def unread_count(role):
+    con = sqlite3.connect(DB)
+    n = con.execute("SELECT COUNT(*) FROM notifications WHERE role=? AND read=0", (role,)).fetchone()[0]
+    con.close()
+    return n
+
+
+def mark_all_read(role):
+    con = sqlite3.connect(DB)
+    con.execute("UPDATE notifications SET read=1 WHERE role=?", (role,))
+    con.commit()
+    con.close()
+
+
 def collaborators():
     con = sqlite3.connect(DB)
     con.row_factory = sqlite3.Row
