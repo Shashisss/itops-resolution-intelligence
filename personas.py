@@ -16,6 +16,15 @@ import collab
 SLA_HOURS = {"P1": 4, "P2": 8, "P3": 24, "P4": 72}
 STAGES = ["Detected", "Triaged", "Diagnosed", "Change raised", "Fix in progress", "Fix applied", "Verified", "Closed"]
 PERSONAS = ["CSM", "L1 Engineer", "L2 / L3 Engineer", "Developer", "Incident Manager"]
+IT_STEP_HELP = {
+    "Detect": "What fired and when — the ServiceNow incident, the Jira defect and observability alerts on one timeline.",
+    "Diagnose": "Ranked root-cause hypotheses with the evidence and confidence behind each — human-confirmed, never assumed.",
+    "Decide": "The recommended action, the next responsible actor, and the SLA / OLA at risk. Coordination is "
+              "autonomous; execution is gated.",
+    "Act": "Run the chosen remediation (simulated) — production changes require human approval.",
+    "Verify": "An independent re-check of telemetry against thresholds → Verified / Mitigated / Recovery failed. "
+              "Only Verified closes the incident.",
+}
 METRIC_LABELS = {"p95_latency_ms": "Latency (p95, ms)", "error_rate_pct": "Error rate (%)",
                  "active_connections": "DB connections", "cpu_pct": "DB CPU (%)"}
 SLA_ASSUMPTION = ("Priority-based estimate: clock from incident creation, target hours by priority. "
@@ -62,10 +71,18 @@ def context_header(inc, ctx):
     sla_txt, rem, target, elapsed = _sla_detail(inc)
     viz.stepper(STAGES, inc["stage"])
     k = _kpi(ctx, biz)
+    ola = next((o for o in E.load_olas() if o["team"] == inc["owner_team"]), None)
+    ola_txt = "not defined"
+    if ola:
+        el_min = (dt.datetime.now() - dt.datetime.fromisoformat(inc["created_at"])).total_seconds() / 60
+        rem_ola = ola["restore_min"] - el_min
+        ola_txt = (f'{inc["owner_team"]} · {ola["restore_min"]}m restore · '
+                   + ("BREACHED" if rem_ola <= 0 else f'{int(rem_ola)}m left'))
     viz.fact_cards([
         ("Stage", inc["stage"], "#4f46e5"),
         ("Owner", inc["owner_team"], "#0d9488"),
-        ("SLA", sla_txt, "#d97706"),
+        ("SLA (customer)", sla_txt, "#d97706"),
+        ("OLA (owner team)", ola_txt, "#0891b2"),
         ("Business KPI", (f'{k["metric"].replace("_"," ")} {k["current"]:.0f}{k["unit"]}' if k else "not mapped"),
          "#7c3aed"),
     ])
@@ -73,7 +90,8 @@ def context_header(inc, ctx):
                 f'{services[biz]["name"] if biz else "—"}   ·   **Priority:** {inc["priority"]}')
     tk = next((t for t in ctx["tickets"] if t["incident_id"] == inc["id"]), None)
     if tk:
-        st.markdown(f'**Dev ticket:** {tk["id"]} ({tk["status"]}) · {tk["assignee"]}')
+        st.markdown(f'**Jira defect:** {tk["id"]} ({tk["status"]}) · {tk["assignee"]}')
+    st.caption("**Sources:** ServiceNow (incident) · Jira (defect) · Observability · CMDB")
     st.caption(f'SLA — {SLA_ASSUMPTION}')
     if not k:
         st.caption("No business KPI is mapped for this scenario — impact shown as service-level only.")
@@ -241,7 +259,8 @@ def incident_view(inc, ctx):
 
     journey.wizard("it_step_" + inc["id"], viz.RESOLUTION_FLOW,
                    {"Detect": detect, "Diagnose": diagnose, "Decide": decide,
-                    "Act": lambda: action_panel(inc, ctx), "Verify": lambda: verify_panel(inc, ctx)}, default=0)
+                    "Act": lambda: action_panel(inc, ctx), "Verify": lambda: verify_panel(inc, ctx)},
+                   default=0, help=IT_STEP_HELP)
 
 
 def csm_view(inc, ctx):

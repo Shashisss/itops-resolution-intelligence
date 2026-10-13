@@ -194,13 +194,16 @@ def _nav(key, steps, delta):
     st.session_state[key] = steps[max(0, min(len(steps) - 1, i + delta))]
 
 
-def wizard(key, steps, renderers, default=0):
+def wizard(key, steps, renderers, default=0, help=None):
     """Single-step-at-a-time wizard with one progress metaphor. renderers maps step -> callable."""
     if key not in st.session_state or st.session_state.get(key) not in steps:
         st.session_state[key] = steps[default]
     st.radio("Step", steps, horizontal=True, key=key)
     step = st.session_state[key]
     viz.resolution_flow(current=step)
+    if help and step in help:
+        st.markdown(f'<div class="ri-card" style="background:#f8fafc;padding:9px 13px;margin:2px 0 10px">'
+                    f'<b>What this stage is:</b> {help[step]}</div>', unsafe_allow_html=True)
     renderers[step]()
     i = steps.index(step)
     back, nxt, _ = st.columns([1, 1, 5])

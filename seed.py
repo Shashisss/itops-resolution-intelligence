@@ -64,6 +64,8 @@ CREATE TABLE delegations(id INTEGER PRIMARY KEY AUTOINCREMENT, ref_id TEXT, frm 
                          action TEXT, status TEXT, ts TEXT);
 CREATE TABLE notifications(id INTEGER PRIMARY KEY AUTOINCREMENT, role TEXT, ref_id TEXT, text TEXT,
                            ts TEXT, read INTEGER DEFAULT 0);
+-- OLA = internal Operational Level Agreement per owning team (distinct from the customer SLA)
+CREATE TABLE olas(team TEXT PRIMARY KEY, response_min INT, restore_min INT);
 """)
 
 # ------------------------------------------------------------------ IT Ops
@@ -183,8 +185,9 @@ timeline = [
     ("T-4", "DOP-1001", "dataops", M(45), "impact", "payments_gold stale (45 min > 15 min SLA)"),
     ("T-5", "INC-8841", "itops", M(44), "alert", "Payment API data_age_min 45 > 15 (serving stale risk data)"),
     ("T-6", "INC-8841", "itops", M(43), "alert", "Payment API error_rate_pct 8.1 > 1.0"),
-    ("T-7", "INC-8841", "itops", M(42), "incident", "INC-8841 raised (P2) — owner Platform Engineering"),
-    ("T-8", "INC-8841", "itops", M(20), "ticket", "JIRA-5521 raised for Data Platform"),
+    ("T-7", "INC-8841", "itops", M(42), "incident",
+     "ServiceNow: INC-8841 raised (P2) — owner Platform Engineering"),
+    ("T-8", "INC-8841", "itops", M(20), "ticket", "Jira: JIRA-5521 defect created for Data Platform"),
 ]
 c.executemany("INSERT INTO timeline VALUES(?,?,?,?,?,?)", timeline)
 c.executemany("INSERT INTO correlations VALUES(?,?,?,?,?)", [
@@ -211,6 +214,11 @@ c.executemany("INSERT INTO delegations(ref_id,frm,to_,action,status,ts) VALUES(?
 c.executemany("INSERT INTO notifications(role,ref_id,text,ts,read) VALUES(?,?,?,?,?)", [
     ("Data Engineer", "DOP-1001", "Data Owner delegated to you: Reconcile schema (contract v4) + replay", M(14), 0),
     ("Data Owner", "INC-8841", "Amit (Incident Manager) mentioned you: business impact on Payments", M(12), 0),
+])
+c.executemany("INSERT INTO olas(team,response_min,restore_min) VALUES(?,?,?)", [
+    ("Platform Engineering", 30, 180), ("Checkout Team", 30, 240), ("DBA Team", 15, 120),
+    ("Cloud Platform", 30, 240), ("Data Platform", 30, 180), ("Finance Data", 30, 180),
+    ("Analytics Engineering", 60, 240),
 ])
 
 con.commit()

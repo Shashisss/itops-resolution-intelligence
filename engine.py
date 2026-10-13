@@ -57,6 +57,14 @@ def load_kpis():
     return rows
 
 
+def load_olas():
+    con = sqlite3.connect(DB)
+    con.row_factory = sqlite3.Row
+    rows = [dict(r) for r in con.execute("SELECT * FROM olas")]
+    con.close()
+    return rows
+
+
 def impact_chain(G, node):
     """Primary upstream path to the business service (for the narrative)."""
     paths = dependency_paths(G, node)

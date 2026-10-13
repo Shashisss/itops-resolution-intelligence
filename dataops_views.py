@@ -1,14 +1,23 @@
 #!/usr/bin/env python3
 """DataOps persona views — pipelines, DQ, freshness, lineage, contracts.
 Separate from IT Ops views; shares the evidence / approval / lifecycle patterns."""
+import datetime as dt
 import pandas as pd
 import streamlit as st
 import dataops_engine as DE
+import engine as E
 import journey
 import viz
 import collab
 
 PERSONAS = ["Data Engineer", "Data Owner", "Platform Engineer", "Data Consumer"]
+DOP_STEP_HELP = {
+    "Detect": "What failed and when — the failing pipeline run, freshness / DQ alerts, and the lineage of affected datasets.",
+    "Diagnose": "Ranked pipeline root-cause hypotheses (schema drift, data quality, backlog) with evidence and confidence.",
+    "Decide": "The recommended repair, the next responsible engineer, and the data-product SLA / OLA at risk.",
+    "Act": "Run the chosen repair (simulated) — production data changes require human approval.",
+    "Verify": "An independent re-check of freshness, DQ and downstream health → Verified / Mitigated / Recovery failed.",
+}
 
 
 def _stepper(stage):
@@ -35,10 +44,18 @@ def context_header(inc, data):
     fresh_txt, breach, _, _ = _fresh(data, ds)
     downs, cons = DE.impact(ds, data)
     viz.stepper(DE.STAGES, inc["stage"])
+    _owner = pipe.get("owner_team", inc["owner_team"])
+    ola = next((o for o in E.load_olas() if o["team"] == _owner), None)
+    ola_txt = "not defined"
+    if ola:
+        el = (dt.datetime.now() - dt.datetime.fromisoformat(inc["created_at"])).total_seconds() / 60
+        rem = ola["restore_min"] - el
+        ola_txt = f'{ola["restore_min"]}m · ' + ("BREACHED" if rem <= 0 else f'{int(rem)}m left')
     viz.fact_cards([
         ("Stage", inc["stage"], "#4f46e5"),
-        ("Pipeline owner", pipe.get("owner_team", inc["owner_team"]), "#0d9488"),
-        ("Freshness", fresh_txt, "#dc2626" if breach else "#16a34a"),
+        ("Pipeline owner", _owner, "#0d9488"),
+        ("Freshness (SLA)", fresh_txt, "#dc2626" if breach else "#16a34a"),
+        ("OLA (owner)", ola_txt, "#0891b2"),
         ("Downstream consumers", str(len(cons)), "#7c3aed"),
     ])
     st.markdown(f'**Dataset:** {name} ({data["datasets"][ds]["layer"]})   ·   **Blocker:** {inc["blocker"] or "—"}   ·   '
@@ -179,7 +196,7 @@ def pipeline_view(inc, data):
     journey.wizard("dop_step_" + inc["id"], viz.RESOLUTION_FLOW,
                    {"Detect": detect, "Diagnose": diagnose, "Decide": decide,
                     "Act": lambda: action_panel(inc, data), "Verify": lambda: verify_panel(inc, data)},
-                   default=0)
+                   default=0, help=DOP_STEP_HELP)
 
 
 def data_engineer_view(inc, data):
