@@ -45,17 +45,55 @@ def _rail(inc, rec):
         st.markdown(f'**{cm["author"]}** · _{cm["ts"][11:16]}_  \n{cm["text"]}')
 
 
-def _thread_spine(deleg, confirmed, verdict):
-    return [
-        ("Detect", "done", "Incident and upstream pipeline failure detected", "5m"),
+def _stage_ola_live(inc, stage, target):
+    now = dt.datetime.now()
+    start = None
+    if stage in ("Detect", "Correlate"):
+        try:
+            start = dt.datetime.fromisoformat(inc["created_at"])
+        except Exception:
+            start = None
+    elif stage == "Coordinate":
+        ds = collab.delegations(inc["id"])
+        if ds:
+            try:
+                start = dt.datetime.fromisoformat(ds[0]["ts"])
+            except Exception:
+                start = None
+    elif stage in ("Verify", "Close"):
+        ev = [x for x in journey.timeline(inc["id"]) if x["kind"] == "repair"]
+        if ev:
+            try:
+                start = dt.datetime.fromisoformat(ev[-1]["ts"])
+            except Exception:
+                start = None
+    if start is None:
+        return f'{target}m'
+    rem = target - (now - start).total_seconds() / 60
+    return f'{target}m · ' + ("BREACHED" if rem <= 0 else f'{int(rem)}m left')
+
+
+def _thread_spine(inc, deleg, confirmed, verdict):
+    olas = {o["stage"]: o["target_min"] for o in E.load_stage_olas()}
+    stages = [
+        ("Detect", "done", "Incident and upstream pipeline failure detected", "Detect"),
         ("Correlate", "done" if confirmed else "current",
-         "Schema mismatch → stale data → affected service (hypothesis)", "15m"),
-        ("Coordinate", "done" if deleg else "current", "Assign owner, approvals, remediation", "15m"),
+         "Schema mismatch → stale data → affected service (hypothesis)", "Correlate"),
+        ("Coordinate", "done" if deleg else "current", "Assign owner, approvals, remediation", "Coordinate"),
         ("Verify", "done" if verdict == "Verified" else ("current" if deleg else "todo"),
-         "Observed value vs threshold + verifying actor", "30m"),
+         "Observed value vs threshold + verifying actor", "Verify"),
         ("Close", "done" if verdict == "Verified" else ("current" if verdict in ("Mitigated", "Recovery failed") else "todo"),
-         "Verified / Mitigated / Recovery failed", None),
+         "Verified / Mitigated / Recovery failed", "Close"),
     ]
+    cur = next((s[0] for s in stages if s[1] == "current"), None)
+    items = []
+    for title, status, detail, key in stages:
+        if key in olas:
+            ola = _stage_ola_live(inc, key, olas[key]) if key == cur else f'{olas[key]}m'
+        else:
+            ola = None
+        items.append((title, status, detail, ola))
+    return items
 
 
 def it_command(inc, ctx):
@@ -82,9 +120,9 @@ def it_command(inc, ctx):
     st.markdown("#### Lifecycle — the single progress model")
     viz.stepper(P.STAGES, inc["stage"])
     st.markdown("#### Resolution thread")
-    viz.thread_spine(_thread_spine(deleg, confirmed, verdict))
+    viz.thread_spine(_thread_spine(inc, deleg, confirmed, verdict))
     st.caption("Each stage carries an internal **OLA** (owner-team target) — distinct from the customer **SLA** "
-               "in the header. Set per team and per stage.")
+               "in the header. The active stage shows live remaining / BREACHED.")
     if corr:
         st.caption(f'🔗 Thread links **IT Ops {inc["id"]}** ↔ **DataOps {corr["other_id"]}** · '
                    f'shared cause **{corr["shared_cause"]}**.')
@@ -197,9 +235,9 @@ def dop_command(inc, data):
     st.markdown("#### Lifecycle — the single progress model")
     viz.stepper(DE.STAGES, inc["stage"])
     st.markdown("#### Resolution thread")
-    viz.thread_spine(_thread_spine(deleg, confirmed, verdict))
+    viz.thread_spine(_thread_spine(inc, deleg, confirmed, verdict))
     st.caption("Each stage carries an internal **OLA** (owner-team target) — distinct from the customer **SLA** "
-               "in the header. Set per team and per stage.")
+               "in the header. The active stage shows live remaining / BREACHED.")
     if corr:
         st.caption(f'🔗 Thread links **DataOps {inc["id"]}** ↔ **IT Ops {corr["other_id"]}** · '
                    f'shared cause **{corr["shared_cause"]}**.')

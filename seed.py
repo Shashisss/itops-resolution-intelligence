@@ -66,6 +66,8 @@ CREATE TABLE notifications(id INTEGER PRIMARY KEY AUTOINCREMENT, role TEXT, ref_
                            ts TEXT, read INTEGER DEFAULT 0);
 -- OLA = internal Operational Level Agreement per owning team (distinct from the customer SLA)
 CREATE TABLE olas(team TEXT PRIMARY KEY, response_min INT, restore_min INT);
+-- Per-stage OLA targets (configurable) for the resolution thread
+CREATE TABLE stage_olas(stage TEXT PRIMARY KEY, target_min INT);
 """)
 
 # ------------------------------------------------------------------ IT Ops
@@ -219,6 +221,9 @@ c.executemany("INSERT INTO olas(team,response_min,restore_min) VALUES(?,?,?)", [
     ("Platform Engineering", 30, 180), ("Checkout Team", 30, 240), ("DBA Team", 15, 120),
     ("Cloud Platform", 30, 240), ("Data Platform", 30, 180), ("Finance Data", 30, 180),
     ("Analytics Engineering", 60, 240),
+])
+c.executemany("INSERT INTO stage_olas(stage,target_min) VALUES(?,?)", [
+    ("Detect", 5), ("Correlate", 15), ("Coordinate", 15), ("Verify", 30),
 ])
 
 con.commit()

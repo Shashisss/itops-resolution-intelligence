@@ -26,7 +26,7 @@ def _needs_seed():
         con = sqlite3.connect("data/ops.db")
         required = ("tickets", "kpis", "incidents", "pipelines", "dop_incidents", "timeline",
                     "correlations", "service_data", "live_events", "comments", "delegations", "notifications",
-                    "olas")
+                    "olas", "stage_olas")
         for t in required:
             con.execute(f"SELECT 1 FROM {t} LIMIT 1")
         con.close()
@@ -188,4 +188,4 @@ else:
     render_liveops()
 
 st.divider()
-st.caption("Sample data · simulated actions · build v35 — proof of concept, not production.")
+st.caption("Sample data · simulated actions · build v36 — proof of concept, not production.")
