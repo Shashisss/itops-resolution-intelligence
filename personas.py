@@ -61,13 +61,14 @@ def context_header(inc, ctx):
     biz = E.business_service(G, chain, services)
     sla_txt, rem, target, elapsed = _sla_detail(inc)
     viz.stepper(STAGES, inc["stage"])
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Stage", inc["stage"])
-    c2.metric("Owner", inc["owner_team"])
-    c3.metric("SLA", sla_txt)
     k = _kpi(ctx, biz)
-    c4.metric("Business KPI", f'{k["metric"].replace("_"," ")} {k["current"]:.0f}{k["unit"]}' if k
-              else "not mapped")
+    viz.fact_cards([
+        ("Stage", inc["stage"], "#4f46e5"),
+        ("Owner", inc["owner_team"], "#0d9488"),
+        ("SLA", sla_txt, "#d97706"),
+        ("Business KPI", (f'{k["metric"].replace("_"," ")} {k["current"]:.0f}{k["unit"]}' if k else "not mapped"),
+         "#7c3aed"),
+    ])
     st.markdown(f'**Blocker:** {inc["blocker"] or "—"}   ·   **Business service:** '
                 f'{services[biz]["name"] if biz else "—"}   ·   **Priority:** {inc["priority"]}')
     tk = next((t for t in ctx["tickets"] if t["incident_id"] == inc["id"]), None)
@@ -134,8 +135,7 @@ def _verification(inc, ctx, applied):
 
 
 def action_panel(inc, ctx):
-    st.markdown("---")
-    st.markdown("#### Remediation & verification   ·   🧪 **SIMULATED**")
+    st.markdown("#### Act — remediation   ·   🧪 **SIMULATED**")
     st.markdown('<span class="ri-tag" style="background:#dc2626">🔴 Execution — human approval</span> '
                 '<span style="color:#64748b;font-size:12px">(this changes production, so it is risk-gated)</span>',
                 unsafe_allow_html=True)
@@ -144,12 +144,6 @@ def action_panel(inc, ctx):
     labels = [f'{o["id"]} · {o["label"]}' for o in E.IT_REMEDIATION]
     sel = st.radio("Remediation option", labels, key="it_opt_" + inc["id"])
     opt = E.IT_REMEDIATION[labels.index(sel)]
-    applied = st.session_state.get(f'it_opt_applied_{inc["id"]}') == opt["id"]
-    rows = E.it_verification(inc, ctx, opt, applied)
-    journey.render_verification(rows, "SRE verification service")
-    journey.render_verdict(journey.verdict(rows, applied))
-    st.caption("Recovery is **simulated**; the thresholds checked are shown above (latency, error rate, DB "
-               "connections, business KPI).")
     approved = True
     if opt["mode"] in ("Human approval", "Policy controlled"):
         st.warning(f'🔴 **{opt["mode"]} required** — {opt["label"]}')
@@ -169,6 +163,27 @@ def action_panel(inc, ctx):
         st.rerun()
 
 
+def verify_panel(inc, ctx):
+    st.markdown("#### Verify — independent verification")
+    labels = [f'{o["id"]} · {o["label"]}' for o in E.IT_REMEDIATION]
+    sel = st.session_state.get("it_opt_" + inc["id"], labels[0])
+    opt = E.IT_REMEDIATION[labels.index(sel)] if sel in labels else E.IT_REMEDIATION[0]
+    applied = st.session_state.get(f'it_opt_applied_{inc["id"]}') == opt["id"]
+    rows = E.it_verification(inc, ctx, opt, applied)
+    journey.render_verification(rows, "SRE verification service")
+    journey.render_verdict(journey.verdict(rows, applied))
+    st.caption("Recovery is **simulated**; the thresholds checked are shown above (latency, error rate, DB "
+               "connections, business KPI).")
+    applied_any = bool(st.session_state.get(f'it_opt_applied_{inc["id"]}'))
+    journey.render_resolution(inc["id"], applied_any, _sla_detail(inc)[0], inc["owner_team"])
+    if applied_any:
+        journey.render_recovery_update(
+            "Customer success / Data Owner update",
+            f'Payments service restored — the upstream data is fresh and error rates are normal. '
+            f'Independent verification: **{st.session_state.get(f"verdict_{inc["id"]}", "")}**. (Simulated.)')
+    journey.render_correlation(inc["id"])
+
+
 # ---------------------------------------------------------------- personas
 def incident_view(inc, ctx):
     services, changes, metrics, incidents, G = (ctx["services"], ctx["changes"], ctx["metrics"],
@@ -177,45 +192,45 @@ def incident_view(inc, ctx):
     context_header(inc, ctx)
     viz.status_bar(f'🔎 {inc["id"]} · {inc["priority"]} · owner {inc["owner_team"]} · '
                    f'SLA {_sla_detail(inc)[0]} · {st.session_state.get(f"verdict_{inc["id"]}", "Investigating")}')
-    viz.resolution_flow()
-    handoff("to L2/L3 (diagnosis), Developer (fix via ticket), and back to the Incident Manager to verify.")
-    st.subheader("Detection")
-    journey.render_detection(inc["id"], "Monitoring / SRE")
-    st.subheader("Operational timeline")
-    journey.render_timeline(inc["id"])
-    st.subheader("1 · The operational story")
-    st.write(" → ".join(services[n]["name"] for n in E.dependency_paths(G, inc["service_id"])[0]))
-    st.info(inc["summary"])
-    st.subheader("2 · Business impact (computed over the graph)")
-    df = _kpi_df()
-    st.line_chart(df[df.scenario == "current"].set_index("ts")["value"], height=150)
-    st.subheader("3 · Root cause — hypotheses with evidence")
-    hypotheses(inc, ctx)
-    st.subheader("4 · Recommended action (policy-governed)")
-    rec = E.recommend(inc, E.causes(inc, G, changes, metrics, services))
-    viz.rec_card(rec["action"], rec["risk"], rec["mode"], journey.actors(rec))
-    journey.engage_block(inc["id"], rec["action"], journey.actors(rec))
-    with st.expander("5 · Related incidents"):
-        sim = E.similar(incidents, inc)
-        if sim:
-            st.caption(f'Above the relevance threshold ({E.SIMILARITY_THRESHOLD}); weak matches rejected.')
-            for s in sim:
+
+    def detect():
+        st.subheader("Detection")
+        journey.render_detection(inc["id"], "Monitoring / SRE")
+        st.subheader("Operational timeline")
+        journey.render_timeline(inc["id"])
+        st.subheader("The operational story")
+        st.write(" → ".join(services[n]["name"] for n in E.dependency_paths(G, inc["service_id"])[0]))
+        st.info(inc["summary"])
+        st.subheader("Business impact")
+        df = _kpi_df()
+        st.line_chart(df[df.scenario == "current"].set_index("ts")["value"], height=150)
+
+    def diagnose():
+        st.subheader("Root cause — hypotheses with evidence")
+        hypotheses(inc, ctx)
+        with st.expander("Related incidents"):
+            sim = E.similar(incidents, inc)
+            for s in (sim or [f'None above the relevance threshold ({E.SIMILARITY_THRESHOLD}).']):
                 st.write(f'- {s}')
-        else:
-            st.caption(f'No related incidents above the relevance threshold ({E.SIMILARITY_THRESHOLD}).')
-    with st.expander("6 · Change risk"):
-        ch = _latest_change(inc, ctx)
-        if ch:
-            cr = E.change_risk(ch, G, services, incidents)
-            st.write(f'**{ch["id"]}** · {ch["description"]}  (deployed {ch["deployed_at"]})  ·  '
-                     f'risk **{cr["risk"]}** (gate {cr["gate"]})')
-            st.write("Blast radius: " + (", ".join(cr["blast"]) or "—"))
-        else:
-            st.caption("No recent change in the impacted subgraph.")
-    action_panel(inc, ctx)
-    applied = bool(st.session_state.get(f'it_opt_applied_{inc["id"]}'))
-    journey.render_resolution(inc["id"], applied, _sla_detail(inc)[0], inc["owner_team"])
-    journey.render_correlation(inc["id"])
+        with st.expander("Change risk"):
+            ch = _latest_change(inc, ctx)
+            if ch:
+                cr = E.change_risk(ch, G, services, incidents)
+                st.write(f'**{ch["id"]}** · {ch["description"]} · risk **{cr["risk"]}** (gate {cr["gate"]})')
+                st.write("Blast radius: " + (", ".join(cr["blast"]) or "—"))
+            else:
+                st.caption("No recent change in the impacted subgraph.")
+
+    def decide():
+        st.subheader("Recommended action (policy-governed)")
+        rec = E.recommend(inc, E.causes(inc, G, changes, metrics, services))
+        viz.rec_card(rec["action"], rec["risk"], rec["mode"], journey.actors(rec))
+        journey.engage_block(inc["id"], rec["action"], journey.actors(rec))
+        handoff("to L2/L3 (diagnosis), Developer (fix via ticket), and back to the Incident Manager to verify.")
+
+    journey.wizard("it_step_" + inc["id"], viz.RESOLUTION_FLOW,
+                   {"Detect": detect, "Diagnose": diagnose, "Decide": decide,
+                    "Act": lambda: action_panel(inc, ctx), "Verify": lambda: verify_panel(inc, ctx)}, default=0)
 
 
 def csm_view(inc, ctx):

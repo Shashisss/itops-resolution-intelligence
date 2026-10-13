@@ -59,7 +59,7 @@ def verdict_badge(state):
                 unsafe_allow_html=True)
 
 
-RESOLUTION_FLOW = ["Detection", "Triage", "Diagnosis", "Approval", "Repair", "Verification"]
+RESOLUTION_FLOW = ["Detect", "Diagnose", "Decide", "Act", "Verify"]
 
 
 def resolution_flow(current=None):
@@ -158,6 +158,20 @@ def evidence(items):
 SEV_COLOR = {"info": "#16a34a", "warning": "#d97706", "critical": "#dc2626"}
 PRI_COLOR = {"P1": "#dc2626", "P2": "#d97706", "P3": "#0891b2", "P4": "#64748b"}
 DOM_COLOR = {"itops": "#4f46e5", "IT Ops": "#4f46e5", "dataops": "#0d9488", "DataOps": "#0d9488"}
+
+
+def fact_cards(items):
+    """Label/value cards that WRAP long values and expose the full text on hover (title tooltip)."""
+    cols = st.columns(len(items))
+    for col, (label, value, color) in zip(cols, items):
+        col.markdown(
+            f'<div class="ri-card" style="border-left:5px solid {color};padding:9px 12px" '
+            f'title="{value}">'
+            f'<div style="font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.04em">'
+            f'{label}</div>'
+            f'<div style="font-size:14px;font-weight:700;color:#0f172a;white-space:normal;'
+            f'word-break:break-word;margin-top:2px">{value}</div></div>',
+            unsafe_allow_html=True)
 
 
 def status_bar(text):

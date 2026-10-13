@@ -35,11 +35,12 @@ def context_header(inc, data):
     fresh_txt, breach, _, _ = _fresh(data, ds)
     downs, cons = DE.impact(ds, data)
     viz.stepper(DE.STAGES, inc["stage"])
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Stage", inc["stage"])
-    c2.metric("Pipeline owner", pipe.get("owner_team", inc["owner_team"]))
-    c3.metric("Freshness", fresh_txt, delta="SLA breach" if breach else None, delta_color="inverse" if breach else "normal")
-    c4.metric("Downstream consumers", len(cons))
+    viz.fact_cards([
+        ("Stage", inc["stage"], "#4f46e5"),
+        ("Pipeline owner", pipe.get("owner_team", inc["owner_team"]), "#0d9488"),
+        ("Freshness", fresh_txt, "#dc2626" if breach else "#16a34a"),
+        ("Downstream consumers", str(len(cons)), "#7c3aed"),
+    ])
     st.markdown(f'**Dataset:** {name} ({data["datasets"][ds]["layer"]})   ·   **Blocker:** {inc["blocker"] or "—"}   ·   '
                 f'**Priority:** {inc["priority"]}')
     con = next((c for c in data["contracts"] if c["dataset_id"] == ds), None)
@@ -74,8 +75,7 @@ def hypotheses(inc, data):
 
 
 def action_panel(inc, data):
-    st.markdown("---")
-    st.markdown("#### Repair & verification   ·   🧪 **SIMULATED**")
+    st.markdown("#### Act — repair   ·   🧪 **SIMULATED**")
     st.markdown('<span class="ri-tag" style="background:#dc2626">🔴 Execution — human approval</span> '
                 '<span style="color:#64748b;font-size:12px">(this changes production, so it is risk-gated)</span>',
                 unsafe_allow_html=True)
@@ -84,12 +84,6 @@ def action_panel(inc, data):
     labels = [f'{o["id"]} · {o["label"]}' for o in DE.DOP_REMEDIATION]
     sel = st.radio("Repair option", labels, key="dop_opt_" + inc["id"])
     opt = DE.DOP_REMEDIATION[labels.index(sel)]
-    applied = st.session_state.get(f'dop_opt_applied_{inc["id"]}') == opt["id"]
-    rows = DE.verification(inc, data, opt, applied)
-    journey.render_verification(rows, "Data-quality verification service")
-    journey.render_verdict(journey.verdict(rows, applied))
-    st.caption("Recovery is **simulated**; thresholds checked are shown above (freshness SLA, DQ rules, "
-               "downstream health).")
     approved = True
     if opt["mode"] in ("Human approval", "Policy controlled"):
         st.warning(f'🔴 **{opt["mode"]} required** — {opt["label"]}')
@@ -109,49 +103,73 @@ def action_panel(inc, data):
         st.rerun()
 
 
-# ---------------------------------------------------------------- personas
-def pipeline_view(inc, data):
-    services = None
-    st.subheader("Pipeline intelligence — full walkthrough")
-    context_header(inc, data)
-    fresh_txt0, _, _, _ = _fresh(data, inc["dataset_id"])
-    viz.status_bar(f'🔎 {inc["id"]} · {inc["priority"]} · owner {inc["owner_team"]} · '
-                   f'freshness {fresh_txt0} · {st.session_state.get(f"verdict_{inc["id"]}", "Investigating")}')
-    viz.resolution_flow()
-    handoff("to the Data Engineer (fix), Platform Engineer (scale/backfill) and Data Owner (impact); "
-            "context, contract and blocker carry across.")
-    st.subheader("Detection")
-    journey.render_detection(inc["id"], "Data observability")
-    st.subheader("Operational timeline")
-    journey.render_timeline(inc["id"])
-    st.subheader("1 · The pipeline story (lineage)")
-    labels = {d: data["datasets"][d]["name"] for d in data["datasets"]}
-    stale = tuple(d for d in data["datasets"] if _fresh(data, d)[1])
-    viz.chain(DE.lineage_paths(inc["dataset_id"], data["G"])[0], labels,
-              stale=stale, highlight=(inc["dataset_id"],))
-    st.info(inc["summary"])
-    st.subheader("2 · Failure impact (over the lineage graph)")
-    downs, cons = DE.impact(inc["dataset_id"], data)
-    st.write("**Downstream datasets:** " + (", ".join(data["datasets"][d]["name"] for d in downs) or "—"))
-    st.write("**Consumers impacted:** " + (", ".join(cons) or "—"))
-    st.subheader("3 · Root cause — hypotheses with evidence")
-    hypotheses(inc, data)
-    st.subheader("4 · Recommended repair (policy-governed)")
-    rec = DE.recommend(inc, DE.causes(inc, data), data)
-    viz.rec_card(rec["action"], rec["risk"], rec["mode"], journey.actors(rec))
-    journey.engage_block(inc["id"], rec["action"], journey.actors(rec))
-    st.subheader("5 · Analytics")
+def verify_panel(inc, data):
+    st.markdown("#### Verify — independent verification")
+    labels = [f'{o["id"]} · {o["label"]}' for o in DE.DOP_REMEDIATION]
+    sel = st.session_state.get("dop_opt_" + inc["id"], labels[0])
+    opt = DE.DOP_REMEDIATION[labels.index(sel)] if sel in labels else DE.DOP_REMEDIATION[0]
+    applied = st.session_state.get(f'dop_opt_applied_{inc["id"]}') == opt["id"]
+    rows = DE.verification(inc, data, opt, applied)
+    journey.render_verification(rows, "Data-quality verification service")
+    journey.render_verdict(journey.verdict(rows, applied))
+    st.caption("Recovery is **simulated**; thresholds checked are shown above (freshness SLA, DQ rules, "
+               "downstream health).")
     a = DE.analytics(inc, data)
     a1, a2, a3, a4 = st.columns(4)
     a1.metric("Recovery time", f'{a["recovery_time_min"]} min')
     a2.metric("Freshness lag", f'{a["freshness_lag_min"]} min')
     a3.metric("Data quality", a["quality"])
     a4.metric("Pipeline reliability", f'{a["reliability_pct"]}%')
-    action_panel(inc, data)
-    applied = bool(st.session_state.get(f'dop_opt_applied_{inc["id"]}'))
+    applied_any = bool(st.session_state.get(f'dop_opt_applied_{inc["id"]}'))
     fresh_txt, _, _, _ = _fresh(data, inc["dataset_id"])
-    journey.render_resolution(inc["id"], applied, f'freshness {fresh_txt}', inc["owner_team"])
+    journey.render_resolution(inc["id"], applied_any, f'freshness {fresh_txt}', inc["owner_team"])
+    if applied_any:
+        journey.render_recovery_update(
+            "Data Owner update",
+            f'payments_gold refreshed — freshness within SLA and downstream consumers healthy. '
+            f'Independent verification: **{st.session_state.get(f"verdict_{inc["id"]}", "")}**. (Simulated.)')
     journey.render_correlation(inc["id"])
+
+
+# ---------------------------------------------------------------- personas
+def pipeline_view(inc, data):
+    st.subheader("Pipeline intelligence — full walkthrough")
+    context_header(inc, data)
+    fresh_txt0, _, _, _ = _fresh(data, inc["dataset_id"])
+    viz.status_bar(f'🔎 {inc["id"]} · {inc["priority"]} · owner {inc["owner_team"]} · '
+                   f'freshness {fresh_txt0} · {st.session_state.get(f"verdict_{inc["id"]}", "Investigating")}')
+
+    def detect():
+        st.subheader("Detection")
+        journey.render_detection(inc["id"], "Data observability")
+        st.subheader("Operational timeline")
+        journey.render_timeline(inc["id"])
+        st.subheader("The pipeline story (lineage)")
+        labels = {d: data["datasets"][d]["name"] for d in data["datasets"]}
+        stale = tuple(d for d in data["datasets"] if _fresh(data, d)[1])
+        viz.chain(DE.lineage_paths(inc["dataset_id"], data["G"])[0], labels,
+                  stale=stale, highlight=(inc["dataset_id"],))
+        st.info(inc["summary"])
+        st.subheader("Failure impact")
+        downs, cons = DE.impact(inc["dataset_id"], data)
+        st.write("**Downstream datasets:** " + (", ".join(data["datasets"][d]["name"] for d in downs) or "—"))
+        st.write("**Consumers impacted:** " + (", ".join(cons) or "—"))
+
+    def diagnose():
+        st.subheader("Pipeline RCA — hypotheses")
+        hypotheses(inc, data)
+
+    def decide():
+        st.subheader("Recommended repair (policy-governed)")
+        rec = DE.recommend(inc, DE.causes(inc, data), data)
+        viz.rec_card(rec["action"], rec["risk"], rec["mode"], journey.actors(rec))
+        journey.engage_block(inc["id"], rec["action"], journey.actors(rec))
+        handoff("to the Data Engineer (fix), Platform Engineer (scale/backfill) and Data Owner (impact).")
+
+    journey.wizard("dop_step_" + inc["id"], viz.RESOLUTION_FLOW,
+                   {"Detect": detect, "Diagnose": diagnose, "Decide": decide,
+                    "Act": lambda: action_panel(inc, data), "Verify": lambda: verify_panel(inc, data)},
+                   default=0)
 
 
 def data_engineer_view(inc, data):

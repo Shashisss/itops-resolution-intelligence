@@ -175,6 +175,29 @@ def render_recovery_update(title, body):
     st.success(body)
 
 
+def _nav(key, steps, delta):
+    """on_click callback for wizard Back/Next (runs before widgets are instantiated)."""
+    cur = st.session_state.get(key, steps[0])
+    i = steps.index(cur) if cur in steps else 0
+    st.session_state[key] = steps[max(0, min(len(steps) - 1, i + delta))]
+
+
+def wizard(key, steps, renderers, default=0):
+    """Single-step-at-a-time wizard with one progress metaphor. renderers maps step -> callable."""
+    if key not in st.session_state or st.session_state.get(key) not in steps:
+        st.session_state[key] = steps[default]
+    st.radio("Step", steps, horizontal=True, key=key)
+    step = st.session_state[key]
+    viz.resolution_flow(current=step)
+    renderers[step]()
+    i = steps.index(step)
+    back, nxt, _ = st.columns([1, 1, 5])
+    back.button("← Back", key=key + "_back", disabled=(i == 0),
+                on_click=_nav, args=(key, steps, -1))
+    nxt.button("Next →", key=key + "_next", type="primary", disabled=(i == len(steps) - 1),
+               on_click=_nav, args=(key, steps, +1))
+
+
 def _goto(domain, inc_key, ref):
     """on_click callback — runs before widgets are instantiated, so setting widget keys is allowed."""
     st.session_state["ops_domain"] = domain
