@@ -125,6 +125,12 @@ def render_recovery_update(title, body):
     st.success(body)
 
 
+def _goto(domain, inc_key, ref):
+    """on_click callback — runs before widgets are instantiated, so setting widget keys is allowed."""
+    st.session_state["ops_domain"] = domain
+    st.session_state[inc_key] = ref
+
+
 def render_correlation(inc_id):
     c = correlation_for(inc_id)
     if not c:
@@ -137,12 +143,8 @@ def render_correlation(inc_id):
                c["it_id"]: f'IT Ops {c["it_id"]}'},
               stale=(c["dop_id"], c["it_id"]), highlight=("biz",))
     if c["other_domain"] == "DataOps":
-        if st.button(f'View {c["other_id"]} in DataOps →', key="go_dop_" + inc_id):
-            st.session_state["ops_domain"] = "DataOps"
-            st.session_state["dop_inc"] = c["other_id"]
-            st.rerun()
+        st.button(f'View {c["other_id"]} in DataOps →', key="go_dop_" + inc_id,
+                  on_click=_goto, args=("DataOps", "dop_inc", c["other_id"]))
     else:
-        if st.button(f'View {c["other_id"]} in IT Ops →', key="go_it_" + inc_id):
-            st.session_state["ops_domain"] = "IT Ops"
-            st.session_state["it_inc"] = c["other_id"]
-            st.rerun()
+        st.button(f'View {c["other_id"]} in IT Ops →', key="go_it_" + inc_id,
+                  on_click=_goto, args=("IT Ops", "it_inc", c["other_id"]))
