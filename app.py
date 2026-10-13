@@ -43,7 +43,7 @@ if _needs_seed():
 st.set_page_config(page_title="Resolution Intelligence — POC", layout="wide")
 viz.inject_css()
 st.title("Resolution Intelligence")
-st.caption("Operational intelligence across IT Ops and DataOps — one governed platform   ·   build v22")
+st.caption("Operational intelligence across IT Ops and DataOps — one governed platform   ·   build v23")
 
 flash = st.session_state.pop("flash", None)
 if flash:
@@ -65,6 +65,9 @@ def render_itops():
     persona = st.sidebar.selectbox("Persona", personas.PERSONAS, key="it_persona")
     sel = st.sidebar.selectbox("Context incident", list(titles), format_func=lambda x: titles[x], key="it_inc")
     st.sidebar.caption("Switch persona to see each role's day-to-day view of the same incident.")
+    st.sidebar.checkbox("🤖 Auto-coordinate on open (autonomous)", key="auto_coord",
+                        help="Coordination (assign + notify) is autonomous under policy; production changes "
+                             "still require human approval.")
     if st.sidebar.button("↺ Reset sample data", key="reset_it"):
         _reset(); st.rerun()
     inc = next(i for i in incidents if i["id"] == sel)
@@ -82,6 +85,9 @@ def render_dataops():
     persona = st.sidebar.selectbox("Persona", DV.PERSONAS, key="dop_persona")
     sel = st.sidebar.selectbox("Pipeline incident", list(titles), format_func=lambda x: titles[x], key="dop_inc")
     st.sidebar.caption("Pipelines, data quality, freshness and lineage — shaped per role.")
+    st.sidebar.checkbox("🤖 Auto-coordinate on open (autonomous)", key="auto_coord",
+                        help="Coordination (assign + notify) is autonomous under policy; production changes "
+                             "still require human approval.")
     if st.sidebar.button("↺ Reset sample data", key="reset_dop"):
         _reset(); st.rerun()
     inc = next(i for i in data["incidents"] if i["id"] == sel)

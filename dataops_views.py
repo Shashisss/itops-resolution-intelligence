@@ -75,6 +75,9 @@ def hypotheses(inc, data):
 def action_panel(inc, data):
     st.markdown("---")
     st.markdown("#### Repair & verification   ·   🧪 **SIMULATED**")
+    st.markdown('<span class="ri-tag" style="background:#dc2626">🔴 Execution — human approval</span> '
+                '<span style="color:#64748b;font-size:12px">(this changes production, so it is risk-gated)</span>',
+                unsafe_allow_html=True)
     st.caption("The outcome depends on the action chosen; verification is independent. Approval is enforced for "
                "high-risk actions.")
     labels = [f'{o["id"]} · {o["label"]}' for o in DE.DOP_REMEDIATION]

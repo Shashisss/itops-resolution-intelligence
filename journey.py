@@ -129,9 +129,17 @@ def actors(rec):
 
 
 def engage_block(ref, action, actors_list):
-    """Let the operator engage the next actor(s): assign + notify + log — accelerating resolution."""
+    """Two-tier autonomy: COORDINATION is autonomous under policy (delegate + notify + log);
+    the change itself stays human-gated below."""
     import collab
+    auto = st.session_state.get("auto_coord", False)
     delegs = collab.delegations(ref)
+    if auto and not delegs and actors_list:
+        _engage(ref, action, tuple(actors_list), auto=True)   # autonomous coordination
+        delegs = collab.delegations(ref)
+    st.markdown('<span class="ri-tag" style="background:#16a34a">🟢 Coordination — autonomous under '
+                'policy</span> <span style="color:#64748b;font-size:12px">(assign + notify carries no '
+                'production risk)</span>', unsafe_allow_html=True)
     if delegs:
         st.markdown("**🤝 Collaboration status**")
         for d in delegs:
@@ -139,20 +147,26 @@ def engage_block(ref, action, actors_list):
             st.markdown(f'<div class="ri-ev-chip" style="border-left-color:{col}"><b>{d["frm"]} → '
                         f'{d["to_"]}</b> · {d["action"]} · <span class="ri-tag" style="background:{col}">'
                         f'{d["status"]}</span></div>', unsafe_allow_html=True)
-    st.button("🤝 Engage next actor — delegate & notify", key="engage_" + ref, type="primary",
-              on_click=_engage, args=(ref, action, tuple(actors_list)))
+    if auto:
+        st.caption("🤖 Auto-coordinate is ON — the agent engaged the next actor automatically under policy. "
+                   "The production change below still requires approval.")
+    else:
+        st.button("🤝 Coordinate — delegate & notify", key="engage_" + ref, type="primary",
+                  on_click=_engage, args=(ref, action, tuple(actors_list)))
 
 
-def _engage(ref, action, actors_list):
+def _engage(ref, action, actors_list, auto=False):
     import collab
     for a in actors_list:
-        collab.add_delegation(ref, "Recommendation", a, action)
+        collab.add_delegation(ref, "Recommendation engine", a, action)
         collab.add_notification(collab.ACTOR_TO_ROLE.get(a, a), ref,
-                                f'Recommended action delegated to {a}: “{action}”')
+                                f'Action delegated to {a}: “{action}”')
+    who = "Auto-coordinated under policy (coordination · low risk)" if auto else "Coordinated"
     collab.add_comment(ref, "Recommendation engine", "System",
-                       f'Engaged next actor(s): {", ".join(actors_list)} — {action}')
-    st.session_state["flash"] = (f'Engaged **{", ".join(actors_list)}** — action assigned and they were '
-                                 f'notified. Acceptance and completion are tracked on the incident.')
+                       f'{who}: engaged {", ".join(actors_list)} — {action}')
+    st.session_state["flash"] = (f'{"Auto-coordinated" if auto else "Coordinated"} — **'
+                                 f'{", ".join(actors_list)}** assigned and notified. Acceptance and completion '
+                                 f'are tracked on the incident; the production change still needs approval.')
 
 
 def render_recovery_update(title, body):
