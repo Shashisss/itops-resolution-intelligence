@@ -51,6 +51,13 @@ def set_delegation_status(did, status):
     con.close()
 
 
+# map a recommendation's "next actor" to a notifiable role
+ACTOR_TO_ROLE = {
+    "Data Platform": "Data Engineer", "Platform Engineering": "Platform Engineer",
+    "Checkout Team": "Developer", "DBA Team": "DBA Team", "Finance Data": "Data Owner",
+    "Analytics Engineering": "Data Owner", "Cloud Platform": "Platform Engineer",
+}
+
 MENTIONS = {"@dataengineer": "Data Engineer", "@dataowner": "Data Owner",
             "@platformengineer": "Platform Engineer", "@incidentmanager": "Incident Manager",
             "@l2": "L2 / L3 Engineer", "@developer": "Developer", "@csm": "CSM", "@dba": "DBA Team"}

@@ -160,6 +160,24 @@ PRI_COLOR = {"P1": "#dc2626", "P2": "#d97706", "P3": "#0891b2", "P4": "#64748b"}
 DOM_COLOR = {"itops": "#4f46e5", "IT Ops": "#4f46e5", "dataops": "#0d9488", "DataOps": "#0d9488"}
 
 
+def rec_card(action, risk, mode, actors):
+    riskcol = ("#dc2626" if str(risk).lower().startswith("high")
+               else "#d97706" if str(risk).lower().startswith(("medium", "low"))
+               else "#16a34a")
+    modecol = {"Human approval": "#dc2626", "Policy controlled": "#d97706",
+               "Auto": "#16a34a", "Autonomous": "#16a34a"}.get(mode, "#64748b")
+    chips = " ".join(f'<span class="ri-tag" style="background:#4f46e5">{a}</span>' for a in actors)
+    st.markdown(
+        f'<div class="ri-card" style="border-left:6px solid #4f46e5">'
+        f'<div style="font-weight:700;color:#0f172a;font-size:14px">🧭 Recommended action</div>'
+        f'<div style="color:#334155;margin:6px 0 10px;font-size:13.5px">{action}</div>'
+        f'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
+        f'<span class="ri-tag" style="background:{riskcol}">risk: {risk}</span>'
+        f'<span class="ri-tag" style="background:{modecol}">gate: {mode}</span>'
+        f'<span style="color:#64748b;font-size:12px">next actor ➜</span> {chips}</div></div>',
+        unsafe_allow_html=True)
+
+
 def feed(events):
     for e in events:
         col = SEV_COLOR.get(e.get("severity"), "#94a3b8")

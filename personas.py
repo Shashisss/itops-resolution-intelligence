@@ -186,8 +186,8 @@ def incident_view(inc, ctx):
     hypotheses(inc, ctx)
     st.subheader("4 · Recommended action (policy-governed)")
     rec = E.recommend(inc, E.causes(inc, G, changes, metrics, services))
-    st.write(f'**Recommended:** {rec["action"]}  ·  Risk: **{rec["risk"]}**  ·  Gate: **{rec["mode"]}**  ·  '
-             f'Next actor: **{rec["actor"]}**')
+    viz.rec_card(rec["action"], rec["risk"], rec["mode"], journey.actors(rec))
+    journey.engage_block(inc["id"], rec["action"], journey.actors(rec))
     st.subheader("5 · Related incidents")
     sim = E.similar(incidents, inc)
     if sim:

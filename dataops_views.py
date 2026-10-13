@@ -130,8 +130,8 @@ def pipeline_view(inc, data):
     hypotheses(inc, data)
     st.subheader("4 · Recommended repair (policy-governed)")
     rec = DE.recommend(inc, DE.causes(inc, data), data)
-    st.write(f'**Recommended:** {rec["action"]}  ·  Risk: **{rec["risk"]}**  ·  Gate: **{rec["mode"]}**  ·  '
-             f'Operator: **{rec["actor"]}**')
+    viz.rec_card(rec["action"], rec["risk"], rec["mode"], journey.actors(rec))
+    journey.engage_block(inc["id"], rec["action"], journey.actors(rec))
     st.subheader("5 · Analytics")
     a = DE.analytics(inc, data)
     a1, a2, a3, a4 = st.columns(4)

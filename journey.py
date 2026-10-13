@@ -120,6 +120,41 @@ def render_resolution(inc_id, applied, sla_txt, owner, extra=""):
     st.markdown(f'**Learning:** evidence captured → runbook / known-error updated.{(" " + extra) if extra else ""}')
 
 
+_STATUS_COLOR = {"assigned": "#d97706", "accepted": "#0891b2", "done": "#16a34a"}
+
+
+def actors(rec):
+    import re as _re
+    return [a.strip() for a in _re.split(r"\s*\+\s*|,\s*", rec.get("actor", "")) if a.strip()]
+
+
+def engage_block(ref, action, actors_list):
+    """Let the operator engage the next actor(s): assign + notify + log — accelerating resolution."""
+    import collab
+    delegs = collab.delegations(ref)
+    if delegs:
+        st.markdown("**🤝 Collaboration status**")
+        for d in delegs:
+            col = _STATUS_COLOR.get(d["status"], "#64748b")
+            st.markdown(f'<div class="ri-ev-chip" style="border-left-color:{col}"><b>{d["frm"]} → '
+                        f'{d["to_"]}</b> · {d["action"]} · <span class="ri-tag" style="background:{col}">'
+                        f'{d["status"]}</span></div>', unsafe_allow_html=True)
+    st.button("🤝 Engage next actor — delegate & notify", key="engage_" + ref, type="primary",
+              on_click=_engage, args=(ref, action, tuple(actors_list)))
+
+
+def _engage(ref, action, actors_list):
+    import collab
+    for a in actors_list:
+        collab.add_delegation(ref, "Recommendation", a, action)
+        collab.add_notification(collab.ACTOR_TO_ROLE.get(a, a), ref,
+                                f'Recommended action delegated to {a}: “{action}”')
+    collab.add_comment(ref, "Recommendation engine", "System",
+                       f'Engaged next actor(s): {", ".join(actors_list)} — {action}')
+    st.session_state["flash"] = (f'Engaged **{", ".join(actors_list)}** — action assigned and they were '
+                                 f'notified. Acceptance and completion are tracked on the incident.')
+
+
 def render_recovery_update(title, body):
     st.markdown(f"**{title} — evidence-backed recovery update**")
     st.success(body)
