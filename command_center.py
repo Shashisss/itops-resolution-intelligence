@@ -47,13 +47,14 @@ def _rail(inc, rec):
 
 def _thread_spine(deleg, confirmed, verdict):
     return [
-        ("Detect", "done", "Incident and upstream pipeline failure detected"),
-        ("Correlate", "done" if confirmed else "current", "Schema mismatch → stale data → affected service (hypothesis)"),
-        ("Coordinate", "done" if deleg else "current", "Assign owner, approvals, remediation"),
+        ("Detect", "done", "Incident and upstream pipeline failure detected", "5m"),
+        ("Correlate", "done" if confirmed else "current",
+         "Schema mismatch → stale data → affected service (hypothesis)", "15m"),
+        ("Coordinate", "done" if deleg else "current", "Assign owner, approvals, remediation", "15m"),
         ("Verify", "done" if verdict == "Verified" else ("current" if deleg else "todo"),
-         "Observed value vs threshold + verifying actor"),
+         "Observed value vs threshold + verifying actor", "30m"),
         ("Close", "done" if verdict == "Verified" else ("current" if verdict in ("Mitigated", "Recovery failed") else "todo"),
-         "Verified / Mitigated / Recovery failed"),
+         "Verified / Mitigated / Recovery failed", None),
     ]
 
 
@@ -82,6 +83,8 @@ def it_command(inc, ctx):
     viz.stepper(P.STAGES, inc["stage"])
     st.markdown("#### Resolution thread")
     viz.thread_spine(_thread_spine(deleg, confirmed, verdict))
+    st.caption("Each stage carries an internal **OLA** (owner-team target) — distinct from the customer **SLA** "
+               "in the header. Set per team and per stage.")
     if corr:
         st.caption(f'🔗 Thread links **IT Ops {inc["id"]}** ↔ **DataOps {corr["other_id"]}** · '
                    f'shared cause **{corr["shared_cause"]}**.')
@@ -195,6 +198,8 @@ def dop_command(inc, data):
     viz.stepper(DE.STAGES, inc["stage"])
     st.markdown("#### Resolution thread")
     viz.thread_spine(_thread_spine(deleg, confirmed, verdict))
+    st.caption("Each stage carries an internal **OLA** (owner-team target) — distinct from the customer **SLA** "
+               "in the header. Set per team and per stage.")
     if corr:
         st.caption(f'🔗 Thread links **DataOps {inc["id"]}** ↔ **IT Ops {corr["other_id"]}** · '
                    f'shared cause **{corr["shared_cause"]}**.')

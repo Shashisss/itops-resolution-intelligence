@@ -259,16 +259,18 @@ def impact_summary(metric, baseline, current, unit, onset_label, onset):
 
 
 def thread_spine(items):
-    """items: list of (title, status, detail); status in done/current/todo."""
+    """items: list of (title, status, detail, ola). status in done/current/todo; ola = stage internal target."""
     cols = {"done": "#16a34a", "current": "#4f46e5", "todo": "#cbd5e1"}
     html = ['<div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 12px">']
-    for i, (title, status, detail) in enumerate(items):
+    for i, (title, status, detail, ola) in enumerate(items):
         c = cols.get(status, "#cbd5e1")
+        ola_tag = (f'<div style="margin-top:7px"><span class="ri-tag" style="background:#0891b2">'
+                   f'OLA · {ola}</span></div>') if ola else ""
         html.append(f'<div class="ri-card" style="flex:1;min-width:160px;border-top:4px solid {c}">'
                     f'<div style="font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.04em">'
                     f'{i + 1} · {status}</div>'
                     f'<div style="font-weight:700;color:#0f172a;margin:2px 0 3px">{title}</div>'
-                    f'<div style="font-size:12px;color:#475569">{detail}</div></div>')
+                    f'<div style="font-size:12px;color:#475569">{detail}</div>{ola_tag}</div>')
     html.append("</div>")
     st.markdown("".join(html), unsafe_allow_html=True)
 

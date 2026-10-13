@@ -26,11 +26,11 @@ IT_STEP_HELP = {
               "Only Verified closes the incident.",
 }
 IT_HANDOFFS = {
-    "Detect": "Monitoring → Service Desk  (auto-detected; incident raised in ServiceNow)",
-    "Diagnose": "Service Desk (L1) → L2 / L3  (escalated with the assembled context)",
-    "Decide": "L2 / L3 + Incident Manager  (recommendation and next-actor coordination)",
-    "Act": "Incident Manager → owning team  (execution under the approval gate)",
-    "Verify": "Verification service → Incident Manager sign-off → CSM update",
+    "Detect": "Monitoring → Service Desk  (auto-detected; incident raised in ServiceNow)  ·  OLA 5m",
+    "Diagnose": "Service Desk (L1) → L2 / L3  (escalated with the assembled context)  ·  OLA 15m",
+    "Decide": "L2 / L3 + Incident Manager  (recommendation and next-actor coordination)  ·  OLA 15m",
+    "Act": "Incident Manager → owning team  (execution under the approval gate)  ·  OLA 30m",
+    "Verify": "Verification service → Incident Manager sign-off → CSM update  ·  OLA 15m",
 }
 METRIC_LABELS = {"p95_latency_ms": "Latency (p95, ms)", "error_rate_pct": "Error rate (%)",
                  "active_connections": "DB connections", "cpu_pct": "DB CPU (%)"}

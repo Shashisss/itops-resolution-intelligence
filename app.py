@@ -188,4 +188,4 @@ else:
     render_liveops()
 
 st.divider()
-st.caption("Sample data · simulated actions · build v34 — proof of concept, not production.")
+st.caption("Sample data · simulated actions · build v35 — proof of concept, not production.")

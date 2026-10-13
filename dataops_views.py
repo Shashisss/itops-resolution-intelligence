@@ -19,11 +19,11 @@ DOP_STEP_HELP = {
     "Verify": "An independent re-check of freshness, DQ and downstream health → Verified / Mitigated / Recovery failed.",
 }
 DOP_HANDOFFS = {
-    "Detect": "Data observability → Data Engineer  (failing run + freshness/DQ alerts detected)",
-    "Diagnose": "Data Engineer → Data Owner  (root-cause context shared)",
-    "Decide": "Data Engineer + Data Owner  (repair recommendation and ownership)",
-    "Act": "Data Owner → Data Engineer / Platform Engineer  (execution under the approval gate)",
-    "Verify": "Verification service → Data Owner sign-off → Data Consumer update",
+    "Detect": "Data observability → Data Engineer  (failing run + freshness/DQ alerts detected)  ·  OLA 5m",
+    "Diagnose": "Data Engineer → Data Owner  (root-cause context shared)  ·  OLA 15m",
+    "Decide": "Data Engineer + Data Owner  (repair recommendation and ownership)  ·  OLA 15m",
+    "Act": "Data Owner → Data Engineer / Platform Engineer  (execution under the approval gate)  ·  OLA 30m",
+    "Verify": "Verification service → Data Owner sign-off → Data Consumer update  ·  OLA 15m",
 }
 
 
