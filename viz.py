@@ -160,6 +160,12 @@ PRI_COLOR = {"P1": "#dc2626", "P2": "#d97706", "P3": "#0891b2", "P4": "#64748b"}
 DOM_COLOR = {"itops": "#4f46e5", "IT Ops": "#4f46e5", "dataops": "#0d9488", "DataOps": "#0d9488"}
 
 
+def status_bar(text):
+    st.markdown(f'<div style="position:sticky;top:0;z-index:99;background:#0b1220;color:#fff;'
+                f'padding:7px 14px;border-radius:10px;font-size:13px;font-weight:600;margin:2px 0 10px">'
+                f'{text}</div>', unsafe_allow_html=True)
+
+
 def rec_card(action, risk, mode, actors):
     riskcol = ("#dc2626" if str(risk).lower().startswith("high")
                else "#d97706" if str(risk).lower().startswith(("medium", "low"))

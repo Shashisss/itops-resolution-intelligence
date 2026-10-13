@@ -151,7 +151,8 @@ def engage_block(ref, action, actors_list):
         st.caption("🤖 Auto-coordinate is ON — the agent engaged the next actor automatically under policy. "
                    "The production change below still requires approval.")
     else:
-        st.button("🤝 Coordinate — delegate & notify", key="engage_" + ref, type="primary",
+        st.button("🤝 Coordinate — delegate & notify", key="engage_" + ref,
+                  type=("secondary" if delegs else "primary"),
                   on_click=_engage, args=(ref, action, tuple(actors_list)))
 
 

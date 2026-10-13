@@ -108,8 +108,8 @@ def render(name, role):
 
     left, right = st.columns([3, 2])
     with left:
-        mode = st.radio("Stream mode", ["Live", "Replay"], horizontal=True, key="lo_mode",
-                        label_visibility="collapsed")
+        mode = st.radio("Stream mode", ["Live", "Replay"], horizontal=True, key="lo_mode")
+        st.caption("**Live** = always-moving random stream  ·  **Replay** = the same story, step-through or play.")
         if mode == "Replay":
             c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
             if c1.button("⏮ Reset", key="lo_rst"):

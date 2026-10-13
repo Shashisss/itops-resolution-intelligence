@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Resolution Intelligence — Streamlit POC.
-One governed platform across two operational domains, selected at the top:
-  • IT Ops   — incidents, changes, services, SLAs, RCA
-  • DataOps  — pipeline failures, data quality, freshness, lineage
+One governed platform across IT Ops and DataOps.
 Deterministic graph + rule-based reasoning. SAMPLE DATA · SIMULATED ACTIONS."""
 import os
 import streamlit as st
@@ -12,6 +10,9 @@ import dataops_engine as DE
 import dataops_views as DV
 import liveops_view
 import viz
+
+ROLES_UNION = ["CSM", "L1 Engineer", "L2 / L3 Engineer", "Developer", "Incident Manager",
+               "Data Engineer", "Data Owner", "Platform Engineer", "Data Consumer"]
 
 
 def _needs_seed():
@@ -37,22 +38,41 @@ def _reset():
     st.session_state.clear()
 
 
+def _reset_control(key):
+    if st.session_state.get("confirm_reset_" + key):
+        st.sidebar.warning("Reset wipes all changes (comments, delegations, stages).")
+        a, b = st.sidebar.columns(2)
+        if a.button("Confirm", key="rc_yes_" + key):
+            _reset(); st.session_state["confirm_reset_" + key] = False; st.rerun()
+        if b.button("Cancel", key="rc_no_" + key):
+            st.session_state["confirm_reset_" + key] = False; st.rerun()
+    else:
+        if st.sidebar.button("↺ Reset sample data", key="rc_" + key):
+            st.session_state["confirm_reset_" + key] = True; st.rerun()
+
+
 if _needs_seed():
-    import seed  # noqa: F401  (writes data/ops.db + data/history.duckdb)
+    import seed  # noqa: F401
 
 st.set_page_config(page_title="Resolution Intelligence — POC", layout="wide")
 viz.inject_css()
 st.title("Resolution Intelligence")
-st.caption("Operational intelligence across IT Ops and DataOps — one governed platform   ·   build v24")
+st.caption("Operational intelligence across IT Ops and DataOps — one governed platform")
 
 flash = st.session_state.pop("flash", None)
 if flash:
     st.success(flash)
 
-# ---- operations-domain switcher (header) ----
-st.markdown("**Select your operations domain**")
+# ---- one navigation system: domain in the header ----
 domain = st.radio("Operations domain", ["IT Ops", "DataOps", "Live Operations"], horizontal=True, index=0,
-                  label_visibility="collapsed", key="ops_domain")
+                  key="ops_domain")
+
+# ---- one identity + one autonomy setting (shared across all domains) ----
+you_role = st.sidebar.selectbox("👤 Signed in as (role)", ROLES_UNION, key="you_role")
+st.sidebar.checkbox("🤖 Auto-coordinate on open (autonomous)", key="auto_coord",
+                    help="Coordination (assign + notify) is autonomous under policy; production changes "
+                         "still require human approval.")
+st.sidebar.divider()
 
 
 # ================================================================= IT Ops
@@ -65,14 +85,11 @@ def render_itops():
     view = st.sidebar.radio("View", ["End-to-end journey", "By role"], key="it_view")
     persona = None
     if view == "By role":
-        persona = st.sidebar.selectbox("Persona", personas.PERSONAS, key="it_persona")
+        default = you_role if you_role in personas.PERSONAS else personas.PERSONAS[0]
+        persona = st.sidebar.selectbox("View as role", personas.PERSONAS,
+                                       index=personas.PERSONAS.index(default), key="it_persona")
     sel = st.sidebar.selectbox("Context incident", list(titles), format_func=lambda x: titles[x], key="it_inc")
-    st.sidebar.caption("End-to-end = the full journey (role-agnostic) · By role = one person's day-to-day slice.")
-    st.sidebar.checkbox("🤖 Auto-coordinate on open (autonomous)", key="auto_coord",
-                        help="Coordination (assign + notify) is autonomous under policy; production changes "
-                             "still require human approval.")
-    if st.sidebar.button("↺ Reset sample data", key="reset_it"):
-        _reset(); st.rerun()
+    _reset_control("it")
     inc = next(i for i in incidents if i["id"] == sel)
     if view == "End-to-end journey":
         personas.incident_view(inc, ctx)
@@ -90,14 +107,11 @@ def render_dataops():
     view = st.sidebar.radio("View", ["End-to-end journey", "By role"], key="dop_view")
     persona = None
     if view == "By role":
-        persona = st.sidebar.selectbox("Persona", DV.PERSONAS, key="dop_persona")
+        default = you_role if you_role in DV.PERSONAS else DV.PERSONAS[0]
+        persona = st.sidebar.selectbox("View as role", DV.PERSONAS,
+                                       index=DV.PERSONAS.index(default), key="dop_persona")
     sel = st.sidebar.selectbox("Pipeline incident", list(titles), format_func=lambda x: titles[x], key="dop_inc")
-    st.sidebar.caption("End-to-end = the full journey (role-agnostic) · By role = one person's day-to-day slice.")
-    st.sidebar.checkbox("🤖 Auto-coordinate on open (autonomous)", key="auto_coord",
-                        help="Coordination (assign + notify) is autonomous under policy; production changes "
-                             "still require human approval.")
-    if st.sidebar.button("↺ Reset sample data", key="reset_dop"):
-        _reset(); st.rerun()
+    _reset_control("dop")
     inc = next(i for i in data["incidents"] if i["id"] == sel)
     if view == "End-to-end journey":
         DV.pipeline_view(inc, data)
@@ -106,13 +120,11 @@ def render_dataops():
          "Platform Engineer": DV.platform_engineer_view, "Data Consumer": DV.data_consumer_view}[persona](inc, data)
 
 
+# ================================================================= Live Operations
 def render_liveops():
-    role = st.sidebar.selectbox("You are (role)", liveops_view.ROLES, key="lo_role")
     name = st.sidebar.text_input("Your name", value="You", key="lo_name")
-    st.sidebar.caption("Post updates, delegate actions and accept assignments — shared across the team.")
-    if st.sidebar.button("↺ Reset sample data", key="reset_lo"):
-        _reset(); st.rerun()
-    liveops_view.render(name, role)
+    _reset_control("lo")
+    liveops_view.render(name, you_role)
 
 
 if domain == "IT Ops":
@@ -121,3 +133,6 @@ elif domain == "DataOps":
     render_dataops()
 else:
     render_liveops()
+
+st.divider()
+st.caption("Sample data · simulated actions · build v25 — proof of concept, not production.")

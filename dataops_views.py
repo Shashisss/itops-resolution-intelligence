@@ -6,6 +6,7 @@ import streamlit as st
 import dataops_engine as DE
 import journey
 import viz
+import collab
 
 PERSONAS = ["Data Engineer", "Data Owner", "Platform Engineer", "Data Consumer"]
 
@@ -65,7 +66,7 @@ def hypotheses(inc, data):
     viz.hypothesis_cards(hyps)
     top = hyps[0]
     if top["status"] != "confirmed":
-        if st.button("Confirm top hypothesis as root cause", key="dop_confirm_" + inc["id"]):
+        if st.button("Confirm top hypothesis as root cause", key="dop_confirm_" + inc["id"], type="primary"):
             DE.confirm_cause(inc["id"], top["key"])
             st.session_state["flash"] = "Root cause CONFIRMED and recorded against the pipeline incident."
             st.rerun()
@@ -95,7 +96,8 @@ def action_panel(inc, data):
         approved = st.checkbox("I approve this action (required before execution)", key="dop_appr_" + inc["id"])
     else:
         st.info(f'🟢 **{opt["mode"]}** — {opt["label"]}')
-    if st.button("Apply selected repair (simulated)", disabled=not approved, type="primary",
+    if st.button("Apply selected repair (simulated)", disabled=not approved,
+                 type=("primary" if collab.delegations(inc["id"]) else "secondary"),
                  key="dop_apply_" + inc["id"]):
         v = journey.verdict(DE.verification(inc, data, opt, True), True)
         st.session_state[f'dop_opt_applied_{inc["id"]}'] = opt["id"]
@@ -112,6 +114,9 @@ def pipeline_view(inc, data):
     services = None
     st.subheader("Pipeline intelligence — full walkthrough")
     context_header(inc, data)
+    fresh_txt0, _, _, _ = _fresh(data, inc["dataset_id"])
+    viz.status_bar(f'🔎 {inc["id"]} · {inc["priority"]} · owner {inc["owner_team"]} · '
+                   f'freshness {fresh_txt0} · {st.session_state.get(f"verdict_{inc["id"]}", "Investigating")}')
     viz.resolution_flow()
     handoff("to the Data Engineer (fix), Platform Engineer (scale/backfill) and Data Owner (impact); "
             "context, contract and blocker carry across.")

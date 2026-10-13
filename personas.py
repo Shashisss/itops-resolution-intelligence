@@ -11,6 +11,7 @@ import csm
 import developer
 import journey
 import viz
+import collab
 
 SLA_HOURS = {"P1": 4, "P2": 8, "P3": 24, "P4": 72}
 STAGES = ["Detected", "Triaged", "Diagnosed", "Change raised", "Fix in progress", "Fix applied", "Verified", "Closed"]
@@ -102,7 +103,7 @@ def hypotheses(inc, ctx):
         return hyps
     top = journey.rank(hyps)[0]
     if top["status"] != "confirmed":
-        if st.button("Confirm top hypothesis as root cause", key="confirm_" + inc["id"]):
+        if st.button("Confirm top hypothesis as root cause", key="confirm_" + inc["id"], type="primary"):
             E.confirm_cause(inc["id"], top["key"])
             journey.add_event(inc["id"], "itops", "verify", f'root cause confirmed: {top["text"]}')
             st.session_state["flash"] = "Root cause CONFIRMED and recorded against the incident."
@@ -155,8 +156,9 @@ def action_panel(inc, ctx):
         approved = st.checkbox("I approve this action (required before execution)", key="it_appr_" + inc["id"])
     else:
         st.info(f'🟢 **{opt["mode"]}** — {opt["label"]}')
-    if st.button("Apply selected action (simulated)", disabled=not approved, type="primary",
-                 key="it_apply_" + inc["id"]):
+    _has_deleg = bool(collab.delegations(inc["id"]))
+    if st.button("Apply selected action (simulated)", disabled=not approved,
+                 type=("primary" if _has_deleg else "secondary"), key="it_apply_" + inc["id"]):
         v = journey.verdict(E.it_verification(inc, ctx, opt, True), True)
         st.session_state[f'it_opt_applied_{inc["id"]}'] = opt["id"]
         st.session_state[f'verdict_{inc["id"]}'] = v
@@ -173,6 +175,8 @@ def incident_view(inc, ctx):
                                                  ctx["incidents"], ctx["G"])
     st.subheader("Incident intelligence — full walkthrough")
     context_header(inc, ctx)
+    viz.status_bar(f'🔎 {inc["id"]} · {inc["priority"]} · owner {inc["owner_team"]} · '
+                   f'SLA {_sla_detail(inc)[0]} · {st.session_state.get(f"verdict_{inc["id"]}", "Investigating")}')
     viz.resolution_flow()
     handoff("to L2/L3 (diagnosis), Developer (fix via ticket), and back to the Incident Manager to verify.")
     st.subheader("Detection")
@@ -191,23 +195,23 @@ def incident_view(inc, ctx):
     rec = E.recommend(inc, E.causes(inc, G, changes, metrics, services))
     viz.rec_card(rec["action"], rec["risk"], rec["mode"], journey.actors(rec))
     journey.engage_block(inc["id"], rec["action"], journey.actors(rec))
-    st.subheader("5 · Related incidents")
-    sim = E.similar(incidents, inc)
-    if sim:
-        st.caption(f'Above the relevance threshold ({E.SIMILARITY_THRESHOLD}); weak matches rejected.')
-        for s in sim:
-            st.write(f'- {s}')
-    else:
-        st.caption(f'No related incidents above the relevance threshold ({E.SIMILARITY_THRESHOLD}).')
-    st.subheader("6 · Change risk")
-    ch = _latest_change(inc, ctx)
-    if ch:
-        cr = E.change_risk(ch, G, services, incidents)
-        st.write(f'**{ch["id"]}** · {ch["description"]}  (deployed {ch["deployed_at"]})  ·  risk **{cr["risk"]}** '
-                 f'(gate {cr["gate"]})')
-        st.write("Blast radius: " + (", ".join(cr["blast"]) or "—"))
-    else:
-        st.caption("No recent change in the impacted subgraph.")
+    with st.expander("5 · Related incidents"):
+        sim = E.similar(incidents, inc)
+        if sim:
+            st.caption(f'Above the relevance threshold ({E.SIMILARITY_THRESHOLD}); weak matches rejected.')
+            for s in sim:
+                st.write(f'- {s}')
+        else:
+            st.caption(f'No related incidents above the relevance threshold ({E.SIMILARITY_THRESHOLD}).')
+    with st.expander("6 · Change risk"):
+        ch = _latest_change(inc, ctx)
+        if ch:
+            cr = E.change_risk(ch, G, services, incidents)
+            st.write(f'**{ch["id"]}** · {ch["description"]}  (deployed {ch["deployed_at"]})  ·  '
+                     f'risk **{cr["risk"]}** (gate {cr["gate"]})')
+            st.write("Blast radius: " + (", ".join(cr["blast"]) or "—"))
+        else:
+            st.caption("No recent change in the impacted subgraph.")
     action_panel(inc, ctx)
     applied = bool(st.session_state.get(f'it_opt_applied_{inc["id"]}'))
     journey.render_resolution(inc["id"], applied, _sla_detail(inc)[0], inc["owner_team"])
