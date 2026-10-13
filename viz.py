@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Visual layer — animated steppers, arrow flows, node graphs and status badges (HTML/CSS + Graphviz)."""
+import pandas as pd
 import streamlit as st
 
 CSS = """
@@ -216,6 +217,28 @@ def brand():
     st.sidebar.markdown('<div class="ri-brand"><div class="t">Resolution Intelligence</div>'
                         '<div class="s">IT Ops + DataOps · unified operational resolution</div></div>',
                         unsafe_allow_html=True)
+
+
+def thread_spine(items):
+    """items: list of (title, status, detail); status in done/current/todo."""
+    cols = {"done": "#16a34a", "current": "#4f46e5", "todo": "#cbd5e1"}
+    html = ['<div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 12px">']
+    for i, (title, status, detail) in enumerate(items):
+        c = cols.get(status, "#cbd5e1")
+        html.append(f'<div class="ri-card" style="flex:1;min-width:160px;border-top:4px solid {c}">'
+                    f'<div style="font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.04em">'
+                    f'{i + 1} · {status}</div>'
+                    f'<div style="font-weight:700;color:#0f172a;margin:2px 0 3px">{title}</div>'
+                    f'<div style="font-size:12px;color:#475569">{detail}</div></div>')
+    html.append("</div>")
+    st.markdown("".join(html), unsafe_allow_html=True)
+
+
+def audit_record(rows, ref):
+    st.markdown(f"**Auditable verification record** · ref `{ref}`")
+    st.dataframe(pd.DataFrame(rows), hide_index=True)
+    st.caption("Each check records the observed value, the threshold, the timestamp and the verifying actor — "
+               "independent of the operator who applied the fix. A record is not a closure unless every check passes.")
 
 
 def hero(priority, inc_id, title, meta, sla_text, verdict, chips):

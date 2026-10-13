@@ -131,7 +131,7 @@ def render_itops():
                tickets=E.load_tickets(), kpis=E.load_kpis(), G=G)
     ordered = sorted(incidents, key=lambda i: (i["status"] != "open", i["id"]))
     titles = {i["id"]: f'{i["id"]} · {i["title"]} ({i["status"]})' for i in ordered}
-    view = st.sidebar.radio("View", ["Overview", "Guided journey", "By role"], key="it_view")
+    view = st.sidebar.radio("View", ["Resolution thread", "Guided journey", "By role"], key="it_view")
     persona = None
     if view == "By role":
         default = you_role if you_role in personas.PERSONAS else personas.PERSONAS[0]
@@ -140,7 +140,7 @@ def render_itops():
     sel = st.sidebar.selectbox("Context incident", list(titles), format_func=lambda x: titles[x], key="it_inc")
     _reset_control("it")
     inc = next(i for i in incidents if i["id"] == sel)
-    if view == "Overview":
+    if view == "Resolution thread":
         command_center.it_command(inc, ctx)
     elif view == "Guided journey":
         personas.incident_view(inc, ctx)
@@ -155,7 +155,7 @@ def render_dataops():
     data = DE.load()
     ordered = sorted(data["incidents"], key=lambda i: (i["status"] != "open", i["id"]))
     titles = {i["id"]: f'{i["id"]} · {i["title"]} ({i["status"]})' for i in ordered}
-    view = st.sidebar.radio("View", ["Overview", "Guided journey", "By role"], key="dop_view")
+    view = st.sidebar.radio("View", ["Resolution thread", "Guided journey", "By role"], key="dop_view")
     persona = None
     if view == "By role":
         default = you_role if you_role in DV.PERSONAS else DV.PERSONAS[0]
@@ -164,7 +164,7 @@ def render_dataops():
     sel = st.sidebar.selectbox("Pipeline incident", list(titles), format_func=lambda x: titles[x], key="dop_inc")
     _reset_control("dop")
     inc = next(i for i in data["incidents"] if i["id"] == sel)
-    if view == "Overview":
+    if view == "Resolution thread":
         command_center.dop_command(inc, data)
     elif view == "Guided journey":
         DV.pipeline_view(inc, data)
@@ -188,4 +188,4 @@ else:
     render_liveops()
 
 st.divider()
-st.caption("Sample data · simulated actions · build v32 — proof of concept, not production.")
+st.caption("Sample data · simulated actions · build v33 — proof of concept, not production.")

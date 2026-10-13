@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""Incident-first command center — hero header, tabbed canvas, persistent live rail.
-Reuses the same governed record and truthful verification as the guided journey."""
+"""Incident-first command center — the RESOLUTION THREAD is the core object.
+Lifecycle is the single progress model; tabs are views of the same thread;
+verification is an auditable record; closure only when independently Verified."""
+import datetime as dt
 import streamlit as st
 import engine as E
 import personas as P
@@ -11,8 +13,10 @@ import viz
 import collab
 import realtime
 
+THREAD = ["Detect", "Correlate", "Coordinate", "Verify", "Close"]
 
-def _rail(inc, ctx, rec):
+
+def _rail(inc, rec):
     st.markdown("#### 📡 Live event feed · simulated")
     viz.feed(realtime.recent(8))
     st.markdown("#### 👥 Team & ownership")
@@ -37,6 +41,18 @@ def _rail(inc, ctx, rec):
         st.markdown(f'**{cm["author"]}** · _{cm["ts"][11:16]}_  \n{cm["text"]}')
 
 
+def _thread_spine(deleg, confirmed, verdict):
+    return [
+        ("Detect", "done", "Incident and upstream pipeline failure detected"),
+        ("Correlate", "done" if confirmed else "current", "Schema mismatch → stale data → affected service (hypothesis)"),
+        ("Coordinate", "done" if deleg else "current", "Assign owner, approvals, remediation"),
+        ("Verify", "done" if verdict == "Verified" else ("current" if deleg else "todo"),
+         "Observed value vs threshold + verifying actor"),
+        ("Close", "done" if verdict == "Verified" else ("current" if verdict in ("Mitigated", "Recovery failed") else "todo"),
+         "Verified / Mitigated / Recovery failed"),
+    ]
+
+
 def it_command(inc, ctx):
     services, changes, metrics, incidents, G = (ctx["services"], ctx["changes"], ctx["metrics"],
                                                  ctx["incidents"], ctx["G"])
@@ -46,16 +62,30 @@ def it_command(inc, ctx):
     rec = E.recommend(inc, causes)
     sla_txt, rem, target, elapsed = P._sla_detail(inc)
     verdict = st.session_state.get(f'verdict_{inc["id"]}', "Investigating")
+    deleg = bool(collab.delegations(inc["id"]))
+    confirmed = any(c["status"] == "confirmed" for c in causes)
+    corr = journey.correlation_for(inc["id"])
+    refs = [inc["id"]] + ([corr["other_id"]] if corr else [])
     k = P._kpi(ctx, biz)
     bizname = services[biz]["name"] if biz else "—"
+
     meta = (f'Service {services[inc["service_id"]]["name"]} · Business impact {bizname} · '
             f'Owner {inc["owner_team"]} · Elapsed {int(elapsed)}m')
     viz.hero(inc["priority"], inc["id"], inc["title"], meta, sla_txt, verdict,
              ["IT Ops", "Cross-Domain", "ServiceNow · Jira"])
 
+    st.markdown("#### Lifecycle — the single progress model")
+    viz.stepper(P.STAGES, inc["stage"])
+    st.markdown("#### Resolution thread")
+    viz.thread_spine(_thread_spine(deleg, confirmed, verdict))
+    if corr:
+        st.caption(f'🔗 Thread links **IT Ops {inc["id"]}** ↔ **DataOps {corr["other_id"]}** · '
+                   f'shared cause **{corr["shared_cause"]}**.')
+
+    tab_labels = ["Overview", "Investigation", "Impact", "Collaboration", "Verification", "Timeline"]
     main, rail = st.columns([2.4, 1])
     with main:
-        t = st.tabs(["Overview", "Investigation", "Recommendations", "Verification", "Timeline"])
+        t = st.tabs(tab_labels)
         with t[0]:
             viz.kpi_row([
                 ("Affected service", services[inc["service_id"]]["name"], "IT service", "#dc2626"),
@@ -65,37 +95,60 @@ def it_command(inc, ctx):
                 ("Top hypothesis", (causes[0]["type"].title() if causes else "—"),
                  (f'{causes[0]["confidence"]} confidence' if causes else ""), "#d97706"),
             ])
-            st.markdown("#### The operational story")
-            st.write(" → ".join(services[n]["name"] for n in chain))
             st.info(inc["summary"])
-            st.markdown("#### Dependency & impact path")
-            viz.chain(chain, {n: services[n]["name"] for n in services}, highlight=(inc["service_id"],))
-            st.markdown("#### Business impact")
-            df = P._kpi_df()
-            st.line_chart(df[df.scenario == "current"].set_index("ts")["value"], height=140)
         with t[1]:
             P.hypotheses(inc, ctx)
             with st.expander("Related incidents"):
-                for s in (E.similar(incidents, inc) or [f'None above the relevance threshold '
-                                                        f'({E.SIMILARITY_THRESHOLD}).']):
+                for s in (E.similar(incidents, inc) or [f'None above threshold ({E.SIMILARITY_THRESHOLD}).']):
                     st.write(f'- {s}')
             with st.expander("Change risk"):
                 ch = E.latest_change(inc, G, changes)
                 if ch:
                     cr = E.change_risk(ch, G, services, incidents)
                     st.write(f'**{ch["id"]}** · {ch["description"]} · risk **{cr["risk"]}** (gate {cr["gate"]})')
-                else:
-                    st.caption("No recent change in the impacted subgraph.")
         with t[2]:
-            viz.rec_card(rec["action"], rec["risk"], rec["mode"], journey.actors(rec))
-            journey.engage_block(inc["id"], rec["action"], journey.actors(rec))
-            P.action_panel(inc, ctx)
+            st.markdown("#### Business impact")
+            df = P._kpi_df()
+            st.line_chart(df[df.scenario == "current"].set_index("ts")["value"], height=140)
+            st.markdown("#### Dependency & impact path")
+            viz.chain(chain, {n: services[n]["name"] for n in services}, highlight=(inc["service_id"],))
+            if corr:
+                st.caption("Cross-domain: the upstream data failure is the reason for the service impact.")
         with t[3]:
-            P.verify_panel(inc, ctx)
+            st.markdown("#### Team & ownership")
+            st.markdown(f'- **{inc["owner_team"]}** — owner')
+            for a in journey.actors(rec):
+                st.markdown(f'- {a} — next actor')
+            journey.engage_block(inc["id"], rec["action"], journey.actors(rec))
+            for cm in collab.comments(inc["id"]):
+                st.markdown(f'**{cm["author"]}** · _{cm["ts"][11:16]}_  \n{cm["text"]}')
         with t[4]:
-            journey.render_timeline(inc["id"])
+            labels = [f'{o["id"]} · {o["label"]}' for o in E.IT_REMEDIATION]
+            sel = st.session_state.get("it_opt_" + inc["id"], labels[0])
+            opt = E.IT_REMEDIATION[labels.index(sel)] if sel in labels else E.IT_REMEDIATION[0]
+            applied = st.session_state.get(f'it_opt_applied_{inc["id"]}') == opt["id"]
+            rows = E.it_verification(inc, ctx, opt, applied)
+            ts = dt.datetime.now().strftime("%H:%M")
+            audit = [{"check": r["check"], "observed": r["after (simulated)"],
+                      "threshold": r["threshold checked"], "at": ts,
+                      "by": "SRE verification service", "result": r["result"]} for r in rows]
+            viz.audit_record(audit, inc["id"])
+            journey.render_verdict(journey.verdict(rows, applied))
+            applied_any = bool(st.session_state.get(f'it_opt_applied_{inc["id"]}'))
+            journey.render_resolution(inc["id"], applied_any, sla_txt, inc["owner_team"], verdict=verdict)
+            if applied_any and verdict == "Verified":
+                journey.render_recovery_update("Recovery update — evidence-backed",
+                                               "Service restored; outcome independently verified. (Simulated.)")
+            elif applied_any and verdict in ("Mitigated", "Recovery failed"):
+                journey.render_recovery_update("Update — not a closure",
+                                               f'Verification outcome: **{verdict}** — the incident remains open. '
+                                               f'(Simulated.)',
+                                               kind=("warning" if verdict == "Mitigated" else "error"))
+        with t[5]:
+            st.markdown("#### Canonical timeline — one history across both domains")
+            viz.timeline(journey.timeline_multi(refs))
     with rail:
-        _rail(inc, ctx, rec)
+        _rail(inc, rec)
 
 
 def dop_command(inc, data):
@@ -105,9 +158,12 @@ def dop_command(inc, data):
     causes = DE.causes(inc, data)
     rec = DE.recommend(inc, causes, data)
     verdict = st.session_state.get(f'verdict_{inc["id"]}', "Investigating")
+    deleg = bool(collab.delegations(inc["id"]))
+    confirmed = any(c["status"] == "confirmed" for c in causes)
+    corr = journey.correlation_for(inc["id"])
+    refs = [inc["id"]] + ([corr["other_id"]] if corr else [])
     downs, cons = DE.impact(ds, data)
     try:
-        import datetime as dt
         elapsed = int((dt.datetime.now() - dt.datetime.fromisoformat(inc["created_at"])).total_seconds() / 60)
     except Exception:
         elapsed = 0
@@ -115,10 +171,17 @@ def dop_command(inc, data):
             f'Owner {inc["owner_team"]} · Elapsed {elapsed}m')
     viz.hero(inc["priority"], inc["id"], inc["title"], meta, fresh_txt, verdict,
              ["DataOps", "Cross-Domain", "Lineage + DQ"])
+    st.markdown("#### Lifecycle — the single progress model")
+    viz.stepper(DE.STAGES, inc["stage"])
+    st.markdown("#### Resolution thread")
+    viz.thread_spine(_thread_spine(deleg, confirmed, verdict))
+    if corr:
+        st.caption(f'🔗 Thread links **DataOps {inc["id"]}** ↔ **IT Ops {corr["other_id"]}** · '
+                   f'shared cause **{corr["shared_cause"]}**.')
 
     main, rail = st.columns([2.4, 1])
     with main:
-        t = st.tabs(["Overview", "Investigation", "Recommendations", "Verification", "Timeline"])
+        t = st.tabs(["Overview", "Investigation", "Impact", "Collaboration", "Verification", "Timeline"])
         with t[0]:
             viz.kpi_row([
                 ("Pipeline", inc["pipeline_id"], "producer", "#dc2626"),
@@ -127,22 +190,45 @@ def dop_command(inc, data):
                 ("Top hypothesis", (causes[0]["type"].title() if causes else "—"),
                  (f'{causes[0]["confidence"]} confidence' if causes else ""), "#d97706"),
             ])
-            st.markdown("#### The pipeline story (lineage)")
-            stale = tuple(d for d in data["datasets"] if DV._fresh(data, d)[1])
-            viz.chain(chain, {d: data["datasets"][d]["name"] for d in data["datasets"]},
-                      stale=stale, highlight=(ds,))
             st.info(inc["summary"])
-            st.markdown("**Consumers impacted:** " + (", ".join(cons) or "—"))
         with t[1]:
             DV.hypotheses(inc, data)
         with t[2]:
-            viz.rec_card(rec["action"], rec["risk"], rec["mode"], journey.actors(rec))
-            journey.engage_block(inc["id"], rec["action"], journey.actors(rec))
-            DV.action_panel(inc, data)
+            st.markdown("#### Pipeline lineage")
+            stale = tuple(d for d in data["datasets"] if DV._fresh(data, d)[1])
+            viz.chain(chain, {d: data["datasets"][d]["name"] for d in data["datasets"]},
+                      stale=stale, highlight=(ds,))
+            st.markdown("**Consumers impacted:** " + (", ".join(cons) or "—"))
         with t[3]:
-            DV.verify_panel(inc, data)
+            journey.engage_block(inc["id"], rec["action"], journey.actors(rec))
+            for cm in collab.comments(inc["id"]):
+                st.markdown(f'**{cm["author"]}** · _{cm["ts"][11:16]}_  \n{cm["text"]}')
         with t[4]:
-            journey.render_timeline(inc["id"])
+            labels = [f'{o["id"]} · {o["label"]}' for o in DE.DOP_REMEDIATION]
+            sel = st.session_state.get("dop_opt_" + inc["id"], labels[0])
+            opt = DE.DOP_REMEDIATION[labels.index(sel)] if sel in labels else DE.DOP_REMEDIATION[0]
+            applied = st.session_state.get(f'dop_opt_applied_{inc["id"]}') == opt["id"]
+            rows = DE.verification(inc, data, opt, applied)
+            ts = dt.datetime.now().strftime("%H:%M")
+            audit = [{"check": r["check"], "observed": r["after (simulated)"],
+                      "threshold": r["threshold checked"], "at": ts,
+                      "by": "Data-quality verification service", "result": r["result"]} for r in rows]
+            viz.audit_record(audit, inc["id"])
+            journey.render_verdict(journey.verdict(rows, applied))
+            applied_any = bool(st.session_state.get(f'dop_opt_applied_{inc["id"]}'))
+            journey.render_resolution(inc["id"], applied_any, f'freshness {fresh_txt}', inc["owner_team"],
+                                      verdict=verdict)
+            if applied_any and verdict == "Verified":
+                journey.render_recovery_update("Recovery update — evidence-backed",
+                                               "Freshness and quality restored; outcome independently verified. (Simulated.)")
+            elif applied_any and verdict in ("Mitigated", "Recovery failed"):
+                journey.render_recovery_update("Update — not a closure",
+                                               f'Verification outcome: **{verdict}** — the incident remains open. '
+                                               f'(Simulated.)',
+                                               kind=("warning" if verdict == "Mitigated" else "error"))
+        with t[5]:
+            st.markdown("#### Canonical timeline — one history across both domains")
+            viz.timeline(journey.timeline_multi(refs))
     with rail:
         st.markdown("#### 📡 Live event feed · simulated")
         viz.feed(realtime.recent(8))

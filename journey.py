@@ -22,6 +22,14 @@ def timeline(ref_id):
     return rows
 
 
+def timeline_multi(refs):
+    """One canonical history, merged across refs (cross-domain threads)."""
+    rows = []
+    for r in refs:
+        rows += timeline(r)
+    return sorted(rows, key=lambda x: x.get("ts", ""))
+
+
 def add_event(ref_id, domain, kind, detail):
     con = sqlite3.connect(DB)
     con.execute("INSERT INTO timeline VALUES(?,?,?,?,?,?)",
