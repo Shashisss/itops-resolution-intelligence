@@ -10,6 +10,8 @@ import engine as E
 import personas
 import dataops_engine as DE
 import dataops_views as DV
+import liveops_view
+import viz
 
 
 def _needs_seed():
@@ -37,8 +39,9 @@ if _needs_seed():
     import seed  # noqa: F401  (writes data/ops.db + data/history.duckdb)
 
 st.set_page_config(page_title="Resolution Intelligence — POC", layout="wide")
+viz.inject_css()
 st.title("Resolution Intelligence")
-st.caption("Operational intelligence across IT Ops and DataOps — one governed platform   ·   build v13")
+st.caption("Operational intelligence across IT Ops and DataOps — one governed platform   ·   build v14")
 
 flash = st.session_state.pop("flash", None)
 if flash:
@@ -46,7 +49,7 @@ if flash:
 
 # ---- operations-domain switcher (header) ----
 st.markdown("**Select your operations domain**")
-domain = st.radio("Operations domain", ["IT Ops", "DataOps"], horizontal=True, index=0,
+domain = st.radio("Operations domain", ["IT Ops", "DataOps", "Live Operations"], horizontal=True, index=0,
                   label_visibility="collapsed", key="ops_domain")
 
 
@@ -85,7 +88,18 @@ def render_dataops():
      "Data Consumer": DV.data_consumer_view}[persona](inc, data)
 
 
+def render_liveops():
+    role = st.sidebar.selectbox("You are (role)", liveops_view.ROLES, key="lo_role")
+    name = st.sidebar.text_input("Your name", value="You", key="lo_name")
+    st.sidebar.caption("Post updates, delegate actions and accept assignments — shared across the team.")
+    if st.sidebar.button("↺ Reset sample data", key="reset_lo"):
+        _reset(); st.rerun()
+    liveops_view.render(name, role)
+
+
 if domain == "IT Ops":
     render_itops()
-else:
+elif domain == "DataOps":
     render_dataops()
+else:
+    render_liveops()

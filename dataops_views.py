@@ -5,6 +5,7 @@ import pandas as pd
 import streamlit as st
 import dataops_engine as DE
 import journey
+import viz
 
 PERSONAS = ["Pipeline intelligence", "Data Engineer", "Data Owner", "Platform Engineer", "Data Consumer"]
 
@@ -32,7 +33,7 @@ def context_header(inc, data):
     name = data["datasets"].get(ds, {}).get("name", ds)
     fresh_txt, breach, _, _ = _fresh(data, ds)
     downs, cons = DE.impact(ds, data)
-    st.markdown(f'**Lifecycle:** {_stepper(inc["stage"])}')
+    viz.stepper(DE.STAGES, inc["stage"])
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Stage", inc["stage"])
     c2.metric("Pipeline owner", pipe.get("owner_team", inc["owner_team"]))
@@ -110,15 +111,18 @@ def pipeline_view(inc, data):
     services = None
     st.subheader("Pipeline intelligence — full walkthrough")
     context_header(inc, data)
+    viz.resolution_flow()
     handoff("to the Data Engineer (fix), Platform Engineer (scale/backfill) and Data Owner (impact); "
             "context, contract and blocker carry across.")
     st.subheader("Detection")
     journey.render_detection(inc["id"], "Data observability")
     st.subheader("Operational timeline")
     journey.render_timeline(inc["id"])
-    st.subheader("1 · The pipeline story")
-    for p in DE.lineage_paths(inc["dataset_id"], data["G"]):
-        st.write("→ " + " → ".join(data["datasets"][n]["name"] for n in p))
+    st.subheader("1 · The pipeline story (lineage)")
+    labels = {d: data["datasets"][d]["name"] for d in data["datasets"]}
+    stale = tuple(d for d in data["datasets"] if _fresh(data, d)[1])
+    viz.chain(DE.lineage_paths(inc["dataset_id"], data["G"])[0], labels,
+              stale=stale, highlight=(inc["dataset_id"],))
     st.info(inc["summary"])
     st.subheader("2 · Failure impact (over the lineage graph)")
     downs, cons = DE.impact(inc["dataset_id"], data)

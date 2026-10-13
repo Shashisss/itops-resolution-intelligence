@@ -10,6 +10,7 @@ import engine as E
 import csm
 import developer
 import journey
+import viz
 
 SLA_HOURS = {"P1": 4, "P2": 8, "P3": 24, "P4": 72}
 STAGES = ["Detected", "Triaged", "Diagnosed", "Change raised", "Fix in progress", "Fix applied", "Verified", "Closed"]
@@ -58,7 +59,7 @@ def context_header(inc, ctx):
     chain = E.dependency_paths(G, inc["service_id"])[0]
     biz = E.business_service(G, chain, services)
     sla_txt, rem, target, elapsed = _sla_detail(inc)
-    st.markdown(f'**Lifecycle:** {_stepper(inc["stage"])}')
+    viz.stepper(STAGES, inc["stage"])
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Stage", inc["stage"])
     c2.metric("Owner", inc["owner_team"])
@@ -169,6 +170,7 @@ def incident_view(inc, ctx):
                                                  ctx["incidents"], ctx["G"])
     st.subheader("Incident intelligence — full walkthrough")
     context_header(inc, ctx)
+    viz.resolution_flow()
     handoff("to L2/L3 (diagnosis), Developer (fix via ticket), and back to the Incident Manager to verify.")
     st.subheader("Detection")
     journey.render_detection(inc["id"], "Monitoring / SRE")

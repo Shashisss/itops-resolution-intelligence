@@ -54,6 +54,14 @@ CREATE TABLE dop_incidents(id TEXT PRIMARY KEY, title TEXT, pipeline_id TEXT, da
 -- shared
 CREATE TABLE timeline(id TEXT PRIMARY KEY, ref_id TEXT, domain TEXT, ts TEXT, kind TEXT, detail TEXT);
 CREATE TABLE correlations(id TEXT PRIMARY KEY, it_id TEXT, dop_id TEXT, shared_cause TEXT, note TEXT);
+
+-- real-time / collaboration / delegation
+CREATE TABLE live_events(id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, domain TEXT, severity TEXT,
+                         source TEXT, message TEXT, ref_id TEXT);
+CREATE TABLE comments(id INTEGER PRIMARY KEY AUTOINCREMENT, ref_id TEXT, author TEXT, role TEXT,
+                      text TEXT, ts TEXT);
+CREATE TABLE delegations(id INTEGER PRIMARY KEY AUTOINCREMENT, ref_id TEXT, frm TEXT, to_ TEXT,
+                         action TEXT, status TEXT, ts TEXT);
 """)
 
 # ------------------------------------------------------------------ IT Ops
@@ -181,6 +189,22 @@ c.executemany("INSERT INTO correlations VALUES(?,?,?,?,?)", [
     ("CORR-1", "INC-8841", "DOP-1001", "core_ledger schema change (new column 'region_code')",
      "Root cause flows DataOps → IT Ops: the pipeline failure (DOP-1001) left payments_gold stale, so the "
      "customer-facing payment service served stale risk data (INC-8841). Affected business service: Payments."),
+])
+
+c.executemany("INSERT INTO live_events(ts,domain,severity,source,message,ref_id) VALUES(?,?,?,?,?,?)", [
+    (M(12), "dataops", "warning", "payments_gold", "Freshness 45 min > 15 min SLA", "DOP-1001"),
+    (M(9), "itops", "info", "monitoring", "Checkout success 90% (baseline 98.5%)", "INC-8841"),
+    (M(3), "itops", "warning", "payment-api", "data_age_min 45 > 15 (serving stale risk data)", "INC-8841"),
+    (M(2), "dataops", "critical", "payments_bronze_ingest", "run R-9001 FAILED (SCHEMA_MISMATCH 'region_code')", "DOP-1001"),
+])
+c.executemany("INSERT INTO comments(ref_id,author,role,text,ts) VALUES(?,?,?,?,?)", [
+    ("DOP-1001", "Priya (Data Engineer)", "Data Engineer",
+     "Confirmed schema drift on core_ledger; drafting contract v4 before replay.", M(15)),
+    ("INC-8841", "Amit (Incident Manager)", "Incident Manager",
+     "Business impact on Payments — engaging Data Owner and CSM for updates.", M(12)),
+])
+c.executemany("INSERT INTO delegations(ref_id,frm,to_,action,status,ts) VALUES(?,?,?,?,?,?)", [
+    ("DOP-1001", "Data Owner", "Data Engineer", "Reconcile schema (contract v4) + replay", "assigned", M(14)),
 ])
 
 con.commit()

@@ -6,6 +6,7 @@ import sqlite3
 import datetime as dt
 import pandas as pd
 import streamlit as st
+import viz
 
 DB = "data/ops.db"
 CONF_RANK = {"high": 3, "medium": 2, "low": 1}
@@ -58,8 +59,7 @@ def verdict(rows, applied):
 
 
 def render_verdict(state):
-    colour = {"Investigating": "🔵", "Mitigated": "🟠", "Verified": "🟢", "Recovery failed": "🔴"}.get(state, "•")
-    st.markdown(f"**Recovery state:** {colour} **{state}**")
+    viz.verdict_badge(state)
 
 
 def rank(hyps):
@@ -137,6 +137,10 @@ def render_correlation(inc_id):
     st.markdown("**Cross-domain correlation**")
     st.info(f'🔗 Shared root cause **{c["shared_cause"]}** links this to **{c["other_domain"]} '
             f'{c["other_id"]}**. {c["note"]}')
+    viz.chain([c["dop_id"], "biz", c["it_id"]],
+              {c["dop_id"]: f'DataOps {c["dop_id"]}', "biz": "Business service · Payments",
+               c["it_id"]: f'IT Ops {c["it_id"]}'},
+              stale=(c["dop_id"], c["it_id"]), highlight=("biz",))
     if c["other_domain"] == "DataOps":
         if st.button(f'View {c["other_id"]} in DataOps →', key="go_dop_" + inc_id):
             st.session_state["ops_domain"] = "DataOps"
