@@ -160,6 +160,32 @@ PRI_COLOR = {"P1": "#dc2626", "P2": "#d97706", "P3": "#0891b2", "P4": "#64748b"}
 DOM_COLOR = {"itops": "#4f46e5", "IT Ops": "#4f46e5", "dataops": "#0d9488", "DataOps": "#0d9488"}
 
 
+LEGEND = [
+    ("Domain", [("IT Ops", "#4f46e5"), ("DataOps", "#0d9488")]),
+    ("Severity", [("info", "#16a34a"), ("warning", "#d97706"), ("critical", "#dc2626")]),
+    ("Priority", [("P1", "#dc2626"), ("P2", "#d97706"), ("P3", "#0891b2")]),
+    ("Confidence", [("high", "#16a34a"), ("medium", "#d97706"), ("low", "#94a3b8")]),
+    ("Status", [("assigned", "#d97706"), ("accepted", "#0891b2"), ("done", "#16a34a")]),
+    ("Autonomy", [("coordination · auto", "#16a34a"), ("execution · approval", "#dc2626")]),
+]
+
+
+def legend():
+    for group, items in LEGEND:
+        chips = " ".join(f'<span class="ri-tag" style="background:{c}">{t}</span>' for t, c in items)
+        st.markdown(f'<div style="margin:4px 0"><span style="color:#64748b;font-size:10.5px;'
+                    f'text-transform:uppercase;letter-spacing:.04em">{group}</span><br>{chips}</div>',
+                    unsafe_allow_html=True)
+
+
+def card_rows(rows, border="#94a3b8"):
+    """Render tabular rows as chips (keeps the visual language consistent)."""
+    for r in rows:
+        parts = " · ".join(f'<b>{k}</b>: {v}' for k, v in r.items())
+        st.markdown(f'<div class="ri-ev-chip" style="border-left-color:{border}">{parts}</div>',
+                    unsafe_allow_html=True)
+
+
 def fact_cards(items):
     """Label/value cards that WRAP long values and expose the full text on hover (title tooltip)."""
     cols = st.columns(len(items))

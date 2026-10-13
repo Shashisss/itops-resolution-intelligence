@@ -308,7 +308,7 @@ def l2_view(inc, ctx):
     st.markdown("**Telemetry (breaching)**")
     rows = [{"service": m["service_id"], "metric": m["metric"], "value": m["value"], "threshold": m["threshold"]}
             for m in metrics if m["service_id"] in scope and m["value"] > m["threshold"]]
-    st.dataframe(pd.DataFrame(rows), hide_index=True)
+    viz.card_rows(rows, "#d97706") if rows else st.caption("No breaching telemetry.")
     ch = _latest_change(inc, ctx)
     if ch:
         cr = E.change_risk(ch, G, services, ctx["incidents"])

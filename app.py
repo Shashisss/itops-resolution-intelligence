@@ -72,6 +72,8 @@ you_role = st.sidebar.selectbox("👤 Signed in as (role)", ROLES_UNION, key="yo
 st.sidebar.checkbox("🤖 Auto-coordinate on open (autonomous)", key="auto_coord",
                     help="Coordination (assign + notify) is autonomous under policy; production changes "
                          "still require human approval.")
+with st.sidebar.expander("🎨 Colour legend"):
+    viz.legend()
 st.sidebar.divider()
 
 
@@ -135,4 +137,4 @@ else:
     render_liveops()
 
 st.divider()
-st.caption("Sample data · simulated actions · build v26 — proof of concept, not production.")
+st.caption("Sample data · simulated actions · build v27 — proof of concept, not production.")

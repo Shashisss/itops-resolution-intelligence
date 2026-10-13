@@ -202,7 +202,7 @@ def data_owner_view(inc, data):
     for d in downs:
         ft, br, _, _ = _fresh(data, d)
         rows.append({"dataset": data["datasets"][d]["name"], "freshness": ft, "status": "🔴 breach" if br else "🟢 ok"})
-    st.dataframe(pd.DataFrame(rows), hide_index=True)
+    viz.card_rows(rows, "#0d9488")
     if st.session_state.get(f'dop_opt_applied_{inc["id"]}'):
         v = st.session_state.get(f'verdict_{inc["id"]}', "")
         journey.render_recovery_update(
@@ -222,8 +222,8 @@ def platform_engineer_view(inc, data):
     c2.metric("Freshness lag", f'{a["freshness_lag_min"]} min')
     c3.metric("Downstream at risk", a["downstream"])
     runs = [r for r in data["runs"] if r["pipeline_id"] == inc["pipeline_id"]]
-    st.dataframe(pd.DataFrame([{"run": r["id"], "status": r["status"], "duration_min": r["duration_min"],
-                                "rows": r["rows"]} for r in runs]), hide_index=True)
+    viz.card_rows([{"run": r["id"], "status": r["status"], "duration": f'{r["duration_min"]} min',
+                    "rows": r["rows"]} for r in runs], "#475569")
     rec = DE.recommend(inc, DE.causes(inc, data), data)
     st.info(f'Capacity action: {rec["action"]}  ·  Gate: {rec["mode"]}')
     handoff("to the Data Engineer to action the fix; backfill/scale executed here.")

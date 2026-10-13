@@ -135,7 +135,21 @@ def render(name, role):
                  "priority": i["priority"], "owner": i["owner_team"]} for i in it_open]
         rows += [{"ref": i["id"], "domain": "DataOps", "title": i["title"],
                   "priority": i["priority"], "owner": i["owner_team"]} for i in dop_open]
-        viz.queue_cards(rows)
+        f1, f2, f3 = st.columns([2, 1, 1])
+        q = f1.text_input("Search", placeholder="id · title · owner", key="lo_q",
+                          label_visibility="collapsed")
+        domf = f2.selectbox("Domain", ["All", "IT Ops", "DataOps"], key="lo_domf",
+                            label_visibility="collapsed")
+        prif = f3.selectbox("Priority", ["All", "P1", "P2", "P3"], key="lo_prif",
+                            label_visibility="collapsed")
+        rows = [r for r in rows
+                if (not q or q.lower() in (r["ref"] + " " + r["title"] + " " + r["owner"]).lower())
+                and (domf == "All" or r["domain"] == domf)
+                and (prif == "All" or r["priority"] == prif)]
+        if rows:
+            viz.queue_cards(rows)
+        else:
+            st.caption("No incidents match the filter.")
 
     with right:
         refs = [r["ref"] for r in rows]
