@@ -273,16 +273,26 @@ def _render_incident_detail(dom, ref, you_role):
                     f"(CSM / L1 / L2/L3 / Developer / Incident Manager) to use this lens.")
 
 
+@st.dialog("🧭 Incident details", width="large",
+           on_dismiss=lambda: st.session_state.pop("open_incident", None))
+def _incident_dialog(dom, ref, you_role):
+    """Modal incident workspace. The board behind it never moves; sections are collapsible."""
+    c1, c2 = st.columns([5, 1])
+    c1.markdown(f'**{ref}** · {dom}')
+    if c2.button("✕ Close", key="dlg_close_" + ref):
+        st.session_state.pop("open_incident", None)
+        st.rerun()
+    _render_incident_detail(dom, ref, you_role)
+
+
 def render_incidents(you_role):
-    """Default page. Clicking a card opens that incident's details FIRST (same page, collapsible);
-    the at-a-glance overview and the board follow."""
-    sel = st.session_state.get("open_incident")
-    if sel:
-        with st.expander(f"🧭 {sel['ref']} — incident details", expanded=True):
-            _render_incident_detail(sel["domain"], sel["ref"], you_role)
-        st.caption("▾ Click the incident card again to close its details.")
+    """Default page. The board is the main block and never shifts; clicking a card opens the
+    incident's details in a modal dialog (with collapsible sections)."""
     with st.expander("📊 Overview — at a glance", expanded=False):
         _overview_panel()
+    sel = st.session_state.get("open_incident")
+    if sel:
+        _incident_dialog(sel["domain"], sel["ref"], you_role)
     render_board()
 
 
@@ -341,5 +351,5 @@ elif nav == "Analytics":
                                     "resolution-confidence analytics over governed data.")
 
 st.divider()
-st.caption("Sample data · simulated actions · build v49 — proof of concept, not production. "
+st.caption("Sample data · simulated actions · build v50 — proof of concept, not production. "
            "See PROTOTYPE_NOTES.md for persistence limits.")
