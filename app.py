@@ -136,44 +136,6 @@ def render_collaboration():
                     title="Impact — MTTR and resolution acceleration (illustrative)")
 
 
-# ================================================================= At-a-glance overview (collapsible, on the incident page)
-def _overview_panel():
-    dop = DE.load()
-    it_open = [i for i in _it_inc if i["status"] == "open"]
-    dop_open = [i for i in dop["incidents"] if i["status"] == "open"]
-    at_risk = sum(1 for i in it_open + dop_open if _sla_risk(i))
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("IT Ops incidents (open)", len(it_open))
-    m2.metric("DataOps incidents (open)", len(dop_open))
-    m3.metric("SLA at risk", at_risk)
-    m4.metric("Cross-domain threads", 1)
-
-    st.markdown("**Cross-domain resolution thread — live example**")
-    viz.causal([("Schema mismatch", "DataOps"), ("Pipeline failure", "DataOps"),
-                ("Stale payments data", "DataOps"), ("Payment API impact", "IT Ops")])
-    corr = journey.correlation_for("INC-8841")
-    st.caption(f'🔗 **INC-8841** (IT Ops) ↔ **DOP-1001** (DataOps) · shared cause '
-               f'**{corr["shared_cause"] if corr else "—"}**')
-    c1, c2 = st.columns(2)
-    with c1:
-        st.button("Open INC-8841 (IT Ops)", key="ov_it", use_container_width=True,
-                  on_click=journey._goto, args=("IT Ops", None, "INC-8841"))
-    with c2:
-        st.button("Open DOP-1001 (DataOps)", key="ov_dop", use_container_width=True,
-                  on_click=journey._goto, args=("DataOps", None, "DOP-1001"))
-
-    st.markdown("**Recent activity — across all incidents**")
-    rows = []
-    for ref in [i["id"] for i in _it_inc] + [i["id"] for i in dop["incidents"]]:
-        for cm in collab.comments(ref):
-            rows.append((cm["ts"], ref, cm["author"], cm["text"]))
-    rows.sort(reverse=True)
-    for ts, ref, author, text in rows[:6]:
-        st.markdown(f'`{ts[11:16]}` · **{ref}** · {author}  \n{text}')
-    if not rows:
-        st.caption("No activity yet.")
-
-
 # ================================================================= Incidents & resolution threads
 def render_board():
     rows = ([{"inc": i, "domain": "IT Ops"} for i in _it_inc] +
@@ -270,8 +232,6 @@ def _render_incident_detail(dom, ref, you_role):
 
 def render_incidents(you_role):
     """Default page. The incident board; clicking a card shows its details HERE (same page)."""
-    with st.expander("📊 At a glance — overview", expanded=False):
-        _overview_panel()
     sel = st.session_state.get("open_incident")
     if sel:
         c1, c2 = st.columns([5, 1])
@@ -290,10 +250,9 @@ def render_operations(you_role):
     st.subheader("Operations — pipelines, dependencies and live signals")
     st.caption("The DataOps signals and dependencies that explain incidents, plus the live event feed and "
                "cross-domain collaboration.")
-    t1, t2 = st.tabs(["Pipelines", "Live signals"])
-    with t1:
+    with st.expander("🚰 Pipelines — freshness, quality and lineage", expanded=True):
         render_pipelines()
-    with t2:
+    with st.expander("📡 Live signals — real-time events, collaboration and delegation", expanded=False):
         render_liveops(you_role)
     st.caption("Collaboration, owners, handoffs, comments and activity live inside each incident's "
                "resolution thread (open an incident from **Incidents**).")
@@ -343,5 +302,5 @@ elif nav == "Analytics":
                                     "resolution-confidence analytics over governed data.")
 
 st.divider()
-st.caption("Sample data · simulated actions · build v45 — proof of concept, not production. "
+st.caption("Sample data · simulated actions · build v46 — proof of concept, not production. "
            "See PROTOTYPE_NOTES.md for persistence limits.")

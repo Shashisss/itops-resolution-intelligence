@@ -36,8 +36,8 @@ IMPACT_ROWS = [
 
 def _rail(inc, rec):
     """Shared right-hand rail (identical for IT Ops and DataOps)."""
-    st.markdown("#### 📡 Live event feed · simulated")
-    viz.feed(realtime.recent(8))
+    with st.expander("📡 Live event feed · simulated", expanded=False):
+        viz.feed(realtime.recent(8))
     st.markdown("#### 👥 Team & ownership")
     st.markdown(f'- **{inc["owner_team"]}** — owner')
     for a in journey.actors(rec):
