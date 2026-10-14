@@ -6,6 +6,7 @@ Deterministic graph + rule-based reasoning. SAMPLE DATA · SIMULATED ACTIONS."""
 import os
 import datetime as dt
 import importlib
+import pandas as pd
 import streamlit as st
 import engine as E
 import personas
@@ -137,10 +138,10 @@ def _overview_panel():
                f'**{corr["shared_cause"] if corr else "—"}**')
     c1, c2 = st.columns(2)
     with c1:
-        st.button("Open INC-8841 (IT Ops)", key="ov_it", use_container_width=True,
+        st.button("Open INC-8841 (IT Ops)", key="ov_it", width="stretch",
                   on_click=journey._goto, args=("IT Ops", None, "INC-8841"))
     with c2:
-        st.button("Open DOP-1001 (DataOps)", key="ov_dop", use_container_width=True,
+        st.button("Open DOP-1001 (DataOps)", key="ov_dop", width="stretch",
                   on_click=journey._goto, args=("DataOps", None, "DOP-1001"))
 
     st.markdown("**Live event feed — all domains**")
@@ -220,6 +221,21 @@ def render_board():
     st.caption(f'{len(shown)} of {len(rows)} incidents')
     if not shown:
         st.caption("No incidents match the filter.")
+        return
+    view = st.radio("View", ["Cards", "Table"], horizontal=True, key="board_view",
+                    help="Table is easier for comparison on a wide screen; cards read better when narrow.")
+    if view == "Table":
+        df = pd.DataFrame([{
+            "ID": r["inc"]["id"], "Domain": r["domain"], "Title": r["inc"]["title"],
+            "Status": (r["inc"].get("status") or "").title(), "Verdict": r["verdict"],
+            "Stage": journey.lifecycle_stage(r["inc"]), "Owner": r["inc"].get("owner_team"),
+            "SLA": (_sla_txt(r["inc"]) if r["inc"].get("status") == "open" else "—"),
+        } for r in shown])
+        st.dataframe(df, hide_index=True, width="stretch")
+        dom_of = {r["inc"]["id"]: r["domain"] for r in shown}
+        pick = st.selectbox("Open an incident", list(dom_of), key="board_pick")
+        st.button("Open incident details →", key="board_open_sel", type="primary",
+                  on_click=journey._goto, args=(dom_of[pick], None, pick))
         return
     cols = st.columns(2)
     _open_ref = (st.session_state.get("open_incident") or {}).get("ref")
@@ -351,5 +367,5 @@ elif nav == "Analytics":
                                     "resolution-confidence analytics over governed data.")
 
 st.divider()
-st.caption("Sample data · simulated actions · build v50 — proof of concept, not production. "
+st.caption("Sample data · simulated actions · build v51 — proof of concept, not production. "
            "See PROTOTYPE_NOTES.md for persistence limits.")

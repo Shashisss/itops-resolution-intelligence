@@ -23,11 +23,13 @@ def render_workspace(hero_kwargs, lifecycle, edges, tabs, rail, thread_note=None
     """
     viz.hero(**hero_kwargs)
 
-    st.markdown("#### Resolution lifecycle — the single progress model")
-    viz.thread_spine(lifecycle)
-    st.caption("One shared lifecycle across **IT Ops** and **DataOps**. Each stage carries an internal "
-               "**OLA** (owner-team target) — distinct from the customer **SLA** in the header. "
-               "The active stage shows live remaining / BREACHED.")
+    st.markdown("#### Resolution lifecycle")
+    viz.lifecycle_strip(lifecycle)
+    st.caption("✔ done · ● active · ⏸ blocked · ✖ failed · ○ not started — status is shown by symbol "
+               "**and** text, never colour alone. Each stage carries an internal **OLA** (owner-team "
+               "target), distinct from the customer **SLA** in the header.")
+    with st.expander("Lifecycle detail — stages, OLA and next action", expanded=False):
+        viz.thread_spine(lifecycle)
 
     if collab_banner or corr:
         with st.expander("🤝 Collaboration & handoffs", expanded=False):

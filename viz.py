@@ -66,6 +66,29 @@ div[class*="st-key-boardcard-P4-"] button{border-left-color:#64748b!important}
   border:1px solid #e5e7eb;border-radius:10px;padding:6px 11px;margin:0 0 10px}
 .ri-ambient .ri-amb-l{font-weight:800;font-size:11.5px;color:#0f172a;white-space:nowrap}
 .ri-amb{border-left:3px solid #94a3b8;padding:1px 9px;font-size:11.5px;color:#334155;white-space:nowrap}
+/* ---- design tokens + responsive guards (build v51) ---- */
+:root{--ri-accent:#4f46e5;--ri-ink:#0f172a;--ri-muted:#64748b;--ri-line:#e5e7eb;--ri-soft:#f8fafc;--ri-r:12px}
+.ri-hero .id,.ri-card,.ri-kpi .v,.ri-kpi .s,.ri-ev-chip,.ri-qcard,.ri-lc-stage{overflow-wrap:anywhere;word-break:break-word}
+.ri-hero>div{flex-wrap:wrap}
+.ri-kpi .v{line-height:1.25}
+.ri-kpi .s{line-height:1.3}
+/* lifecycle: compact progress strip (status via symbol AND border colour AND tooltip text) */
+.ri-lc{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:2px 0 6px}
+.ri-lc-stage{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;
+  font-size:12.5px;font-weight:700;border:1px solid var(--ri-line);background:#fff;color:var(--ri-ink)}
+.ri-lc-stage.done{border-color:#16a34a;color:#166534;background:#f0fdf4}
+.ri-lc-stage.current{border-color:var(--ri-accent);color:#3730a3;background:#eef2ff}
+.ri-lc-stage.blocked{border-color:#d97706;color:#92400e;background:#fffbeb}
+.ri-lc-stage.failed{border-color:#dc2626;color:#991b1b;background:#fef2f2}
+.ri-lc-stage.todo{color:#94a3b8;background:#fff}
+.ri-lc-arrow{color:#cbd5e1;font-weight:700}
+/* tabs wrap instead of clipping on narrow screens */
+.stTabs [data-baseweb="tab-list"]{flex-wrap:wrap!important;gap:2px!important}
+.stTabs [data-baseweb="tab"]{white-space:normal!important}
+/* columns must be allowed to shrink (prevents clipping/overflow) */
+[data-testid="stHorizontalBlock"]{flex-wrap:wrap}
+[data-testid="column"]{min-width:0}
+@media (max-width:640px){.ri-hero{padding:14px 16px}.ri-hero .id{font-size:18px}.ri-flowbox{gap:6px}}
 </style>
 """
 
@@ -280,18 +303,38 @@ def impact_summary(metric, baseline, current, unit, onset_label, onset):
 
 
 def thread_spine(items):
-    """items: list of (title, status, detail, ola). status in done/current/todo; ola = stage internal target."""
-    cols = {"done": "#16a34a", "current": "#4f46e5", "todo": "#cbd5e1"}
+    """items: list of (title, status, detail, ola). status in done/current/blocked/failed/todo;
+    ola = stage internal target."""
+    cols = {"done": "#16a34a", "current": "#4f46e5", "blocked": "#d97706", "failed": "#dc2626",
+            "todo": "#cbd5e1"}
     html = ['<div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 12px">']
     for i, (title, status, detail, ola) in enumerate(items):
         c = cols.get(status, "#cbd5e1")
         ola_tag = (f'<div style="margin-top:7px"><span class="ri-tag" style="background:#0891b2">'
                    f'OLA · {ola}</span></div>') if ola else ""
-        html.append(f'<div class="ri-card" style="flex:1;min-width:160px;border-top:4px solid {c}">'
+        html.append(f'<div class="ri-card" style="flex:1;min-width:140px;border-top:4px solid {c}">'
                     f'<div style="font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.04em">'
                     f'{i + 1} · {status}</div>'
                     f'<div style="font-weight:700;color:#0f172a;margin:2px 0 3px">{title}</div>'
                     f'<div style="font-size:12px;color:#475569">{detail}</div>{ola_tag}</div>')
+    html.append("</div>")
+    st.markdown("".join(html), unsafe_allow_html=True)
+
+
+_LC_SYM = {"done": "✔", "current": "●", "blocked": "⏸", "failed": "✖", "todo": "○"}
+
+
+def lifecycle_strip(items):
+    """Compact shared lifecycle strip: one chip per stage (status shown by symbol + border colour
+    + tooltip), not a row of equally-large cards."""
+    html = ['<div class="ri-lc">']
+    for i, (title, status, detail, ola) in enumerate(items):
+        cls = status if status in _LC_SYM else "todo"
+        tip = detail + (f' · OLA {ola}' if ola else "")
+        html.append(f'<span class="ri-lc-stage {cls}" title="{tip}">'
+                    f'{_LC_SYM[cls]} {title}</span>')
+        if i < len(items) - 1:
+            html.append('<span class="ri-lc-arrow">→</span>')
     html.append("</div>")
     st.markdown("".join(html), unsafe_allow_html=True)
 
@@ -480,7 +523,7 @@ def board_card(inc, domain, verdict, on_click, args, stage=None, sla=None, open_
         line1 += f' · stage: {stage}'
     line3 = f'owner: {owner}' + (f' · SLA: {sla}' if sla else '')
     label = f'{line1}  \n{inc["title"]}  \n{line3}'
-    st.button(label, key=f'boardcard-{pri}-{inc["id"]}', use_container_width=True,
+    st.button(label, key=f'boardcard-{pri}-{inc["id"]}', width="stretch",
               on_click=on_click, args=args)
 
 

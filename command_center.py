@@ -98,6 +98,11 @@ def _stage_ola_live(inc, stage, target):
 def _thread_spine(inc, deleg, confirmed, verdict):
     olas = {o["stage"]: o["target_min"] for o in E.load_stage_olas()}
     applied = bool(journey.applied_action(inc["id"]))
+    verify_status = ("done" if verdict == "Verified"
+                     else "failed" if verdict == "Recovery failed"
+                     else "current" if applied else "todo")
+    close_status = ("done" if verdict == "Verified"
+                    else "blocked" if verdict in ("Mitigated", "Recovery failed") else "todo")
     # Status is derived from EVIDENCE, not stage names: a confirmed hypothesis is not "Correlate complete",
     # and applying a fix is not "Verified". Closure only on Verified.
     stages = [
@@ -106,10 +111,8 @@ def _thread_spine(inc, deleg, confirmed, verdict):
         ("Coordinate", "done" if deleg else "current", "Owner assigned, approvals, remediation", "Coordinate"),
         ("Act", "done" if applied else ("current" if deleg else "todo"),
          "Remediation executed under approval (simulated)", "Act"),
-        ("Verify", "done" if verdict == "Verified" else ("current" if applied else "todo"),
-         "Independent re-check vs thresholds + verifying actor", "Verify"),
-        ("Close", "done" if verdict == "Verified" else ("current" if verdict in ("Mitigated", "Recovery failed") else "todo"),
-         "Verified / Mitigated / Recovery failed", "Close"),
+        ("Verify", verify_status, "Independent re-check vs thresholds + verifying actor", "Verify"),
+        ("Close", close_status, "Verified / Mitigated / Recovery failed", "Close"),
     ]
     cur = next((s[0] for s in stages if s[1] == "current"), None)
     items = []
