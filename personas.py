@@ -76,7 +76,7 @@ def context_header(inc, ctx):
     chain = E.dependency_paths(G, inc["service_id"])[0]
     biz = E.business_service(G, chain, services)
     sla_txt, rem, target, elapsed = _sla_detail(inc)
-    viz.stepper(STAGES, inc["stage"])
+    viz.stepper(journey.LIFECYCLE, journey.lifecycle_stage(inc))
     k = _kpi(ctx, biz)
     ola = next((o for o in E.load_olas() if o["team"] == inc["owner_team"]), None)
     ola_txt = "not defined"
@@ -86,7 +86,7 @@ def context_header(inc, ctx):
         ola_txt = (f'{inc["owner_team"]} · {ola["restore_min"]}m restore · '
                    + ("BREACHED" if rem_ola <= 0 else f'{int(rem_ola)}m left'))
     viz.fact_cards([
-        ("Stage", inc["stage"], "#4f46e5"),
+        ("Stage", journey.lifecycle_stage(inc), "#4f46e5"),
         ("Owner", inc["owner_team"], "#0d9488"),
         ("SLA (customer)", sla_txt, "#d97706"),
         ("OLA (owner team)", ola_txt, "#0891b2"),

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Resolution Intelligence — Streamlit POC.
 One governed platform across IT Ops and DataOps.
+Unified shell · one incident workspace · one lifecycle · one status vocabulary.
 Deterministic graph + rule-based reasoning. SAMPLE DATA · SIMULATED ACTIONS."""
 import os
+import datetime as dt
 import streamlit as st
 import engine as E
 import personas
@@ -13,9 +15,8 @@ import command_center
 import viz
 import journey
 import collab
+import shell
 
-ROLES_UNION = ["CSM", "L1 Engineer", "L2 / L3 Engineer", "Developer", "Incident Manager",
-               "Data Engineer", "Data Owner", "Platform Engineer", "Data Consumer"]
 VERDICT_OPTIONS = ["Investigating", "Mitigated", "Verified", "Recovery failed"]
 
 
@@ -36,39 +37,6 @@ def _needs_seed():
         return True
 
 
-def _reset():
-    import importlib
-    import seed
-    importlib.reload(seed)
-    st.session_state.clear()
-
-
-def _notif_list(role):
-    notes = collab.notifications_for(role)
-    if not notes:
-        st.caption("No notifications.")
-        return
-    for n in notes:
-        mark = "•" if n["read"] else "🔵"
-        st.markdown(f'{mark} {n["text"]} · _{n["ref_id"]}_')
-    if st.button("Mark all read", key="bell_read"):
-        collab.mark_all_read(role)
-        st.rerun()
-
-
-def _reset_control(key):
-    if st.session_state.get("confirm_reset_" + key):
-        st.sidebar.warning("Reset wipes all changes (comments, delegations, stages).")
-        a, b = st.sidebar.columns(2)
-        if a.button("Confirm", key="rc_yes_" + key):
-            _reset(); st.session_state["confirm_reset_" + key] = False; st.rerun()
-        if b.button("Cancel", key="rc_no_" + key):
-            st.session_state["confirm_reset_" + key] = False; st.rerun()
-    else:
-        if st.sidebar.button("↺ Reset sample data", key="rc_" + key):
-            st.session_state["confirm_reset_" + key] = True; st.rerun()
-
-
 if _needs_seed():
     import seed  # noqa: F401
 
@@ -81,123 +49,90 @@ flash = st.session_state.pop("flash", None)
 if flash:
     st.success(flash)
 
-# ---- sidebar: one identity + one autonomy setting ----
-viz.brand()
-you_role = st.sidebar.selectbox("👤 Demo persona", ROLES_UNION, key="you_role")
-st.sidebar.checkbox("⚙️ Demo setting — auto-coordinate on open", key="auto_coord",
-                    help="Demo behaviour: coordination (assign + notify) is autonomous under policy; production "
-                         "changes still require human approval.")
-with st.sidebar.expander("🎨 Colour legend"):
-    viz.legend()
-st.sidebar.divider()
+# ---- one shell: global navigation + global controls ----
+nav, you_role = shell.sidebar("CSM")
 
-# ---- top bar: domain (with counts) · search · notifications ----
 _sv, _ed, _it_inc, _ch, _me, _G = E.load()
 _dop_inc = DE.load()["incidents"]
-_it_open = sum(1 for i in _it_inc if i["status"] == "open")
-_dop_open = sum(1 for i in _dop_inc if i["status"] == "open")
-_labels = {"All incidents": f"All incidents · {_it_open + _dop_open} open",
-           "IT Ops": f"IT Ops · {_it_open} open", "DataOps": f"DataOps · {_dop_open} open",
-           "Live Operations": "Live Operations"}
-h1, h2, h3 = st.columns([2.1, 2.4, 1.0])
-with h1:
-    domain = st.radio("Operations domain", ["All incidents", "IT Ops", "DataOps", "Live Operations"],
-                      horizontal=True, key="ops_domain", label_visibility="collapsed",
-                      format_func=lambda x: _labels[x])
-with h2:
-    _gs = st.text_input("Search", key="global_search", label_visibility="collapsed",
-                        placeholder="🔎 Search incidents, services, owners…")
-with h3:
-    _unread = collab.unread_count(you_role)
-    if hasattr(st, "popover"):
-        with st.popover(f"🔔 {_unread}"):
-            _notif_list(you_role)
-    else:
-        with st.expander(f"🔔 {_unread}"):
-            _notif_list(you_role)
-
-if _gs:
-    _hits = [(i["id"], f'IT Ops · {i["title"]} · {i["owner_team"]}', "IT Ops", "it_inc") for i in _it_inc
-             if _gs.lower() in (i["id"] + " " + i["title"] + " " + i["owner_team"]).lower()]
-    _hits += [(i["id"], f'DataOps · {i["title"]} · {i["owner_team"]}', "DataOps", "dop_inc") for i in _dop_inc
-              if _gs.lower() in (i["id"] + " " + i["title"] + " " + i["owner_team"]).lower()]
-    for _ref, _lab, _dom, _key in _hits[:6]:
-        st.button(_lab, key="gs_" + _ref, on_click=journey._goto, args=(_dom, _key, _ref))
-    if not _hits:
-        st.caption("No matches.")
+shell.topbar(_it_inc, _dop_inc, you_role)
 
 
-# ================================================================= IT Ops
-def render_itops():
+def _it_ctx():
     services, edges, incidents, changes, metrics, G = E.load()
-    ctx = dict(services=services, edges=edges, incidents=incidents, changes=changes, metrics=metrics,
-               tickets=E.load_tickets(), kpis=E.load_kpis(), G=G)
-    ordered = sorted(incidents, key=lambda i: (i["status"] != "open", i["id"]))
-    titles = {i["id"]: f'{i["id"]} · {i["title"]} ({i["status"]})' for i in ordered}
-    view = st.sidebar.radio("View", ["Resolution thread", "Guided journey", "By role"], key="it_view")
-    persona = None
-    if view == "By role":
-        default = you_role if you_role in personas.PERSONAS else personas.PERSONAS[0]
-        persona = st.sidebar.selectbox("View as role", personas.PERSONAS,
-                                       index=personas.PERSONAS.index(default), key="it_persona")
-    sel = st.sidebar.selectbox("Context incident", list(titles), format_func=lambda x: titles[x], key="it_inc")
-    _reset_control("it")
-    inc = next(i for i in incidents if i["id"] == sel)
-    if view == "Resolution thread":
-        command_center.it_command(inc, ctx)
-    elif view == "Guided journey":
-        personas.incident_view(inc, ctx)
-    else:
-        {"CSM": personas.csm_view, "L1 Engineer": personas.l1_view, "L2 / L3 Engineer": personas.l2_view,
-         "Developer": lambda i, c: personas.developer_view(c),
-         "Incident Manager": personas.im_view}[persona](inc, ctx)
+    return dict(services=services, edges=edges, incidents=incidents, changes=changes, metrics=metrics,
+                tickets=E.load_tickets(), kpis=E.load_kpis(), G=G)
 
 
-# ================================================================= DataOps
-def render_dataops():
-    data = DE.load()
-    ordered = sorted(data["incidents"], key=lambda i: (i["status"] != "open", i["id"]))
-    titles = {i["id"]: f'{i["id"]} · {i["title"]} ({i["status"]})' for i in ordered}
-    view = st.sidebar.radio("View", ["Resolution thread", "Guided journey", "By role"], key="dop_view")
-    persona = None
-    if view == "By role":
-        default = you_role if you_role in DV.PERSONAS else DV.PERSONAS[0]
-        persona = st.sidebar.selectbox("View as role", DV.PERSONAS,
-                                       index=DV.PERSONAS.index(default), key="dop_persona")
-    sel = st.sidebar.selectbox("Pipeline incident", list(titles), format_func=lambda x: titles[x], key="dop_inc")
-    _reset_control("dop")
-    inc = next(i for i in data["incidents"] if i["id"] == sel)
-    if view == "Resolution thread":
-        command_center.dop_command(inc, data)
-    elif view == "Guided journey":
-        DV.pipeline_view(inc, data)
-    else:
-        {"Data Engineer": DV.data_engineer_view, "Data Owner": DV.data_owner_view,
-         "Platform Engineer": DV.platform_engineer_view, "Data Consumer": DV.data_consumer_view}[persona](inc, data)
+def _find_it(ref):
+    return next((i for i in _it_inc if i["id"] == ref), None)
 
 
-# ================================================================= Live Operations
-def render_liveops():
-    name = st.sidebar.text_input("Your name", value="You", key="lo_name")
-    _reset_control("lo")
-    liveops_view.render(name, you_role)
+def _find_dop(ref):
+    return next((i for i in _dop_inc if i["id"] == ref), None)
 
 
-# ================================================================= All incidents
+def _sla_risk(i):
+    target = personas.SLA_HOURS.get(i["priority"], 8)
+    try:
+        elapsed = (dt.datetime.now() - dt.datetime.fromisoformat(i["created_at"])).total_seconds() / 3600
+    except Exception:
+        elapsed = 0.0
+    return (target - elapsed) < target * 0.5
+
+
+# ================================================================= Overview
+def render_overview():
+    dop = DE.load()
+    it_open = [i for i in _it_inc if i["status"] == "open"]
+    dop_open = [i for i in dop["incidents"] if i["status"] == "open"]
+    at_risk = sum(1 for i in it_open + dop_open if _sla_risk(i))
+    st.subheader("Overview — one workspace across IT Ops and DataOps")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("IT Ops incidents (open)", len(it_open))
+    m2.metric("DataOps incidents (open)", len(dop_open))
+    m3.metric("SLA at risk", at_risk)
+    m4.metric("Cross-domain threads", 1)
+    st.caption("Start from **Incidents & resolution threads** to open any incident's workspace.")
+
+    st.markdown("#### Cross-domain resolution thread — live example")
+    viz.causal([("Schema mismatch", "DataOps"), ("Pipeline failure", "DataOps"),
+                ("Stale payments data", "DataOps"), ("Payment API impact", "IT Ops")])
+    corr = journey.correlation_for("INC-8841")
+    st.caption(f'🔗 **INC-8841** (IT Ops) ↔ **DOP-1001** (DataOps) · shared cause '
+               f'**{corr["shared_cause"] if corr else "—"}**')
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("Open INC-8841 (IT Ops)", key="ov_it", use_container_width=True,
+                     on_click=journey._goto, args=("IT Ops", None, "INC-8841")):
+            pass
+    with c2:
+        if st.button("Open DOP-1001 (DataOps)", key="ov_dop", use_container_width=True,
+                     on_click=journey._goto, args=("DataOps", None, "DOP-1001")):
+            pass
+
+    st.markdown("#### Recent activity — across all incidents")
+    rows = []
+    for ref in [i["id"] for i in _it_inc] + [i["id"] for i in dop["incidents"]]:
+        for cm in collab.comments(ref):
+            rows.append((cm["ts"], ref, cm["author"], cm["text"]))
+    rows.sort(reverse=True)
+    for ts, ref, author, text in rows[:6]:
+        st.markdown(f'`{ts[11:16]}` · **{ref}** · {author}  \n{text}')
+    if not rows:
+        st.caption("No activity yet.")
+
+
+# ================================================================= Incidents & resolution threads
 def render_board():
-    """Cross-domain board: every incident as a card; clicking opens its lifecycle."""
-    _, _, it_inc, _, _, _ = E.load()
-    dop_inc = DE.load()["incidents"]
-    rows = ([{"inc": i, "domain": "IT Ops", "key": "it_inc"} for i in it_inc] +
-            [{"inc": i, "domain": "DataOps", "key": "dop_inc"} for i in dop_inc])
+    rows = ([{"inc": i, "domain": "IT Ops"} for i in _it_inc] +
+            [{"inc": i, "domain": "DataOps"} for i in _dop_inc])
     for r in rows:
         r["verdict"] = journey.display_verdict(r["inc"])
 
-    st.subheader("All incidents — one board across IT Ops and DataOps")
-    st.caption("Open and closed incidents in one place. **Click a card to open its lifecycle** "
-               "(the resolution thread for that incident). Closed incidents read as **Verified** — "
-               "closure only happens after an independently verified recovery. Verdicts are "
-               "session-scoped and reset on restart.")
+    st.subheader("Incidents & resolution threads")
+    st.caption("Open and closed incidents in one board. **Click a card to open its workspace** "
+               "(the resolution thread). Closed incidents read as **Verified** — closure only happens "
+               "after an independently verified recovery. Verdicts are session-scoped and reset on restart.")
 
     f1, f2, f3, f4, f5 = st.columns([2.2, 1.1, 1.0, 1.4, 1.0])
     q = f1.text_input("Search", placeholder="id · title · owner", key="board_q")
@@ -227,17 +162,147 @@ def render_board():
     for idx, r in enumerate(shown):
         with cols[idx % 2]:
             viz.board_card(r["inc"], r["domain"], r["verdict"],
-                           on_click=journey._goto, args=(r["domain"], r["key"], r["inc"]["id"]))
+                           on_click=journey._goto, args=(r["domain"], None, r["inc"]["id"]))
 
 
-if domain == "All incidents":
-    render_board()
-elif domain == "IT Ops":
-    render_itops()
-elif domain == "DataOps":
-    render_dataops()
-else:
-    render_liveops()
+def render_incidents():
+    sel = st.session_state.get("open_incident")
+    if not sel:
+        render_board()
+        return
+    ref, dom = sel["ref"], sel["domain"]
+    if st.button("← All incidents", key="back_board"):
+        st.session_state.pop("open_incident", None)
+        st.rerun()
+    mode = st.radio("Workspace view", ["Resolution thread", "Guided journey"], horizontal=True,
+                    key="ws_mode_" + ref)
+    if dom == "DataOps":
+        data = DE.load()
+        inc = next((i for i in data["incidents"] if i["id"] == ref), None)
+        if inc is None:
+            st.warning("Incident not found.")
+            return
+        if mode == "Resolution thread":
+            command_center.dop_command(inc, data)
+        else:
+            DV.pipeline_view(inc, data)
+    else:
+        ctx = _it_ctx()
+        inc = _find_it(ref)
+        if inc is None:
+            st.warning("Incident not found.")
+            return
+        if mode == "Resolution thread":
+            command_center.it_command(inc, ctx)
+        else:
+            personas.incident_view(inc, ctx)
+
+
+# ================================================================= By role
+def render_by_role(you_role):
+    st.subheader("By role — one governed record, shaped per role")
+    dom = st.radio("Domain", ["IT Ops", "DataOps"], horizontal=True, key="role_dom")
+    if dom == "IT Ops":
+        default = you_role if you_role in personas.PERSONAS else personas.PERSONAS[0]
+        persona = st.selectbox("View as role", personas.PERSONAS,
+                               index=personas.PERSONAS.index(default), key="role_persona_it")
+        ordered = sorted(_it_inc, key=lambda i: (i["status"] != "open", i["id"]))
+        titles = {i["id"]: f'{i["id"]} · {i["title"]} ({i["status"]})' for i in ordered}
+        sel = st.selectbox("Incident", list(titles), format_func=lambda x: titles[x], key="role_inc_it")
+        inc, ctx = _find_it(sel), _it_ctx()
+        {"CSM": personas.csm_view, "L1 Engineer": personas.l1_view, "L2 / L3 Engineer": personas.l2_view,
+         "Developer": lambda i, c: personas.developer_view(c),
+         "Incident Manager": personas.im_view}[persona](inc, ctx)
+    else:
+        default = you_role if you_role in DV.PERSONAS else DV.PERSONAS[0]
+        persona = st.selectbox("View as role", DV.PERSONAS,
+                               index=DV.PERSONAS.index(default), key="role_persona_dop")
+        data = DE.load()
+        ordered = sorted(data["incidents"], key=lambda i: (i["status"] != "open", i["id"]))
+        titles = {i["id"]: f'{i["id"]} · {i["title"]} ({i["status"]})' for i in ordered}
+        sel = st.selectbox("Pipeline incident", list(titles), format_func=lambda x: titles[x],
+                           key="role_inc_dop")
+        inc = next(i for i in data["incidents"] if i["id"] == sel)
+        {"Data Engineer": DV.data_engineer_view, "Data Owner": DV.data_owner_view,
+         "Platform Engineer": DV.platform_engineer_view, "Data Consumer": DV.data_consumer_view}[persona](inc, data)
+
+
+# ================================================================= Data pipelines
+def render_pipelines():
+    data = DE.load()
+    st.subheader("Data pipelines — freshness, quality and lineage")
+    st.markdown("#### Dataset freshness (SLA)")
+    drows = []
+    for ds in data["datasets"]:
+        ft, breach, lag, sla = DV._fresh(data, ds)
+        drows.append({"dataset": data["datasets"][ds]["name"], "layer": data["datasets"][ds]["layer"],
+                      "freshness": ft, "status": "🔴 breach" if breach else "🟢 ok"})
+    viz.card_rows(drows, "#0d9488")
+    st.markdown("#### Pipeline incidents")
+    statf = st.selectbox("Status", ["All", "Open", "Closed"], key="pipe_status")
+    for inc in data["incidents"]:
+        if statf != "All" and (inc.get("status") or "").lower() != statf.lower():
+            continue
+        viz.board_card(inc, "DataOps", journey.display_verdict(inc),
+                       on_click=journey._goto, args=("DataOps", None, inc["id"]))
+
+
+# ================================================================= Live operations
+def render_liveops(you_role):
+    name = st.text_input("Your name", value="You", key="lo_name")
+    liveops_view.render(name, you_role)
+
+
+# ================================================================= Collaboration & activity
+def render_collab():
+    st.subheader("Collaboration & activity — across all incidents")
+    refs = [i["id"] for i in _it_inc] + [i["id"] for i in _dop_inc]
+    st.markdown("#### Recent updates")
+    items = []
+    for r in refs:
+        for c in collab.comments(r):
+            items.append((c["ts"], r, c["author"], c["role"], c["text"]))
+    items.sort(reverse=True)
+    for ts, r, author, role, text in items[:30]:
+        st.markdown(f'`{ts[11:19]}` · **{r}** · {author} ({role})  \n{text}')
+    if not items:
+        st.caption("No updates yet.")
+    st.markdown("#### Open delegations & handoffs")
+    open_deleg = [(r, d) for r in refs for d in collab.delegations(r) if d["status"] != "done"]
+    if open_deleg:
+        for r, d in open_deleg:
+            st.markdown(f'- **{r}** · {d["frm"]} → {d["to_"]} · {d["action"]} · '
+                        f'<span class="ri-tag" style="background:#d97706">{d["status"]}</span>',
+                        unsafe_allow_html=True)
+    else:
+        st.caption("No open delegations.")
+
+
+# ================================================================= Analytics / Settings placeholders
+def render_placeholder(name, note):
+    st.subheader(name)
+    st.info(f'**Placeholder — not yet implemented.** {note}')
+
+
+# ================================================================= dispatch
+if nav == "Overview":
+    render_overview()
+elif nav == journey.WORKSPACE_NAV:
+    render_incidents()
+elif nav == "By role":
+    render_by_role(you_role)
+elif nav == "Data pipelines":
+    render_pipelines()
+elif nav == "Live operations":
+    render_liveops(you_role)
+elif nav == "Collaboration & activity":
+    render_collab()
+elif nav == "Analytics":
+    render_placeholder("Analytics", "Planned: MTTR, SLA/OLA breach trends, repeat-incident and "
+                                    "resolution-confidence analytics over governed data.")
+elif nav == "Settings":
+    render_placeholder("Settings", "Planned: connectors (ServiceNow, Jira), stage OLA targets, policy, "
+                                   "personas and access (RBAC) — production concerns, not simulated here.")
 
 st.divider()
-st.caption("Sample data · simulated actions · build v38 — proof of concept, not production.")
+st.caption("Sample data · simulated actions · build v39 — proof of concept, not production.")

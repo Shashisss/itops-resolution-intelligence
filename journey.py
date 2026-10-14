@@ -13,6 +13,25 @@ CONF_RANK = {"high": 3, "medium": 2, "low": 1}
 KIND_ICON = {"change": "🔧", "alert": "🚨", "incident": "📟", "ticket": "🎫", "impact": "📉",
              "repair": "🛠", "verify": "✅", "detect": "🔎"}
 
+# ------------------------------------------------------------------ ONE shared lifecycle
+# The single progress model used across IT Ops and DataOps (see viz.thread_spine).
+LIFECYCLE = ["Detect", "Correlate", "Coordinate", "Verify", "Close"]
+# The nav target that opens an incident workspace (kept here so shell/app/callbacks agree).
+WORKSPACE_NAV = "Incidents & resolution threads"
+
+_IT_STAGE_TO_THREAD = {"Detected": "Detect", "Triaged": "Correlate", "Diagnosed": "Correlate",
+                       "Change raised": "Coordinate", "Fix in progress": "Coordinate",
+                       "Fix applied": "Verify", "Verified": "Verify", "Closed": "Close"}
+_DOP_STAGE_TO_THREAD = {"Detected": "Detect", "Triaged": "Correlate", "Diagnosed": "Correlate",
+                        "Fix in progress": "Coordinate", "Fix applied": "Verify",
+                        "Backfilled": "Verify", "Validated": "Verify", "Closed": "Close"}
+
+
+def lifecycle_stage(inc):
+    """Map a stored (IT or DataOps) stage value onto the ONE shared lifecycle vocabulary."""
+    s = inc.get("stage") or ""
+    return _IT_STAGE_TO_THREAD.get(s) or _DOP_STAGE_TO_THREAD.get(s) or "Detect"
+
 
 def timeline(ref_id):
     con = sqlite3.connect(DB)
@@ -236,9 +255,10 @@ def wizard(key, steps, renderers, default=0, help=None, handoffs=None):
 
 
 def _goto(domain, inc_key, ref):
-    """on_click callback — runs before widgets are instantiated, so setting widget keys is allowed."""
-    st.session_state["ops_domain"] = domain
-    st.session_state[inc_key] = ref
+    """on_click callback — opens an incident's workspace (search, cross-domain links, board cards).
+    Runs before widgets are instantiated, so setting widget/session keys is allowed."""
+    st.session_state["nav"] = WORKSPACE_NAV
+    st.session_state["open_incident"] = {"domain": domain, "ref": ref}
 
 
 def render_correlation(inc_id):
@@ -254,7 +274,7 @@ def render_correlation(inc_id):
               stale=(c["dop_id"], c["it_id"]), highlight=("biz",))
     if c["other_domain"] == "DataOps":
         st.button(f'View {c["other_id"]} in DataOps →', key="go_dop_" + inc_id,
-                  on_click=_goto, args=("DataOps", "dop_inc", c["other_id"]))
+                  on_click=_goto, args=("DataOps", None, c["other_id"]))
     else:
         st.button(f'View {c["other_id"]} in IT Ops →', key="go_it_" + inc_id,
-                  on_click=_goto, args=("IT Ops", "it_inc", c["other_id"]))
+                  on_click=_goto, args=("IT Ops", None, c["other_id"]))

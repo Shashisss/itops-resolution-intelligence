@@ -50,7 +50,7 @@ def context_header(inc, data):
     name = data["datasets"].get(ds, {}).get("name", ds)
     fresh_txt, breach, _, _ = _fresh(data, ds)
     downs, cons = DE.impact(ds, data)
-    viz.stepper(DE.STAGES, inc["stage"])
+    viz.stepper(journey.LIFECYCLE, journey.lifecycle_stage(inc))
     _owner = pipe.get("owner_team", inc["owner_team"])
     ola = next((o for o in E.load_olas() if o["team"] == _owner), None)
     ola_txt = "not defined"
@@ -59,7 +59,7 @@ def context_header(inc, data):
         rem = ola["restore_min"] - el
         ola_txt = f'{ola["restore_min"]}m · ' + ("BREACHED" if rem <= 0 else f'{int(rem)}m left')
     viz.fact_cards([
-        ("Stage", inc["stage"], "#4f46e5"),
+        ("Stage", journey.lifecycle_stage(inc), "#4f46e5"),
         ("Pipeline owner", _owner, "#0d9488"),
         ("Freshness (SLA)", fresh_txt, "#dc2626" if breach else "#16a34a"),
         ("OLA (owner)", ola_txt, "#0891b2"),
