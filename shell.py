@@ -9,9 +9,9 @@ import viz
 import collab
 import journey
 
-# Top menu. journey.WORKSPACE_NAV ("Incidents") opens the board/workspace — keep in sync.
-NAV = ["Overview", journey.WORKSPACE_NAV, "By role", "Pipelines", "Live ops",
-       "Collaboration", "Analytics", "Settings"]
+# Top menu — four primary destinations. journey.WORKSPACE_NAV ("Incidents") opens the
+# board/workspace and carries the role lens. Keep in sync.
+NAV = ["Overview", journey.WORKSPACE_NAV, "Operations", "Analytics"]
 
 ROLES_UNION = ["CSM", "L1 Engineer", "L2 / L3 Engineer", "Developer", "Incident Manager",
                "Data Engineer", "Data Owner", "Platform Engineer", "Data Consumer"]
@@ -65,6 +65,8 @@ def _demo_menu():
         st.markdown("**Colour legend**")
         viz.legend()
         st.divider()
+        st.caption("Settings — connectors (ServiceNow, Jira), stage OLA targets, policy and access (RBAC) "
+                   "are production concerns, not simulated in this prototype.")
         _reset_control()
 
 

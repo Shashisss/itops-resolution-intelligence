@@ -183,7 +183,7 @@ def render_board():
                            sla=(_sla_txt(r["inc"]) if r["inc"].get("status") == "open" else None))
 
 
-def render_incidents():
+def render_incidents(you_role):
     sel = st.session_state.get("open_incident")
     if not sel:
         render_board()
@@ -192,7 +192,7 @@ def render_incidents():
     if st.button("← All incidents", key="back_board"):
         st.session_state.pop("open_incident", None)
         st.rerun()
-    mode = st.radio("Workspace view", ["Resolution thread", "Guided journey"], horizontal=True,
+    lens = st.radio("View", ["Resolution thread", "Guided journey", "By role"], horizontal=True,
                     key="ws_mode_" + ref)
     if dom == "DataOps":
         data = DE.load()
@@ -200,46 +200,48 @@ def render_incidents():
         if inc is None:
             st.warning("Incident not found.")
             return
-        if mode == "Resolution thread":
+        if lens == "Resolution thread":
             command_center.dop_command(inc, data)
-        else:
+        elif lens == "Guided journey":
             DV.pipeline_view(inc, data)
+        elif you_role in DV.PERSONAS:
+            {"Data Engineer": DV.data_engineer_view, "Data Owner": DV.data_owner_view,
+             "Platform Engineer": DV.platform_engineer_view,
+             "Data Consumer": DV.data_consumer_view}[you_role](inc, data)
+        else:
+            st.info(f"**{you_role}** is an IT Ops role — switch the Demo persona to a DataOps role "
+                    f"(Data Engineer / Data Owner / Platform Engineer / Data Consumer) to use this lens.")
     else:
         ctx = _it_ctx()
         inc = _find_it(ref)
         if inc is None:
             st.warning("Incident not found.")
             return
-        if mode == "Resolution thread":
+        if lens == "Resolution thread":
             command_center.it_command(inc, ctx)
-        else:
+        elif lens == "Guided journey":
             personas.incident_view(inc, ctx)
+        elif you_role in personas.PERSONAS:
+            {"CSM": personas.csm_view, "L1 Engineer": personas.l1_view, "L2 / L3 Engineer": personas.l2_view,
+             "Developer": lambda i, c: personas.developer_view(c),
+             "Incident Manager": personas.im_view}[you_role](inc, ctx)
+        else:
+            st.info(f"**{you_role}** is a DataOps role — switch the Demo persona to an IT Ops role "
+                    f"(CSM / L1 / L2/L3 / Developer / Incident Manager) to use this lens.")
 
 
-# ================================================================= By role
-def render_by_role(you_role):
-    """Persona lens — driven by the ONE Demo persona control in the top bar (no duplicate selector)."""
-    st.subheader("By role — one governed record, shaped per role")
-    st.caption(f'Showing the **{you_role}** lens. Change it with the Demo persona control in the top bar.')
-    if you_role in personas.PERSONAS:
-        ordered = sorted(_it_inc, key=lambda i: (i["status"] != "open", i["id"]))
-        titles = {i["id"]: f'{i["id"]} · {i["title"]} ({i["status"]})' for i in ordered}
-        sel = st.selectbox("Incident", list(titles), format_func=lambda x: titles[x], key="role_inc_it")
-        inc, ctx = _find_it(sel), _it_ctx()
-        {"CSM": personas.csm_view, "L1 Engineer": personas.l1_view, "L2 / L3 Engineer": personas.l2_view,
-         "Developer": lambda i, c: personas.developer_view(c),
-         "Incident Manager": personas.im_view}[you_role](inc, ctx)
-    elif you_role in DV.PERSONAS:
-        data = DE.load()
-        ordered = sorted(data["incidents"], key=lambda i: (i["status"] != "open", i["id"]))
-        titles = {i["id"]: f'{i["id"]} · {i["title"]} ({i["status"]})' for i in ordered}
-        sel = st.selectbox("Pipeline incident", list(titles), format_func=lambda x: titles[x],
-                           key="role_inc_dop")
-        inc = next(i for i in data["incidents"] if i["id"] == sel)
-        {"Data Engineer": DV.data_engineer_view, "Data Owner": DV.data_owner_view,
-         "Platform Engineer": DV.platform_engineer_view, "Data Consumer": DV.data_consumer_view}[you_role](inc, data)
-    else:
-        st.info("Choose an IT Ops or DataOps role in the top **Demo persona** control to use this view.")
+# ================================================================= Operations (pipelines + live signals + collaboration)
+def render_operations(you_role):
+    st.subheader("Operations — pipelines, dependencies and live signals")
+    st.caption("The DataOps signals and dependencies that explain incidents, plus the live event feed and "
+               "cross-domain collaboration.")
+    t1, t2, t3 = st.tabs(["Pipelines", "Live signals", "Collaboration"])
+    with t1:
+        render_pipelines()
+    with t2:
+        render_liveops(you_role)
+    with t3:
+        render_collab()
 
 
 # ================================================================= Data pipelines
@@ -303,21 +305,12 @@ def render_placeholder(name, note):
 if nav == "Overview":
     render_overview()
 elif nav == journey.WORKSPACE_NAV:
-    render_incidents()
-elif nav == "By role":
-    render_by_role(you_role)
-elif nav == "Pipelines":
-    render_pipelines()
-elif nav == "Live ops":
-    render_liveops(you_role)
-elif nav == "Collaboration":
-    render_collab()
+    render_incidents(you_role)
+elif nav == "Operations":
+    render_operations(you_role)
 elif nav == "Analytics":
     render_placeholder("Analytics", "Planned: MTTR, SLA/OLA breach trends, repeat-incident and "
                                     "resolution-confidence analytics over governed data.")
-elif nav == "Settings":
-    render_placeholder("Settings", "Planned: connectors (ServiceNow, Jira), stage OLA targets, policy, "
-                                   "personas and access (RBAC) — production concerns, not simulated here.")
 
 st.divider()
-st.caption("Sample data · simulated actions · build v40 — proof of concept, not production.")
+st.caption("Sample data · simulated actions · build v41 — proof of concept, not production.")

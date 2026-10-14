@@ -102,7 +102,7 @@ def context_header(inc, ctx):
     st.caption(f'SLA — {SLA_ASSUMPTION}')
     if not k:
         st.caption("No business KPI is mapped for this scenario — impact shown as service-level only.")
-    journey.render_verdict(st.session_state.get(f'verdict_{inc["id"]}', "Investigating"))
+    journey.render_verdict(journey.current_verdict(inc))
 
 
 def handoff(text):
@@ -185,11 +185,13 @@ def action_panel(inc, ctx):
     _has_deleg = bool(collab.delegations(inc["id"]))
     if st.button("Apply selected action (simulated)", disabled=not approved,
                  type=("primary" if _has_deleg else "secondary"), key="it_apply_" + inc["id"]):
-        v = journey.verdict(E.it_verification(inc, ctx, opt, True), True)
+        rows = E.it_verification(inc, ctx, opt, True)
+        v = journey.verdict(rows, True)
         st.session_state[f'it_opt_applied_{inc["id"]}'] = opt["id"]
         st.session_state[f'verdict_{inc["id"]}'] = v
         E.set_stage(inc["id"], {"Verified": "Verified", "Mitigated": "Fix applied",
                                 "Recovery failed": "Fix in progress"}.get(v, "Fix applied"))
+        journey.set_resolution(inc["id"], v, action_id=opt["id"], checks=rows, actor="SRE verification service")
         journey.add_event(inc["id"], "itops", "repair", f'{opt["label"]} — independent verification: {v}')
         st.session_state["flash"] = f'Action applied (simulated). Independent verification → **{v}**.'
         st.rerun()
@@ -197,33 +199,29 @@ def action_panel(inc, ctx):
 
 def verify_panel(inc, ctx):
     st.markdown("#### Verify — independent verification")
+    rec = journey.resolution_record(inc["id"])
     labels = [f'{o["id"]} · {o["label"]}' for o in E.IT_REMEDIATION]
     sel = st.session_state.get("it_opt_" + inc["id"], labels[0])
     opt = E.IT_REMEDIATION[labels.index(sel)] if sel in labels else E.IT_REMEDIATION[0]
-    applied = st.session_state.get(f'it_opt_applied_{inc["id"]}') == opt["id"]
-    rows = E.it_verification(inc, ctx, opt, applied)
+    if rec and rec.get("checks"):
+        rows, applied_any, verdict = rec["checks"], True, rec["verdict"]
+    else:
+        applied = st.session_state.get(f'it_opt_applied_{inc["id"]}') == opt["id"]
+        rows = E.it_verification(inc, ctx, opt, applied)
+        applied_any = bool(st.session_state.get(f'it_opt_applied_{inc["id"]}'))
+        verdict = journey.verdict(rows, applied)
     journey.render_verification(rows, "SRE verification service")
-    journey.render_verdict(journey.verdict(rows, applied))
+    journey.render_verdict(verdict)
     st.caption("Recovery is **simulated**; the thresholds checked are shown above (latency, error rate, DB "
                "connections, business KPI).")
-    applied_any = bool(st.session_state.get(f'it_opt_applied_{inc["id"]}'))
-    verdict = st.session_state.get(f'verdict_{inc["id"]}', journey.verdict(rows, applied))
     journey.render_resolution(inc["id"], applied_any, _sla_detail(inc)[0], inc["owner_team"], verdict=verdict)
-    if applied_any and verdict == "Verified":
-        journey.render_recovery_update(
-            "Customer success / Data Owner update — evidence-backed recovery",
-            'Payments service restored — the upstream data is fresh and error rates are normal. '
-            'Outcome independently verified. (Simulated.)')
-    elif applied_any and verdict == "Mitigated":
-        journey.render_recovery_update(
-            "Customer success / Data Owner update",
-            'Partial improvement only — the service is better but **not fully restored**; teams are still '
-            'working. (Simulated.)', kind="warning")
-    elif applied_any and verdict == "Recovery failed":
-        journey.render_recovery_update(
-            "Customer success / Data Owner update",
-            'The attempted repair **did not restore** service — escalated for immediate action; next update '
-            'shortly. (Simulated.)', kind="error")
+    if applied_any:
+        journey.render_recovery_by_verdict(
+            "Customer success / Data Owner update", verdict,
+            restored="Payments service restored — the upstream data is fresh and error rates are normal. "
+                     "Outcome independently verified.",
+            partial="Partial improvement only — the service is better but NOT fully restored; teams are still working.",
+            failed="The attempted repair did NOT restore service — escalated for immediate action.")
     journey.render_correlation(inc["id"])
 
 
@@ -234,7 +232,7 @@ def incident_view(inc, ctx):
     st.subheader("Incident intelligence — full walkthrough")
     context_header(inc, ctx)
     viz.status_bar(f'🔎 {inc["id"]} · {inc["priority"]} · owner {inc["owner_team"]} · '
-                   f'SLA {_sla_detail(inc)[0]} · {st.session_state.get(f"verdict_{inc["id"]}", "Investigating")}')
+                   f'SLA {_sla_detail(inc)[0]} · {journey.current_verdict(inc)}')
 
     def detect():
         st.subheader("Detection")
@@ -299,12 +297,12 @@ def csm_view(inc, ctx):
         if r.get("target"):
             with st.expander("✍️ Draft customer update (validate & edit)", expanded=True):
                 st.text_area("Message", value=csm.customer_narrative(r["target"]), height=200, key="narr")
-    if st.session_state.get(f'it_opt_applied_{inc["id"]}'):
-        v = st.session_state.get(f'verdict_{inc["id"]}', "")
-        journey.render_recovery_update(
-            "Customer success / Data Owner update",
-            f'Payments service restored — the upstream data feed is fresh again and payment error rates are '
-            f'normal. Independent verification: **{v}**. (Simulated.)')
+    if journey.applied_action(inc["id"]):
+        journey.render_recovery_by_verdict(
+            "Customer success / Data Owner update", journey.current_verdict(inc),
+            restored="Payments service restored — the upstream data feed is fresh and payment error rates are normal.",
+            partial="Partial recovery only — the service is improved but NOT fully restored; teams are still working.",
+            failed="The attempted repair did NOT restore service — escalated; the incident remains open.")
     biz = E.business_service(G_ := ctx["G"], E.dependency_paths(ctx["G"], inc["service_id"])[0], services)
     handoff(f'to Incident Manager / L1 — {_carried(inc, ctx, biz, _sla_detail(inc)[0])}.')
 

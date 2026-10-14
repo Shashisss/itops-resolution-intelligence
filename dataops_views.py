@@ -72,7 +72,7 @@ def context_header(inc, data):
         st.markdown(f'**Data contract:** {con["name"]} {con["version"]} · owner {con["owner"]}')
     if breach or _dq(data, ds):
         st.caption("Detection is rule-based (freshness SLA, DQ thresholds, run status) — not autonomous/learned.")
-    journey.render_verdict(st.session_state.get(f'verdict_{inc["id"]}', "Investigating"))
+    journey.render_verdict(journey.current_verdict(inc))
 
 
 def handoff(text):
@@ -124,11 +124,14 @@ def action_panel(inc, data):
     if st.button("Apply selected repair (simulated)", disabled=not approved,
                  type=("primary" if collab.delegations(inc["id"]) else "secondary"),
                  key="dop_apply_" + inc["id"]):
-        v = journey.verdict(DE.verification(inc, data, opt, True), True)
+        rows = DE.verification(inc, data, opt, True)
+        v = journey.verdict(rows, True)
         st.session_state[f'dop_opt_applied_{inc["id"]}'] = opt["id"]
         st.session_state[f'verdict_{inc["id"]}'] = v
         DE.set_stage(inc["id"], {"Verified": "Validated", "Mitigated": "Fix applied",
                                  "Recovery failed": "Diagnosed"}.get(v, "Fix applied"))
+        journey.set_resolution(inc["id"], v, action_id=opt["id"], checks=rows,
+                               actor="Data-quality verification service")
         journey.add_event(inc["id"], "dataops", "repair", f'{opt["label"]} — independent verification: {v}')
         st.session_state["flash"] = f'Repair applied (simulated). Independent verification → **{v}**.'
         st.rerun()
@@ -136,13 +139,19 @@ def action_panel(inc, data):
 
 def verify_panel(inc, data):
     st.markdown("#### Verify — independent verification")
+    rec = journey.resolution_record(inc["id"])
     labels = [f'{o["id"]} · {o["label"]}' for o in DE.DOP_REMEDIATION]
     sel = st.session_state.get("dop_opt_" + inc["id"], labels[0])
     opt = DE.DOP_REMEDIATION[labels.index(sel)] if sel in labels else DE.DOP_REMEDIATION[0]
-    applied = st.session_state.get(f'dop_opt_applied_{inc["id"]}') == opt["id"]
-    rows = DE.verification(inc, data, opt, applied)
+    if rec and rec.get("checks"):
+        rows, applied_any, verdict = rec["checks"], True, rec["verdict"]
+    else:
+        applied = st.session_state.get(f'dop_opt_applied_{inc["id"]}') == opt["id"]
+        rows = DE.verification(inc, data, opt, applied)
+        applied_any = bool(st.session_state.get(f'dop_opt_applied_{inc["id"]}'))
+        verdict = journey.verdict(rows, applied)
     journey.render_verification(rows, "Data-quality verification service")
-    journey.render_verdict(journey.verdict(rows, applied))
+    journey.render_verdict(verdict)
     st.caption("Recovery is **simulated**; thresholds checked are shown above (freshness SLA, DQ rules, "
                "downstream health).")
     a = DE.analytics(inc, data)
@@ -151,24 +160,15 @@ def verify_panel(inc, data):
     a2.metric("Freshness lag", f'{a["freshness_lag_min"]} min')
     a3.metric("Data quality", a["quality"])
     a4.metric("Pipeline reliability", f'{a["reliability_pct"]}%')
-    applied_any = bool(st.session_state.get(f'dop_opt_applied_{inc["id"]}'))
-    verdict = st.session_state.get(f'verdict_{inc["id"]}', journey.verdict(rows, applied))
     fresh_txt, _, _, _ = _fresh(data, inc["dataset_id"])
     journey.render_resolution(inc["id"], applied_any, f'freshness {fresh_txt}', inc["owner_team"], verdict=verdict)
-    if applied_any and verdict == "Verified":
-        journey.render_recovery_update(
-            "Data Owner update — evidence-backed recovery",
-            'payments_gold refreshed — freshness within SLA and downstream consumers healthy. '
-            'Outcome independently verified. (Simulated.)')
-    elif applied_any and verdict == "Mitigated":
-        journey.render_recovery_update(
-            "Data Owner update",
-            'Partial recovery only — freshness improved but downstream is **not fully healthy**; repair '
-            'ongoing. (Simulated.)', kind="warning")
-    elif applied_any and verdict == "Recovery failed":
-        journey.render_recovery_update(
-            "Data Owner update",
-            'The repair **did not restore** freshness/quality — escalated. (Simulated.)', kind="error")
+    if applied_any:
+        journey.render_recovery_by_verdict(
+            "Data Owner update", verdict,
+            restored="payments_gold refreshed — freshness within SLA and downstream consumers healthy. "
+                     "Outcome independently verified.",
+            partial="Partial recovery only — freshness improved but downstream is NOT fully healthy; repair ongoing.",
+            failed="The repair did NOT restore freshness/quality — escalated.")
     journey.render_correlation(inc["id"])
 
 
@@ -178,7 +178,7 @@ def pipeline_view(inc, data):
     context_header(inc, data)
     fresh_txt0, _, _, _ = _fresh(data, inc["dataset_id"])
     viz.status_bar(f'🔎 {inc["id"]} · {inc["priority"]} · owner {inc["owner_team"]} · '
-                   f'freshness {fresh_txt0} · {st.session_state.get(f"verdict_{inc["id"]}", "Investigating")}')
+                   f'freshness {fresh_txt0} · {journey.current_verdict(inc)}')
 
     def detect():
         st.subheader("Detection")
@@ -243,13 +243,13 @@ def data_owner_view(inc, data):
         ft, br, _, _ = _fresh(data, d)
         rows.append({"dataset": data["datasets"][d]["name"], "freshness": ft, "status": "🔴 breach" if br else "🟢 ok"})
     viz.card_rows(rows, "#0d9488")
-    if st.session_state.get(f'dop_opt_applied_{inc["id"]}'):
-        v = st.session_state.get(f'verdict_{inc["id"]}', "")
-        journey.render_recovery_update(
-            "Data Owner update",
-            f'payments_gold refreshed — freshness back within SLA; downstream consumers '
-            f'(Payment service (checkout-api), Finance close) healthy. Independent verification: **{v}**. '
-            f'(Simulated.)')
+    if st.session_state.get(f'dop_opt_applied_{inc["id"]}') or journey.applied_action(inc["id"]):
+        journey.render_recovery_by_verdict(
+            "Data Owner update", journey.current_verdict(inc),
+            restored="payments_gold refreshed — freshness within SLA; downstream consumers "
+                     "(Payment service (checkout-api), Finance close) healthy.",
+            partial="Partial recovery only — freshness improved but downstream consumers are NOT fully healthy; repair ongoing.",
+            failed="The repair did NOT restore freshness/quality — escalated; the incident remains open.")
     handoff("to the Data Consumer with a status/ETA once the repair is validated.")
 
 

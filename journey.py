@@ -4,6 +4,7 @@ INDEPENDENT verification, resolution record and cross-domain correlation.
 Used by both the IT Ops and DataOps domains."""
 import sqlite3
 import datetime as dt
+import json
 import pandas as pd
 import streamlit as st
 import viz
@@ -86,15 +87,86 @@ def verdict(rows, applied):
 
 
 def display_verdict(inc):
-    """Board-facing verdict for an incident.
+    """Board-facing verdict for an incident — the PERSISTED record is authoritative.
 
-    Closure only happens on an independently verified recovery, so a closed incident is Verified.
-    An open incident uses the session's live verdict (set when remediation is applied) and defaults
-    to Investigating. NOTE: session verdicts are not persisted, so they reset to Investigating on
-    restart/reboot — the board labels this honestly."""
+    Order: persisted resolution record → closed incident (Verified, since closure only happens on an
+    independently verified recovery) → session verdict → Investigating."""
+    rec = resolution_record(inc["id"])
+    if rec and rec.get("verdict"):
+        return rec["verdict"]
     if (inc.get("status") or "").lower() == "closed":
         return "Verified"
     return st.session_state.get(f'verdict_{inc["id"]}', "Investigating")
+
+
+# ---------------------------------------------------------------- authoritative resolution state
+def _ensure_resolution_table():
+    con = sqlite3.connect(DB)
+    con.execute("CREATE TABLE IF NOT EXISTS resolution_state("
+                "ref_id TEXT PRIMARY KEY, verdict TEXT, action_id TEXT, actor TEXT, "
+                "closed_at TEXT, updated_at TEXT, checks TEXT)")
+    con.commit()
+    con.close()
+
+
+def set_resolution(ref_id, verdict, action_id=None, actor="Verification service", checks=None):
+    """Persist the authoritative resolution record (verdict, action, checks, actor, closure time)."""
+    _ensure_resolution_table()
+    now = dt.datetime.now().replace(microsecond=0).isoformat(timespec="seconds")
+    closed = now if verdict == "Verified" else None
+    con = sqlite3.connect(DB)
+    con.execute(
+        "INSERT INTO resolution_state(ref_id,verdict,action_id,actor,closed_at,updated_at,checks) "
+        "VALUES(?,?,?,?,?,?,?) ON CONFLICT(ref_id) DO UPDATE SET "
+        "verdict=excluded.verdict, action_id=excluded.action_id, actor=excluded.actor, "
+        "closed_at=excluded.closed_at, updated_at=excluded.updated_at, checks=excluded.checks",
+        (ref_id, verdict, action_id, actor, closed, now, json.dumps(checks) if checks else None))
+    con.commit()
+    con.close()
+
+
+def resolution_record(ref_id):
+    _ensure_resolution_table()
+    con = sqlite3.connect(DB)
+    con.row_factory = sqlite3.Row
+    r = con.execute("SELECT * FROM resolution_state WHERE ref_id=?", (ref_id,)).fetchone()
+    con.close()
+    if not r:
+        return None
+    d = dict(r)
+    if d.get("checks"):
+        try:
+            d["checks"] = json.loads(d["checks"])
+        except Exception:
+            d["checks"] = None
+    return d
+
+
+def current_verdict(inc):
+    """The verdict every view must agree on: persisted record first, then session."""
+    rec = resolution_record(inc["id"])
+    if rec and rec.get("verdict"):
+        return rec["verdict"]
+    return st.session_state.get(f'verdict_{inc["id"]}', "Investigating")
+
+
+def applied_action(inc_id):
+    rec = resolution_record(inc_id)
+    if rec and rec.get("action_id"):
+        return rec["action_id"]
+    return st.session_state.get(f'it_opt_applied_{inc_id}') or \
+        st.session_state.get(f'dop_opt_applied_{inc_id}')
+
+
+def render_recovery_by_verdict(title, verdict, restored, partial, failed):
+    """Conditional recovery message — the SAME rule everywhere. Only Verified may say restored;
+    Mitigated must say partial; Recovery failed must say failed."""
+    if verdict == "Verified":
+        render_recovery_update(title, restored + " (Simulated.)")
+    elif verdict == "Mitigated":
+        render_recovery_update(title, partial + " (Simulated.)", kind="warning")
+    elif verdict == "Recovery failed":
+        render_recovery_update(title, failed + " (Simulated.)", kind="error")
 
 
 def render_verdict(state):
@@ -111,9 +183,9 @@ def confidence_note(hyps):
     if not hyps:
         return ""
     t = hyps[0]
-    return (f'Ranked by evidence strength — **{t["confidence"]}** confidence on *{t["type"]}*. Confidence is '
-            f'calibrated from observed signals (recency, magnitude vs threshold, correlation with an open incident), '
-            f'not from a model.')
+    return (f'Ranked by evidence strength — **{t["confidence"]}** confidence on *{t["type"]}*. Confidence is a '
+            f'**rule-based indicator** computed from observed signals (recency, magnitude vs threshold, '
+            f'correlation with an open incident), not a calibrated model score.')
 
 
 # ------------------------------------------------------------------ render helpers

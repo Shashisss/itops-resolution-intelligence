@@ -106,7 +106,7 @@ def it_command(inc, ctx):
     causes = E.causes(inc, G, changes, metrics, services)
     rec = E.recommend(inc, causes)
     sla_txt, rem, target, elapsed = P._sla_detail(inc)
-    verdict = st.session_state.get(f'verdict_{inc["id"]}', "Investigating")
+    verdict = journey.current_verdict(inc)
     deleg = bool(collab.delegations(inc["id"]))
     confirmed = any(c["status"] == "confirmed" for c in causes)
     corr = journey.correlation_for(inc["id"])
@@ -193,8 +193,14 @@ def it_command(inc, ctx):
         labels = [f'{o["id"]} · {o["label"]}' for o in E.IT_REMEDIATION]
         sel = st.session_state.get("it_opt_" + inc["id"], labels[0])
         opt = E.IT_REMEDIATION[labels.index(sel)] if sel in labels else E.IT_REMEDIATION[0]
-        applied = st.session_state.get(f'it_opt_applied_{inc["id"]}') == opt["id"]
-        rows = E.it_verification(inc, ctx, opt, applied)
+        res = journey.resolution_record(inc["id"])
+        if res and res.get("action_id"):
+            opt = next((o for o in E.IT_REMEDIATION if o["id"] == res["action_id"]), opt)
+        if res and res.get("checks"):
+            rows = res["checks"]
+        else:
+            applied = st.session_state.get(f'it_opt_applied_{inc["id"]}') == opt["id"]
+            rows = E.it_verification(inc, ctx, opt, applied)
         ts = dt.datetime.now().strftime("%H:%M")
         _srcmap = {"Latency (p95, ms)": "Observability", "Error rate (%)": "Observability",
                    "DB connections": "Observability"}
@@ -203,17 +209,15 @@ def it_command(inc, ctx):
                   "threshold": r["threshold checked"], "at": ts, "by": "SRE verification service",
                   "result": r["result"]} for r in rows]
         viz.audit_record(audit, inc["id"])
-        journey.render_verdict(journey.verdict(rows, applied))
-        applied_any = bool(st.session_state.get(f'it_opt_applied_{inc["id"]}'))
+        journey.render_verdict(journey.current_verdict(inc))
+        applied_any = bool(res and res.get("checks")) or bool(st.session_state.get(f'it_opt_applied_{inc["id"]}'))
         journey.render_resolution(inc["id"], applied_any, sla_txt, inc["owner_team"], verdict=verdict)
-        if applied_any and verdict == "Verified":
-            journey.render_recovery_update("Recovery update — evidence-backed",
-                                           "Service restored; outcome independently verified. (Simulated.)")
-        elif applied_any and verdict in ("Mitigated", "Recovery failed"):
-            journey.render_recovery_update("Update — not a closure",
-                                           f'Verification outcome: **{verdict}** — the incident remains open. '
-                                           f'(Simulated.)',
-                                           kind=("warning" if verdict == "Mitigated" else "error"))
+        if applied_any:
+            journey.render_recovery_by_verdict(
+                "Recovery update", journey.current_verdict(inc),
+                restored="Service restored; outcome independently verified.",
+                partial="Partial recovery only — the incident remains open.",
+                failed="Recovery failed — the incident remains open; escalate.")
 
     def timeline():
         st.markdown("#### Canonical timeline — one history across both domains")
@@ -233,7 +237,7 @@ def dop_command(inc, data):
     fresh_txt, breach, lag, sla = DV._fresh(data, ds)
     causes = DE.causes(inc, data)
     rec = DE.recommend(inc, causes, data)
-    verdict = st.session_state.get(f'verdict_{inc["id"]}', "Investigating")
+    verdict = journey.current_verdict(inc)
     deleg = bool(collab.delegations(inc["id"]))
     confirmed = any(c["status"] == "confirmed" for c in causes)
     corr = journey.correlation_for(inc["id"])
@@ -294,8 +298,14 @@ def dop_command(inc, data):
         labels = [f'{o["id"]} · {o["label"]}' for o in DE.DOP_REMEDIATION]
         sel = st.session_state.get("dop_opt_" + inc["id"], labels[0])
         opt = DE.DOP_REMEDIATION[labels.index(sel)] if sel in labels else DE.DOP_REMEDIATION[0]
-        applied = st.session_state.get(f'dop_opt_applied_{inc["id"]}') == opt["id"]
-        rows = DE.verification(inc, data, opt, applied)
+        res = journey.resolution_record(inc["id"])
+        if res and res.get("action_id"):
+            opt = next((o for o in DE.DOP_REMEDIATION if o["id"] == res["action_id"]), opt)
+        if res and res.get("checks"):
+            rows = res["checks"]
+        else:
+            applied = st.session_state.get(f'dop_opt_applied_{inc["id"]}') == opt["id"]
+            rows = DE.verification(inc, data, opt, applied)
         ts = dt.datetime.now().strftime("%H:%M")
 
         def _src(chk):
@@ -312,18 +322,16 @@ def dop_command(inc, data):
                   "threshold": r["threshold checked"], "at": ts, "by": "Data-quality verification service",
                   "result": r["result"]} for r in rows]
         viz.audit_record(audit, inc["id"])
-        journey.render_verdict(journey.verdict(rows, applied))
-        applied_any = bool(st.session_state.get(f'dop_opt_applied_{inc["id"]}'))
+        journey.render_verdict(journey.current_verdict(inc))
+        applied_any = bool(res and res.get("checks")) or bool(st.session_state.get(f'dop_opt_applied_{inc["id"]}'))
         journey.render_resolution(inc["id"], applied_any, f'freshness {fresh_txt}', inc["owner_team"],
                                   verdict=verdict)
-        if applied_any and verdict == "Verified":
-            journey.render_recovery_update("Recovery update — evidence-backed",
-                                           "Freshness and quality restored; outcome independently verified. (Simulated.)")
-        elif applied_any and verdict in ("Mitigated", "Recovery failed"):
-            journey.render_recovery_update("Update — not a closure",
-                                           f'Verification outcome: **{verdict}** — the incident remains open. '
-                                           f'(Simulated.)',
-                                           kind=("warning" if verdict == "Mitigated" else "error"))
+        if applied_any:
+            journey.render_recovery_by_verdict(
+                "Recovery update", journey.current_verdict(inc),
+                restored="Freshness and quality restored; outcome independently verified.",
+                partial="Partial recovery only — the incident remains open.",
+                failed="Recovery failed — the incident remains open; escalate.")
 
     def timeline():
         st.markdown("#### Canonical timeline — one history across both domains")
