@@ -21,16 +21,14 @@ import workspace
 import realtime
 
 
-def _refresh_modules_if_stale():
-    """Self-heal for Streamlit Cloud hot-reload.
+def _refresh_modules():
+    """Reload our own modules so the running app always matches app.py.
 
-    A deploy can hot-reload app.py while leaving imported sibling modules cached at an older
-    build, so newly added helpers (journey.collab_stats, viz.collab_strip, …) appear missing and
-    the page raises AttributeError. If we detect that, reload our own modules in place —
-    importlib.reload mutates the module object, so every importer sees the refreshed attributes."""
-    if all((hasattr(journey, "collab_stats"), hasattr(viz, "collab_strip"),
-            hasattr(command_center, "IMPACT_ROWS"))):
-        return
+    Streamlit Cloud can hot-reload app.py while leaving imported sibling modules cached at an
+    older build — which caused AttributeError (missing helpers) and TypeError (missing params,
+    e.g. board_card(linked=…)) on newly added code. importlib.reload mutates the module object in
+    place, so every importer sees the refreshed definitions. Doing this every run is cheap (the
+    modules only define functions) and removes the whole class of stale-module failures."""
     for _m in (viz, journey, collab, E, DE, personas, DV, workspace, command_center, shell):
         try:
             importlib.reload(_m)
@@ -38,7 +36,7 @@ def _refresh_modules_if_stale():
             pass
 
 
-_refresh_modules_if_stale()
+_refresh_modules()
 
 VERDICT_OPTIONS = ["Investigating", "Mitigated", "Verified", "Recovery failed"]
 
@@ -382,5 +380,5 @@ elif nav == "Analytics":
     render_analytics()
 
 st.divider()
-st.caption("Sample data · simulated actions · build v54 — proof of concept, not production. "
+st.caption("Sample data · simulated actions · build v55 — proof of concept, not production. "
            "See PROTOTYPE_NOTES.md for persistence limits.")
