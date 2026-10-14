@@ -27,11 +27,6 @@ DOP_HANDOFFS = {
 }
 
 
-def _stepper(stage):
-    idx = DE.STAGES.index(stage) if stage in DE.STAGES else 0
-    return "   ".join(("✔" if i < idx else "●" if i == idx else "○") + " " + s for i, s in enumerate(DE.STAGES))
-
-
 def _fresh(data, ds):
     f = data["fresh"].get(ds)
     if not f:

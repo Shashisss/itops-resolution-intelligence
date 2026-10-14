@@ -39,11 +39,6 @@ SLA_ASSUMPTION = ("Priority-based estimate: clock from incident creation, target
 
 
 # ---------------------------------------------------------------- helpers
-def _stepper(stage):
-    idx = STAGES.index(stage) if stage in STAGES else 0
-    return "   ".join(("✔" if i < idx else "●" if i == idx else "○") + " " + s for i, s in enumerate(STAGES))
-
-
 def _sla_detail(inc):
     target = SLA_HOURS.get(inc["priority"], 8)
     try:

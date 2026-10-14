@@ -260,12 +260,6 @@ def fact_cards(items):
             unsafe_allow_html=True)
 
 
-def brand():
-    st.sidebar.markdown('<div class="ri-brand"><div class="t">Resolution Intelligence</div>'
-                        '<div class="s">IT Ops + DataOps · unified operational resolution</div></div>',
-                        unsafe_allow_html=True)
-
-
 _DOM = {"DataOps": "#0d9488", "IT Ops": "#4f46e5"}
 
 
@@ -492,33 +486,20 @@ def ambient_strip(events):
     st.markdown('<div class="ri-ambient">' + "".join(parts) + '</div>', unsafe_allow_html=True)
 
 
-def queue_cards(rows):
-    for r in rows:
-        pc = PRI_COLOR.get(r["priority"], "#64748b")
-        dc = DOM_COLOR.get(r["domain"], "#64748b")
-        st.markdown(
-            f'<div class="ri-qcard" style="border-left-color:{pc}">'
-            f'<div style="display:flex;justify-content:space-between;gap:8px;align-items:center">'
-            f'<div style="font-weight:700;color:#0f172a;font-size:14px">{r["ref"]} '
-            f'<span class="ri-tag" style="background:{dc}">{r["domain"]}</span></div>'
-            f'<span class="ri-tag" style="background:{pc}">{r["priority"]}</span></div>'
-            f'<div style="color:#334155;font-size:13px;margin-top:4px">{r["title"]}</div>'
-            f'<div style="color:#64748b;font-size:12px;margin-top:3px">Owner: {r["owner"]}</div></div>',
-            unsafe_allow_html=True)
-
-
-def board_card(inc, domain, verdict, on_click, args, stage=None, sla=None, open_=False):
+def board_card(inc, domain, verdict, on_click, args, stage=None, sla=None, open_=False, linked=False):
     """One incident as a SINGLE clickable card, on the incidents board.
 
     The whole card is a full-width keyed `st.button` (styled as a card via the
     `st-key-boardcard-*` CSS rules above). Clicking it runs `on_click(*args)` — wired to a toggle
     that opens/closes the incident's collapsible details. The `-P1/-P2/...` segment in the key
-    drives the per-priority left border; the ▸/▾ marker shows open/closed."""
+    drives the per-priority left border; the ▸/▾ marker shows open/closed; 🔗 marks a
+    cross-domain incident (linked to another domain) vs a single-domain one."""
     pri = inc.get("priority", "P3")
     status = (inc.get("status") or "open").title()
     owner = inc.get("owner_team") or "—"
     mark = "▾" if open_ else "▸"
-    line1 = f'{mark} **{inc["id"]}** · {domain} · {status}'
+    link = "🔗 " if linked else ""
+    line1 = f'{mark} {link}**{inc["id"]}** · {domain} · {status}'
     if stage:
         line1 += f' · stage: {stage}'
     line3 = f'owner: {owner}' + (f' · SLA: {sla}' if sla else '')

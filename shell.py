@@ -98,34 +98,31 @@ def topbar(it_inc, dop_inc, services, datasets, pipelines):
         for i in it_inc:
             if hit(i["id"] + " " + i["title"] + " " + i["owner_team"]):
                 groups.setdefault("Incidents", []).append(
-                    (f'IT Ops · {i["id"]} · {i["title"]}',
-                     ("goto", "IT Ops", i["id"])))
+                    (f'IT Ops · {i["id"]} · {i["title"]}', ("IT Ops", i["id"])))
         for i in dop_inc:
             if hit(i["id"] + " " + i["title"] + " " + i["owner_team"]):
                 groups.setdefault("Incidents", []).append(
-                    (f'DataOps · {i["id"]} · {i["title"]}',
-                     ("goto", "DataOps", i["id"])))
+                    (f'DataOps · {i["id"]} · {i["title"]}', ("DataOps", i["id"])))
         for sid, s in services.items():
             if hit(sid + " " + s["name"] + " " + s.get("owner", "")):
                 groups.setdefault("Services", []).append(
-                    (f'{s["name"]} · {s["type"]} · {s["owner"]}', ("ops",)))
+                    (f'{s["name"]} · {s["type"]} · {s["owner"]}', None))
         for did, d in datasets.items():
             if hit(did + " " + d["name"] + " " + d.get("owner_team", "") + " " + d.get("layer", "")):
                 groups.setdefault("Datasets", []).append(
-                    (f'{d["name"]} · {d["layer"]} · {d.get("owner_team","")}', ("ops",)))
+                    (f'{d["name"]} · {d["layer"]} · {d.get("owner_team","")}', None))
         for pid, p in pipelines.items():
             if hit(pid + " " + p["name"] + " " + p.get("owner_team", "")):
                 groups.setdefault("Pipelines", []).append(
-                    (f'{p["name"]} · {p.get("owner_team","")}', ("ops",)))
+                    (f'{p["name"]} · {p.get("owner_team","")}', None))
         if not groups:
             st.caption("No matches.")
         for group, items in groups.items():
             st.caption(f'**{group}** · {len(items)}')
             for label, target in items[:5]:
-                key = f'gs_{group}_{abs(hash(label)) % 10**8}'
-                if target[0] == "goto":
-                    st.button(label, key=key, on_click=journey._goto, args=(target[1], None, target[2]))
+                if target:
+                    st.button(label, key=f'gs_{group}_{abs(hash(label)) % 10**8}',
+                              on_click=journey._goto, args=(target[0], None, target[1]))
                 else:
-                    st.button(label + "  → Operations", key=key, on_click=journey._nav_to,
-                              args=("Operations",))
+                    st.markdown(f'- {label}')
     return nav, role

@@ -12,7 +12,6 @@ import engine as E
 import personas
 import dataops_engine as DE
 import dataops_views as DV
-import liveops_view
 import command_center
 import viz
 import journey
@@ -32,8 +31,7 @@ def _refresh_modules_if_stale():
     if all((hasattr(journey, "collab_stats"), hasattr(viz, "collab_strip"),
             hasattr(command_center, "IMPACT_ROWS"))):
         return
-    for _m in (viz, journey, collab, E, DE, personas, DV, workspace, command_center, shell,
-               liveops_view):
+    for _m in (viz, journey, collab, E, DE, personas, DV, workspace, command_center, shell):
         try:
             importlib.reload(_m)
         except Exception:
@@ -245,7 +243,8 @@ def render_board():
                            on_click=journey.toggle_incident, args=(r["domain"], r["inc"]["id"]),
                            stage=journey.lifecycle_stage(r["inc"]),
                            sla=(_sla_txt(r["inc"]) if r["inc"].get("status") == "open" else None),
-                           open_=(r["inc"]["id"] == _open_ref))
+                           open_=(r["inc"]["id"] == _open_ref),
+                           linked=bool(journey.correlation_for(r["inc"]["id"])))
 
 
 def _render_incident_detail(dom, ref, you_role):
@@ -376,12 +375,6 @@ def render_analytics():
     st.caption("**Illustrative** simulated totals.")
 
 
-# ================================================================= Settings placeholder
-def render_placeholder(name, note):
-    st.subheader(name)
-    st.info(f'**Placeholder — not yet implemented.** {note}')
-
-
 # ================================================================= dispatch
 if nav == journey.WORKSPACE_NAV:
     render_incidents(you_role)
@@ -389,5 +382,5 @@ elif nav == "Analytics":
     render_analytics()
 
 st.divider()
-st.caption("Sample data · simulated actions · build v53 — proof of concept, not production. "
+st.caption("Sample data · simulated actions · build v54 — proof of concept, not production. "
            "See PROTOTYPE_NOTES.md for persistence limits.")

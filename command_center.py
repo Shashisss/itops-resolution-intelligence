@@ -12,7 +12,6 @@ import dataops_engine as DE
 import journey
 import viz
 import collab
-import realtime
 import workspace
 
 
@@ -146,7 +145,8 @@ def it_command(inc, ctx):
         priority=inc["priority"], inc_id=inc["id"], title=inc["title"],
         meta=(f'Service {services[inc["service_id"]]["name"]} · Business impact {bizname} · '
               f'Owner {inc["owner_team"]} · Stage {journey.lifecycle_stage(inc)} · Elapsed {int(elapsed)}m'),
-        sla_text=sla_txt, verdict=verdict, chips=["IT Ops", "Cross-Domain", "ServiceNow · Jira"])
+        sla_text=sla_txt, verdict=verdict,
+        chips=(["IT Ops"] + (["🔗 Cross-Domain"] if corr else []) + ["ServiceNow · Jira"]))
     lifecycle = _thread_spine(inc, deleg, confirmed, verdict)
     edges = journey.thread_edges_for(inc["id"])
 
@@ -266,7 +266,8 @@ def dop_command(inc, data):
         priority=inc["priority"], inc_id=inc["id"], title=inc["title"],
         meta=(f'Pipeline {inc["pipeline_id"]} · Dataset {data["datasets"][ds]["name"]} · '
               f'Owner {inc["owner_team"]} · Stage {journey.lifecycle_stage(inc)} · Elapsed {elapsed}m'),
-        sla_text=fresh_txt, verdict=verdict, chips=["DataOps", "Cross-Domain", "Lineage + DQ"])
+        sla_text=fresh_txt, verdict=verdict,
+        chips=(["DataOps"] + (["🔗 Cross-Domain"] if corr else []) + ["Pipeline failure", "Lineage + DQ"]))
     lifecycle = _thread_spine(inc, deleg, confirmed, verdict)
     edges = journey.thread_edges_for(inc["id"])
 
