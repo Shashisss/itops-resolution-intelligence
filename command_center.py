@@ -141,14 +141,21 @@ def it_command(inc, ctx):
                 ("Next action", (rec["action"][:64] + ("…" if len(rec["action"]) > 64 else "")),
                  "recommended", "#4f46e5"),
             ])
-            st.markdown("#### What connects the failure (cross-domain)")
-            if corr:
-                viz.causal([("Schema mismatch", "DataOps"), ("Pipeline failure", "DataOps"),
-                            ("Stale payments data", "DataOps"), ("Payment API impact", "IT Ops")])
-                st.caption(f'🔗 IT Ops **{inc["id"]}** ↔ DataOps **{corr["other_id"]}** · shared cause '
-                           f'**{corr["shared_cause"]}** · evidence flows left → right.')
-            else:
-                viz.chain(chain, {n: services[n]["name"] for n in services}, highlight=(inc["service_id"],))
+            st.markdown("#### What connects the failure (cross-domain thread)")
+            _ts = inc["created_at"].split("T")[-1][:5]
+            viz.thread_edges([
+                {"src": "Schema change (core_ledger)", "rel": "caused",
+                 "dst": "Pipeline failure (payments_bronze_ingest)", "kind": "observed",
+                 "source": "DataOps · run R-9001 SCHEMA_MISMATCH", "ts": _ts},
+                {"src": "Pipeline failure", "rel": "→ stale data", "dst": "payments_gold stale",
+                 "kind": "observed", "source": "DataOps · freshness 45m > 15m SLA", "ts": _ts},
+                {"src": "payments_gold stale", "rel": "→ impacts", "dst": "Payment API degradation",
+                 "kind": "inferred", "source": "IT Ops · data_age 45>15 with error_rate 8.1>1 (to validate)", "ts": _ts},
+                {"src": "DB connection saturation", "rel": "contributes", "dst": "Payment API degradation",
+                 "kind": "inferred", "source": "IT Ops · active_connections 720>700 (secondary cause)", "ts": _ts},
+            ])
+            st.caption("**Observed** = a recorded signal/relationship. **Inferred** = a hypothesis to confirm. "
+                       "Multiple contributing causes are allowed.")
             st.info(inc["summary"])
             if k:
                 viz.impact_summary(_metric_label(k["metric"]), k["baseline"], k["current"], k["unit"],
@@ -175,6 +182,14 @@ def it_command(inc, ctx):
             if k:
                 viz.impact_summary(_metric_label(k["metric"]), k["baseline"], k["current"], k["unit"],
                                    "incident onset", inc["created_at"].split("T")[-1][:5])
+            viz.value_strip([
+                ("Time to identify likely cause", "~45 min", "~10 min"),
+                ("Time to assign next owner", "~30 min", "~2 min"),
+                ("Time to verified recovery", "~4 h", "~1 h"),
+                ("SLA / OLA breaches (per month)", "6", "2"),
+                ("Repeat incidents (per month)", "12", "5"),
+                ("Operator effort (person-hours)", "9", "3"),
+            ])
         with t[3]:
             st.markdown("#### Team & ownership")
             st.markdown(f'- **{inc["owner_team"]}** — owner')
@@ -190,9 +205,12 @@ def it_command(inc, ctx):
             applied = st.session_state.get(f'it_opt_applied_{inc["id"]}') == opt["id"]
             rows = E.it_verification(inc, ctx, opt, applied)
             ts = dt.datetime.now().strftime("%H:%M")
-            audit = [{"check": r["check"], "observed": r["after (simulated)"],
-                      "threshold": r["threshold checked"], "at": ts,
-                      "by": "SRE verification service", "result": r["result"]} for r in rows]
+            _srcmap = {"Latency (p95, ms)": "Observability", "Error rate (%)": "Observability",
+                       "DB connections": "Observability"}
+            audit = [{"check": r["check"], "source": _srcmap.get(r["check"], "Business KPI / warehouse"),
+                      "action": f'{opt["id"]} · {opt["label"][:30]}', "observed": r["after (simulated)"],
+                      "threshold": r["threshold checked"], "at": ts, "by": "SRE verification service",
+                      "result": r["result"]} for r in rows]
             viz.audit_record(audit, inc["id"])
             journey.render_verdict(journey.verdict(rows, applied))
             applied_any = bool(st.session_state.get(f'it_opt_applied_{inc["id"]}'))
@@ -250,8 +268,18 @@ def dop_command(inc, data):
                 ("Pipeline", inc["pipeline_id"], "producer", "#dc2626"),
                 ("Freshness", fresh_txt, "SLA breach" if breach else "within SLA", "#d97706"),
                 ("Consumers", str(len(cons)), "downstream", "#7c3aed"),
-                ("Top hypothesis", (causes[0]["type"].title() if causes else "—"),
+                ("Top hypothesis", (causes[0].get("label") or causes[0]["type"].title() if causes else "—"),
                  (f'{causes[0]["confidence"]} confidence' if causes else ""), "#d97706"),
+            ])
+            _ts = inc["created_at"].split("T")[-1][:5]
+            st.markdown("#### What connects the failure (cross-domain thread)")
+            viz.thread_edges([
+                {"src": "Schema change (core_ledger)", "rel": "caused", "dst": "Pipeline failure",
+                 "kind": "observed", "source": "DataOps · run R-9001 SCHEMA_MISMATCH", "ts": _ts},
+                {"src": "Pipeline failure", "rel": "→ stale data", "dst": "payments_gold stale",
+                 "kind": "observed", "source": "DataOps · freshness 45m > 15m SLA", "ts": _ts},
+                {"src": "payments_gold stale", "rel": "→ impacts", "dst": "Payment API degradation",
+                 "kind": "inferred", "source": "IT Ops · correlation to validate", "ts": _ts},
             ])
             st.info(inc["summary"])
         with t[1]:
@@ -273,9 +301,18 @@ def dop_command(inc, data):
             applied = st.session_state.get(f'dop_opt_applied_{inc["id"]}') == opt["id"]
             rows = DE.verification(inc, data, opt, applied)
             ts = dt.datetime.now().strftime("%H:%M")
-            audit = [{"check": r["check"], "observed": r["after (simulated)"],
-                      "threshold": r["threshold checked"], "at": ts,
-                      "by": "Data-quality verification service", "result": r["result"]} for r in rows]
+            def _src(chk):
+                if chk.startswith("Freshness"):
+                    return "DataOps freshness"
+                if chk.startswith("DQ"):
+                    return "DataOps quality"
+                if chk.startswith("Downstream"):
+                    return "Lineage / downstream health"
+                return "DataOps"
+            audit = [{"check": r["check"], "source": _src(r["check"]),
+                      "action": f'{opt["id"]} · {opt["label"][:28]}', "observed": r["after (simulated)"],
+                      "threshold": r["threshold checked"], "at": ts, "by": "Data-quality verification service",
+                      "result": r["result"]} for r in rows]
             viz.audit_record(audit, inc["id"])
             journey.render_verdict(journey.verdict(rows, applied))
             applied_any = bool(st.session_state.get(f'dop_opt_applied_{inc["id"]}'))

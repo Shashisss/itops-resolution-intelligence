@@ -277,9 +277,38 @@ def thread_spine(items):
 
 def audit_record(rows, ref):
     st.markdown(f"**Auditable verification record** · ref `{ref}`")
-    st.dataframe(pd.DataFrame(rows), hide_index=True)
-    st.caption("Each check records the observed value, the threshold, the timestamp and the verifying actor — "
-               "independent of the operator who applied the fix. A record is not a closure unless every check passes.")
+    df = pd.DataFrame(rows)
+    st.dataframe(df, hide_index=True)
+    st.download_button("⬇ Download ledger (CSV)", data=df.to_csv(index=False).encode("utf-8"),
+                       file_name=f"evidence_{ref}.csv", mime="text/csv", key="dl_" + ref)
+    st.caption("Each row records **source · action reference · observed value · threshold · timestamp · verifying "
+               "actor · result** — independent of the operator. A record is not a closure unless every check passes.")
+
+
+def thread_edges(edges):
+    """edges: list of dicts {src, rel, dst, kind (observed|inferred), source, ts}.
+    Supports multiple contributing causes and distinguishes observed from inferred links."""
+    for e in edges:
+        kcol = {"observed": "#16a34a", "inferred": "#d97706"}.get(e["kind"], "#64748b")
+        st.markdown(
+            f'<div class="ri-card" style="padding:9px 12px;margin:6px 0">'
+            f'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+            f'<span class="ri-tag" style="background:#0f172a">{e["src"]}</span>'
+            f'<span style="color:#64748b;font-size:12px">{e["rel"]} ➜</span>'
+            f'<span class="ri-tag" style="background:#4f46e5">{e["dst"]}</span>'
+            f'<span class="ri-tag" style="background:{kcol}">{e["kind"]}</span></div>'
+            f'<div style="font-size:11.5px;color:#64748b;margin-top:4px">source: {e.get("source","")}'
+            f'{(" · " + e["ts"]) if e.get("ts") else ""}</div></div>', unsafe_allow_html=True)
+
+
+def value_strip(rows, note="Simulated demo values — establish a real baseline and measure in a pilot."):
+    """rows: list of (metric, baseline, observed)."""
+    st.markdown("#### Value — baseline vs observed")
+    for m, b, o in rows:
+        st.markdown(f'<div class="ri-ev-chip" style="border-left-color:#4f46e5">'
+                    f'<b>{m}</b> · baseline <b>{b}</b> ➜ observed <b style="color:#16a34a">{o}</b></div>',
+                    unsafe_allow_html=True)
+    st.caption(note)
 
 
 def hero(priority, inc_id, title, meta, sla_text, verdict, chips):

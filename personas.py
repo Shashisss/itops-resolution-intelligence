@@ -129,10 +129,17 @@ def hypotheses(inc, ctx):
         return hyps
     top = journey.rank(hyps)[0]
     if top["status"] != "confirmed":
-        if st.button("Confirm top hypothesis as root cause", key="confirm_" + inc["id"], type="primary"):
+        c1, c2 = st.columns([1, 1])
+        if c1.button("Confirm top hypothesis as root cause", key="confirm_" + inc["id"], type="primary"):
             E.confirm_cause(inc["id"], top["key"])
             journey.add_event(inc["id"], "itops", "verify", f'root cause confirmed: {top["text"]}')
             st.session_state["flash"] = "Root cause CONFIRMED and recorded against the incident."
+            st.rerun()
+        if c2.button("Reject hypothesis", key="reject_" + inc["id"]):
+            journey.add_event(inc["id"], "itops", "verify", f'hypothesis rejected: {top["text"]}')
+            collab.add_comment(inc["id"], "Recommendation engine", "System",
+                               f'Hypothesis rejected: {top["text"]} — seek an alternative cause.')
+            st.session_state["flash"] = "Hypothesis rejected — the decision is recorded in the thread history."
             st.rerun()
     return hyps
 

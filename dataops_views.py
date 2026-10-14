@@ -91,9 +91,16 @@ def hypotheses(inc, data):
     viz.hypothesis_cards(hyps)
     top = hyps[0]
     if top["status"] != "confirmed":
-        if st.button("Confirm top hypothesis as root cause", key="dop_confirm_" + inc["id"], type="primary"):
+        c1, c2 = st.columns([1, 1])
+        if c1.button("Confirm top hypothesis as root cause", key="dop_confirm_" + inc["id"], type="primary"):
             DE.confirm_cause(inc["id"], top["key"])
             st.session_state["flash"] = "Root cause CONFIRMED and recorded against the pipeline incident."
+            st.rerun()
+        if c2.button("Reject hypothesis", key="dop_reject_" + inc["id"]):
+            journey.add_event(inc["id"], "dataops", "verify", f'hypothesis rejected: {top["text"]}')
+            collab.add_comment(inc["id"], "Recommendation engine", "System",
+                               f'Hypothesis rejected: {top["text"]} — seek an alternative cause.')
+            st.session_state["flash"] = "Hypothesis rejected — recorded in history."
             st.rerun()
     return hyps
 
