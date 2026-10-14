@@ -13,8 +13,9 @@ import journey
 # board/workspace and carries the role lens. Keep in sync.
 NAV = ["Overview", journey.WORKSPACE_NAV, "Operations", "Analytics"]
 
-ROLES_UNION = ["CSM", "L1 Engineer", "L2 / L3 Engineer", "Developer", "Incident Manager",
-               "Data Engineer", "Data Owner", "Platform Engineer", "Data Consumer"]
+ROLES_UNION = ["CIO", "CSM", "Incident Manager", "Service Desk", "L1 Engineer",
+               "L2 / L3 Engineer", "Developer", "Data Engineer", "Data Owner",
+               "Platform Engineer", "Data Consumer"]
 
 
 def _reset():
@@ -70,7 +71,7 @@ def _demo_menu():
         _reset_control()
 
 
-def topbar(it_inc, dop_inc):
+def topbar(it_inc, dop_inc, services, datasets, pipelines):
     """Render the top menu + global controls. Returns (nav, role)."""
     st.markdown('<div class="ri-topbrand">Resolution Intelligence '
                 '<span>· unified operations workspace</span></div>', unsafe_allow_html=True)
@@ -79,7 +80,7 @@ def topbar(it_inc, dop_inc):
     c1, c2, c3, c4 = st.columns([3.4, 1.6, 0.9, 0.9])
     with c1:
         gs = st.text_input("Search", key="global_search", label_visibility="collapsed",
-                           placeholder="🔎 Search incidents, services, owners…")
+                           placeholder="🔎 Search incidents, services, datasets, pipelines, owners…")
     with c2:
         role = st.selectbox("👤 Demo persona", ROLES_UNION, key="you_role")
     with c3:
@@ -89,12 +90,42 @@ def topbar(it_inc, dop_inc):
 
     if gs:
         lo = gs.lower()
-        hits = [(i["id"], f'IT Ops · {i["title"]} · {i["owner_team"]}', "IT Ops") for i in it_inc
-                if lo in (i["id"] + " " + i["title"] + " " + i["owner_team"]).lower()]
-        hits += [(i["id"], f'DataOps · {i["title"]} · {i["owner_team"]}', "DataOps") for i in dop_inc
-                 if lo in (i["id"] + " " + i["title"] + " " + i["owner_team"]).lower()]
-        for ref, lab, dom in hits[:6]:
-            st.button(lab, key="gs_" + ref, on_click=journey._goto, args=(dom, None, ref))
-        if not hits:
+
+        def hit(blob):
+            return lo in blob.lower()
+
+        groups = {}
+        for i in it_inc:
+            if hit(i["id"] + " " + i["title"] + " " + i["owner_team"]):
+                groups.setdefault("Incidents", []).append(
+                    (f'IT Ops · {i["id"]} · {i["title"]}',
+                     ("goto", "IT Ops", i["id"])))
+        for i in dop_inc:
+            if hit(i["id"] + " " + i["title"] + " " + i["owner_team"]):
+                groups.setdefault("Incidents", []).append(
+                    (f'DataOps · {i["id"]} · {i["title"]}',
+                     ("goto", "DataOps", i["id"])))
+        for sid, s in services.items():
+            if hit(sid + " " + s["name"] + " " + s.get("owner", "")):
+                groups.setdefault("Services", []).append(
+                    (f'{s["name"]} · {s["type"]} · {s["owner"]}', ("ops",)))
+        for did, d in datasets.items():
+            if hit(did + " " + d["name"] + " " + d.get("owner_team", "") + " " + d.get("layer", "")):
+                groups.setdefault("Datasets", []).append(
+                    (f'{d["name"]} · {d["layer"]} · {d.get("owner_team","")}', ("ops",)))
+        for pid, p in pipelines.items():
+            if hit(pid + " " + p["name"] + " " + p.get("owner_team", "")):
+                groups.setdefault("Pipelines", []).append(
+                    (f'{p["name"]} · {p.get("owner_team","")}', ("ops",)))
+        if not groups:
             st.caption("No matches.")
+        for group, items in groups.items():
+            st.caption(f'**{group}** · {len(items)}')
+            for label, target in items[:5]:
+                key = f'gs_{group}_{abs(hash(label)) % 10**8}'
+                if target[0] == "goto":
+                    st.button(label, key=key, on_click=journey._goto, args=(target[1], None, target[2]))
+                else:
+                    st.button(label + "  → Operations", key=key, on_click=journey._nav_to,
+                              args=("Operations",))
     return nav, role

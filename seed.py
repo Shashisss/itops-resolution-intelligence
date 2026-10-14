@@ -54,6 +54,8 @@ CREATE TABLE dop_incidents(id TEXT PRIMARY KEY, title TEXT, pipeline_id TEXT, da
 -- shared
 CREATE TABLE timeline(id TEXT PRIMARY KEY, ref_id TEXT, domain TEXT, ts TEXT, kind TEXT, detail TEXT);
 CREATE TABLE correlations(id TEXT PRIMARY KEY, it_id TEXT, dop_id TEXT, shared_cause TEXT, note TEXT);
+CREATE TABLE thread_edges(id TEXT PRIMARY KEY, thread_ref TEXT, src TEXT, dst TEXT, rel TEXT,
+                          kind TEXT, source TEXT, ts TEXT, confidence TEXT);
 
 -- real-time / collaboration / delegation
 CREATE TABLE live_events(id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, domain TEXT, severity TEXT,
@@ -197,6 +199,16 @@ c.executemany("INSERT INTO correlations VALUES(?,?,?,?,?)", [
      "Root cause flows DataOps → IT Ops: the pipeline failure (DOP-1001) left payments_gold stale, so the "
      "customer-facing payment service served stale risk data (INC-8841). Affected business service: Payments."),
 ])
+c.executemany("INSERT INTO thread_edges VALUES(?,?,?,?,?,?,?,?,?)", [
+    ("TE-1", "INC-8841", "Schema change (core_ledger)", "Pipeline failure (payments_bronze_ingest)", "caused",
+     "observed", "DataOps · run R-9001 SCHEMA_MISMATCH", M(60), "high"),
+    ("TE-2", "INC-8841", "Pipeline failure", "payments_gold stale", "→ stale data",
+     "observed", "DataOps · freshness 45m > 15m SLA", M(45), "high"),
+    ("TE-3", "INC-8841", "payments_gold stale", "Payment API degradation", "→ impacts",
+     "inferred", "IT Ops · data_age 45>15 with error_rate 8.1>1 (to validate)", M(44), "medium"),
+    ("TE-4", "INC-8841", "DB connection saturation", "Payment API degradation", "contributes",
+     "inferred", "IT Ops · active_connections 720>700 (secondary cause)", M(43), "low"),
+])
 
 c.executemany("INSERT INTO live_events(ts,domain,severity,source,message,ref_id) VALUES(?,?,?,?,?,?)", [
     (M(12), "dataops", "warning", "payments_gold", "Freshness 45 min > 15 min SLA", "DOP-1001"),
@@ -223,7 +235,7 @@ c.executemany("INSERT INTO olas(team,response_min,restore_min) VALUES(?,?,?)", [
     ("Analytics Engineering", 60, 240),
 ])
 c.executemany("INSERT INTO stage_olas(stage,target_min) VALUES(?,?)", [
-    ("Detect", 5), ("Correlate", 15), ("Coordinate", 15), ("Verify", 30),
+    ("Detect", 5), ("Correlate", 15), ("Coordinate", 15), ("Act", 30), ("Verify", 30),
 ])
 
 con.commit()

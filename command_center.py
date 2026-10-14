@@ -33,13 +33,13 @@ def _rail(inc, rec):
     st.markdown("#### ⚡ Quick actions")
     if st.button("Notify CSM (simulated)", key="qa_csm_" + inc["id"]):
         collab.add_comment(inc["id"], "Recommendation engine", "System",
-                           "Notified CSM with current status and business impact.")
-        st.session_state["flash"] = "CSM notified (simulated)."
+                           "[Demo] Logged a CSM notification locally — no external message was sent.")
+        st.session_state["flash"] = "CSM notification logged (simulated, local only)."
         st.rerun()
     if st.button("Post status update (simulated)", key="qa_upd_" + inc["id"]):
         collab.add_comment(inc["id"], "Recommendation engine", "System",
-                           "Posted a status update to the incident thread.")
-        st.session_state["flash"] = "Status update posted (simulated)."
+                           "[Demo] Added a status update to the incident thread (local only).")
+        st.session_state["flash"] = "Status update posted to the thread (simulated, local only)."
         st.rerun()
     st.markdown("#### 🕒 Recent activity")
     for cm in collab.comments(inc["id"])[-4:]:
@@ -76,13 +76,17 @@ def _stage_ola_live(inc, stage, target):
 
 def _thread_spine(inc, deleg, confirmed, verdict):
     olas = {o["stage"]: o["target_min"] for o in E.load_stage_olas()}
+    applied = bool(journey.applied_action(inc["id"]))
+    # Status is derived from EVIDENCE, not stage names: a confirmed hypothesis is not "Correlate complete",
+    # and applying a fix is not "Verified". Closure only on Verified.
     stages = [
-        ("Detect", "done", "Incident and upstream pipeline failure detected", "Detect"),
-        ("Correlate", "done" if confirmed else "current",
-         "Schema mismatch → stale data → affected service (hypothesis)", "Correlate"),
-        ("Coordinate", "done" if deleg else "current", "Assign owner, approvals, remediation", "Coordinate"),
-        ("Verify", "done" if verdict == "Verified" else ("current" if deleg else "todo"),
-         "Observed value vs threshold + verifying actor", "Verify"),
+        ("Detect", "done", "Incident and upstream failure detected", "Detect"),
+        ("Correlate", "done", "Cross-domain link — ranked hypotheses (observed vs inferred)", "Correlate"),
+        ("Coordinate", "done" if deleg else "current", "Owner assigned, approvals, remediation", "Coordinate"),
+        ("Act", "done" if applied else ("current" if deleg else "todo"),
+         "Remediation executed under approval (simulated)", "Act"),
+        ("Verify", "done" if verdict == "Verified" else ("current" if applied else "todo"),
+         "Independent re-check vs thresholds + verifying actor", "Verify"),
         ("Close", "done" if verdict == "Verified" else ("current" if verdict in ("Mitigated", "Recovery failed") else "todo"),
          "Verified / Mitigated / Recovery failed", "Close"),
     ]
@@ -113,7 +117,6 @@ def it_command(inc, ctx):
     refs = [inc["id"]] + ([corr["other_id"]] if corr else [])
     k = P._kpi(ctx, biz)
     bizname = services[biz]["name"] if biz else "—"
-    _ts = inc["created_at"].split("T")[-1][:5]
 
     hero_kwargs = dict(
         priority=inc["priority"], inc_id=inc["id"], title=inc["title"],
@@ -121,17 +124,7 @@ def it_command(inc, ctx):
               f'Owner {inc["owner_team"]} · Stage {journey.lifecycle_stage(inc)} · Elapsed {int(elapsed)}m'),
         sla_text=sla_txt, verdict=verdict, chips=["IT Ops", "Cross-Domain", "ServiceNow · Jira"])
     lifecycle = _thread_spine(inc, deleg, confirmed, verdict)
-    edges = [
-        {"src": "Schema change (core_ledger)", "rel": "caused",
-         "dst": "Pipeline failure (payments_bronze_ingest)", "kind": "observed",
-         "source": "DataOps · run R-9001 SCHEMA_MISMATCH", "ts": _ts},
-        {"src": "Pipeline failure", "rel": "→ stale data", "dst": "payments_gold stale",
-         "kind": "observed", "source": "DataOps · freshness 45m > 15m SLA", "ts": _ts},
-        {"src": "payments_gold stale", "rel": "→ impacts", "dst": "Payment API degradation",
-         "kind": "inferred", "source": "IT Ops · data_age 45>15 with error_rate 8.1>1 (to validate)", "ts": _ts},
-        {"src": "DB connection saturation", "rel": "contributes", "dst": "Payment API degradation",
-         "kind": "inferred", "source": "IT Ops · active_connections 720>700 (secondary cause)", "ts": _ts},
-    ]
+    edges = journey.thread_edges_for(inc["id"])
 
     def overview():
         vcol = {"Verified": "#16a34a", "Mitigated": "#d97706", "Recovery failed": "#dc2626"}.get(
@@ -247,7 +240,6 @@ def dop_command(inc, data):
         elapsed = int((dt.datetime.now() - dt.datetime.fromisoformat(inc["created_at"])).total_seconds() / 60)
     except Exception:
         elapsed = 0
-    _ts = inc["created_at"].split("T")[-1][:5]
 
     hero_kwargs = dict(
         priority=inc["priority"], inc_id=inc["id"], title=inc["title"],
@@ -255,14 +247,7 @@ def dop_command(inc, data):
               f'Owner {inc["owner_team"]} · Stage {journey.lifecycle_stage(inc)} · Elapsed {elapsed}m'),
         sla_text=fresh_txt, verdict=verdict, chips=["DataOps", "Cross-Domain", "Lineage + DQ"])
     lifecycle = _thread_spine(inc, deleg, confirmed, verdict)
-    edges = [
-        {"src": "Schema change (core_ledger)", "rel": "caused", "dst": "Pipeline failure",
-         "kind": "observed", "source": "DataOps · run R-9001 SCHEMA_MISMATCH", "ts": _ts},
-        {"src": "Pipeline failure", "rel": "→ stale data", "dst": "payments_gold stale",
-         "kind": "observed", "source": "DataOps · freshness 45m > 15m SLA", "ts": _ts},
-        {"src": "payments_gold stale", "rel": "→ impacts", "dst": "Payment API degradation",
-         "kind": "inferred", "source": "IT Ops · correlation to validate", "ts": _ts},
-    ]
+    edges = journey.thread_edges_for(inc["id"])
 
     def overview():
         viz.kpi_row([

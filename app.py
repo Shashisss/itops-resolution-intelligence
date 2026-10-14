@@ -50,9 +50,10 @@ if flash:
     st.success(flash)
 
 _sv, _ed, _it_inc, _ch, _me, _G = E.load()
-_dop_inc = DE.load()["incidents"]
+_dop_data = DE.load()
+_dop_inc = _dop_data["incidents"]
 # ---- top menu + global controls (no left bar) ----
-nav, you_role = shell.topbar(_it_inc, _dop_inc)
+nav, you_role = shell.topbar(_it_inc, _dop_inc, _sv, _dop_data["datasets"], _dop_data["pipelines"])
 
 
 def _it_ctx():
@@ -222,7 +223,8 @@ def render_incidents(you_role):
         elif lens == "Guided journey":
             personas.incident_view(inc, ctx)
         elif you_role in personas.PERSONAS:
-            {"CSM": personas.csm_view, "L1 Engineer": personas.l1_view, "L2 / L3 Engineer": personas.l2_view,
+            {"CIO": personas.cio_view, "CSM": personas.csm_view, "Service Desk": personas.l1_view,
+             "L1 Engineer": personas.l1_view, "L2 / L3 Engineer": personas.l2_view,
              "Developer": lambda i, c: personas.developer_view(c),
              "Incident Manager": personas.im_view}[you_role](inc, ctx)
         else:
@@ -235,13 +237,13 @@ def render_operations(you_role):
     st.subheader("Operations — pipelines, dependencies and live signals")
     st.caption("The DataOps signals and dependencies that explain incidents, plus the live event feed and "
                "cross-domain collaboration.")
-    t1, t2, t3 = st.tabs(["Pipelines", "Live signals", "Collaboration"])
+    t1, t2 = st.tabs(["Pipelines", "Live signals"])
     with t1:
         render_pipelines()
     with t2:
         render_liveops(you_role)
-    with t3:
-        render_collab()
+    st.caption("Collaboration, owners, handoffs, comments and activity live inside each incident's "
+               "resolution thread (open an incident from **Incidents**).")
 
 
 # ================================================================= Data pipelines
@@ -270,31 +272,6 @@ def render_liveops(you_role):
     liveops_view.render(name, you_role)
 
 
-# ================================================================= Collaboration & activity
-def render_collab():
-    st.subheader("Collaboration & activity — across all incidents")
-    refs = [i["id"] for i in _it_inc] + [i["id"] for i in _dop_inc]
-    st.markdown("#### Recent updates")
-    items = []
-    for r in refs:
-        for c in collab.comments(r):
-            items.append((c["ts"], r, c["author"], c["role"], c["text"]))
-    items.sort(reverse=True)
-    for ts, r, author, role, text in items[:30]:
-        st.markdown(f'`{ts[11:19]}` · **{r}** · {author} ({role})  \n{text}')
-    if not items:
-        st.caption("No updates yet.")
-    st.markdown("#### Open delegations & handoffs")
-    open_deleg = [(r, d) for r in refs for d in collab.delegations(r) if d["status"] != "done"]
-    if open_deleg:
-        for r, d in open_deleg:
-            st.markdown(f'- **{r}** · {d["frm"]} → {d["to_"]} · {d["action"]} · '
-                        f'<span class="ri-tag" style="background:#d97706">{d["status"]}</span>',
-                        unsafe_allow_html=True)
-    else:
-        st.caption("No open delegations.")
-
-
 # ================================================================= Analytics / Settings placeholders
 def render_placeholder(name, note):
     st.subheader(name)
@@ -313,4 +290,5 @@ elif nav == "Analytics":
                                     "resolution-confidence analytics over governed data.")
 
 st.divider()
-st.caption("Sample data · simulated actions · build v41 — proof of concept, not production.")
+st.caption("Sample data · simulated actions · build v42 — proof of concept, not production. "
+           "See PROTOTYPE_NOTES.md for persistence limits.")

@@ -16,15 +16,15 @@ KIND_ICON = {"change": "🔧", "alert": "🚨", "incident": "📟", "ticket": "�
 
 # ------------------------------------------------------------------ ONE shared lifecycle
 # The single progress model used across IT Ops and DataOps (see viz.thread_spine).
-LIFECYCLE = ["Detect", "Correlate", "Coordinate", "Verify", "Close"]
+LIFECYCLE = ["Detect", "Correlate", "Coordinate", "Act", "Verify", "Close"]
 # The nav target that opens an incident workspace (kept here so shell/app/callbacks agree).
 WORKSPACE_NAV = "Incidents"
 
 _IT_STAGE_TO_THREAD = {"Detected": "Detect", "Triaged": "Correlate", "Diagnosed": "Correlate",
-                       "Change raised": "Coordinate", "Fix in progress": "Coordinate",
+                       "Change raised": "Coordinate", "Fix in progress": "Act",
                        "Fix applied": "Verify", "Verified": "Verify", "Closed": "Close"}
 _DOP_STAGE_TO_THREAD = {"Detected": "Detect", "Triaged": "Correlate", "Diagnosed": "Correlate",
-                        "Fix in progress": "Coordinate", "Fix applied": "Verify",
+                        "Fix in progress": "Act", "Fix applied": "Verify",
                         "Backfilled": "Verify", "Validated": "Verify", "Closed": "Close"}
 
 
@@ -72,6 +72,53 @@ def correlation_for(ref_id):
     else:
         d["other_id"], d["other_domain"] = d["it_id"], "IT Ops"
     return d
+
+
+# ---------------------------------------------------------------- cross-domain thread edges
+# Relationships are STRUCTURED records (not built in UI code). kind distinguishes an observed
+# signal/relationship from an inferred hypothesis; confidence is a rule-based indicator.
+_DEFAULT_THREAD_EDGES = [
+    ("TE-1", "INC-8841", "Schema change (core_ledger)", "Pipeline failure (payments_bronze_ingest)",
+     "caused", "observed", "DataOps · run R-9001 SCHEMA_MISMATCH", 60, "high"),
+    ("TE-2", "INC-8841", "Pipeline failure", "payments_gold stale",
+     "→ stale data", "observed", "DataOps · freshness 45m > 15m SLA", 45, "high"),
+    ("TE-3", "INC-8841", "payments_gold stale", "Payment API degradation",
+     "→ impacts", "inferred", "IT Ops · data_age 45>15 with error_rate 8.1>1 (to validate)", 44, "medium"),
+    ("TE-4", "INC-8841", "DB connection saturation", "Payment API degradation",
+     "contributes", "inferred", "IT Ops · active_connections 720>700 (secondary cause)", 43, "low"),
+]
+
+
+def _ensure_thread_edges():
+    con = sqlite3.connect(DB)
+    con.execute("CREATE TABLE IF NOT EXISTS thread_edges(id TEXT PRIMARY KEY, thread_ref TEXT, src TEXT, "
+                "dst TEXT, rel TEXT, kind TEXT, source TEXT, ts TEXT, confidence TEXT)")
+    n = con.execute("SELECT COUNT(*) FROM thread_edges").fetchone()[0]
+    if n == 0:
+        base = dt.datetime.now().replace(second=0, microsecond=0)
+        rows = [(i, tr, s, d, rel, k, src, (base - dt.timedelta(minutes=off)).strftime("%H:%M"), conf)
+                for (i, tr, s, d, rel, k, src, off, conf) in _DEFAULT_THREAD_EDGES]
+        con.executemany("INSERT INTO thread_edges VALUES(?,?,?,?,?,?,?,?,?)", rows)
+    con.commit()
+    con.close()
+
+
+def thread_edges_for(ref_id):
+    """Return the structured cross-domain relationships for an incident's thread."""
+    _ensure_thread_edges()
+    c = correlation_for(ref_id)
+    thread_ref = c["it_id"] if c else ref_id
+    con = sqlite3.connect(DB)
+    con.row_factory = sqlite3.Row
+    rows = [dict(r) for r in con.execute(
+        "SELECT * FROM thread_edges WHERE thread_ref=? ORDER BY id", (thread_ref,))]
+    con.close()
+    return rows
+
+
+def _nav_to(value):
+    """on_click callback — navigate the top menu to another destination."""
+    st.session_state["nav"] = value
 
 
 def verdict(rows, applied):

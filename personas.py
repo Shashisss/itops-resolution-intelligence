@@ -15,7 +15,7 @@ import collab
 
 SLA_HOURS = {"P1": 4, "P2": 8, "P3": 24, "P4": 72}
 STAGES = ["Detected", "Triaged", "Diagnosed", "Change raised", "Fix in progress", "Fix applied", "Verified", "Closed"]
-PERSONAS = ["CSM", "L1 Engineer", "L2 / L3 Engineer", "Developer", "Incident Manager"]
+PERSONAS = ["CIO", "CSM", "Service Desk", "L1 Engineer", "L2 / L3 Engineer", "Developer", "Incident Manager"]
 IT_STEP_HELP = {
     "Detect": "What fired and when — the ServiceNow incident, the Jira defect and observability alerts on one timeline.",
     "Diagnose": "Ranked root-cause hypotheses with the evidence and confidence behind each — human-confirmed, never assumed.",
@@ -439,3 +439,31 @@ def im_view(inc, ctx):
     if rel_ticket:
         st.write(f'- Dev ticket created: {rel_ticket["created_at"]}')
     handoff("to L2/L3 (diagnosis) and the Developer (fix); approve high-risk actions here.")
+
+
+def cio_view(inc, ctx):
+    services, changes, metrics, incidents, G = (ctx["services"], ctx["changes"], ctx["metrics"],
+                                                 ctx["incidents"], ctx["G"])
+    st.subheader("CIO — business impact, service risk & recovery confidence")
+    context_header(inc, ctx)
+    chain = E.dependency_paths(G, inc["service_id"])[0]
+    biz = E.business_service(G, chain, services)
+    k = _kpi(ctx, biz)
+    sla_txt, rem, target, elapsed = _sla_detail(inc)
+    verdict = journey.current_verdict(inc)
+    risk = "High" if (rem is not None and rem < target * 0.5) else "Moderate"
+    conf = {"Verified": "Recovery verified", "Mitigated": "Partial — NOT verified",
+            "Recovery failed": "Failed — escalated"}.get(verdict, "In progress")
+    viz.kpi_row([
+        ("Business service", services[biz]["name"] if biz else "—", "customer impact", "#dc2626"),
+        ("Customer SLA", sla_txt, f'target {target}h', "#d97706"),
+        ("Service risk", risk, "escalation signal", "#d97706"),
+        ("Recovery confidence", conf, verdict, "#16a34a" if verdict == "Verified" else "#d97706"),
+    ])
+    if k:
+        viz.impact_summary(k["metric"].replace("_", " "), k["baseline"], k["current"], k["unit"],
+                           "incident onset", inc["created_at"].split("T")[-1][:5])
+    else:
+        st.caption("No business KPI mapped for this scenario — impact shown as service-level only.")
+    journey.render_correlation(inc["id"])
+    handoff("CIO briefing — the shared resolution thread above is the single source of truth for status.")

@@ -66,9 +66,14 @@ def load_olas():
 
 
 def load_stage_olas():
+    """Per-stage OLA targets. Ensures the shared lifecycle stages exist (migrates older DBs)."""
     con = sqlite3.connect(DB)
+    con.execute("CREATE TABLE IF NOT EXISTS stage_olas(stage TEXT PRIMARY KEY, target_min INT)")
+    for stage, tgt in (("Detect", 5), ("Correlate", 15), ("Coordinate", 15), ("Act", 30), ("Verify", 30)):
+        con.execute("INSERT OR IGNORE INTO stage_olas(stage,target_min) VALUES(?,?)", (stage, tgt))
+    con.commit()
     con.row_factory = sqlite3.Row
-    rows = [dict(r) for r in con.execute("SELECT * FROM stage_olas")]
+    rows = [dict(r) for r in con.execute("SELECT * FROM stage_olas ORDER BY rowid")]
     con.close()
     return rows
 
