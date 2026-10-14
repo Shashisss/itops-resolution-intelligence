@@ -314,41 +314,72 @@ def render_incidents(you_role):
 
 # ================================================================= Operations (pipelines + live signals + collaboration)
 def render_operations(you_role):
-    st.subheader("Operations — pipelines, dependencies and live signals")
-    st.caption("The DataOps signals and dependencies that explain incidents, plus the live event feed and "
-               "cross-domain collaboration.")
-    with st.expander("🚰 Pipelines — freshness, quality and lineage", expanded=True):
+    st.subheader("Operations — data & pipeline estate, and live signals")
+    st.caption("The **estate and telemetry behind incidents** — pipeline/dataset health and the live "
+               "signal stream. The work items themselves (all IT Ops + DataOps incidents) live in "
+               "**Incidents**; there is deliberately no incident list here.")
+    with st.expander("🚰 Pipelines — dataset freshness, quality and lineage", expanded=True):
         render_pipelines()
-    with st.expander("📡 Live signals — real-time events, collaboration and delegation", expanded=False):
+    with st.expander("📡 Live signals — event stream (Live / Replay)", expanded=False):
         render_liveops(you_role)
-    st.caption("Collaboration, owners, handoffs, comments and activity live inside each incident's "
-               "resolution thread (open an incident from **Incidents**).")
 
 
-# ================================================================= Data pipelines
+# ================================================================= Data & pipeline estate (no incident list — that's Incidents)
 def render_pipelines():
     data = DE.load()
-    st.subheader("Data pipelines — freshness, quality and lineage")
-    st.markdown("#### Dataset freshness (SLA)")
-    drows = []
-    for ds in data["datasets"]:
-        ft, breach, lag, sla = DV._fresh(data, ds)
-        drows.append({"dataset": data["datasets"][ds]["name"], "layer": data["datasets"][ds]["layer"],
-                      "freshness": ft, "status": "🔴 breach" if breach else "🟢 ok"})
-    viz.card_rows(drows, "#0d9488")
-    st.markdown("#### Pipeline incidents")
-    statf = st.selectbox("Status", ["All", "Open", "Closed"], key="pipe_status")
-    for inc in data["incidents"]:
-        if statf != "All" and (inc.get("status") or "").lower() != statf.lower():
-            continue
-        viz.board_card(inc, "DataOps", journey.display_verdict(inc),
-                       on_click=journey._goto, args=("DataOps", None, inc["id"]))
+    st.markdown("**Dataset freshness (SLA)**")
+    drows = [{"dataset": data["datasets"][ds]["name"], "layer": data["datasets"][ds]["layer"],
+              "freshness": DV._fresh(data, ds)[0],
+              "verdict": "🔴 breach" if DV._fresh(data, ds)[1] else "🟢 ok"}
+             for ds in data["datasets"]]
+    st.dataframe(pd.DataFrame(drows), hide_index=True, width="stretch")
+
+    st.markdown("**Pipelines**")
+    prows = [{"pipeline": p["name"], "owner": p["owner_team"], "criticality": p["criticality"],
+              "schedule": p["schedule"], "freshness SLA": f'{p["freshness_sla_min"]} min'}
+             for p in data["pipelines"].values()]
+    st.dataframe(pd.DataFrame(prows), hide_index=True, width="stretch")
+
+    st.markdown("**Data contracts**")
+    crows = [{"dataset": data["datasets"][c["dataset_id"]]["name"], "contract": c["name"],
+              "version": c["version"], "owner": c["owner"]} for c in data["contracts"]]
+    st.dataframe(pd.DataFrame(crows), hide_index=True, width="stretch")
+
+    st.markdown("**Lineage**")
+    labels = {d: data["datasets"][d]["name"] for d in data["datasets"]}
+    stale = tuple(d for d in data["datasets"] if DV._fresh(data, d)[1])
+    viz.chain(["core_ledger", "ds_pay_bz", "ds_pay_sv", "ds_pay_gd"], labels, stale=stale)
+    st.caption("A dataset incident is a symptom of the pipeline that produces it. Incidents are in "
+               "**Incidents**; this view is the estate behind them.")
 
 
-# ================================================================= Live operations
+# ================================================================= Live signals (stream only — no incident queue, no collaboration)
 def render_liveops(you_role):
-    name = st.text_input("Your name", value="You", key="lo_name")
-    liveops_view.render(name, you_role)
+    mode = st.radio("Stream mode", ["Live", "Replay"], horizontal=True, key="ops_live_mode")
+    if mode == "Replay":
+        c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
+        if c1.button("⏮ Reset", key="ops_rst"):
+            realtime.clear_events()
+            st.session_state["ops_ridx"] = 0
+            st.session_state["ops_playing"] = False
+            st.rerun()
+        if c2.button("⏭ Next", key="ops_next"):
+            i = st.session_state.get("ops_ridx", 0)
+            if i < len(realtime.REPLAY_SCRIPT):
+                realtime.emit_replay_event(realtime.REPLAY_SCRIPT[i])
+                st.session_state["ops_ridx"] = i + 1
+            st.rerun()
+        playing = st.session_state.get("ops_playing", False)
+        if c3.button("⏸ Pause" if playing else "▶ Play", key="ops_pp"):
+            st.session_state["ops_playing"] = not playing
+            st.rerun()
+        c4.caption(f'replay step {st.session_state.get("ops_ridx", 0)}/{len(realtime.REPLAY_SCRIPT)} '
+                   f'— deterministic walkthrough')
+    else:
+        realtime.tick()
+    viz.feed(realtime.recent(14))
+    st.caption("Signals are **simulated**. Owners, handoffs, comments and delegation live in each "
+               "incident's workspace (open one from **Incidents**).")
 
 
 # ================================================================= Analytics / Settings placeholders
@@ -367,5 +398,5 @@ elif nav == "Analytics":
                                     "resolution-confidence analytics over governed data.")
 
 st.divider()
-st.caption("Sample data · simulated actions · build v51 — proof of concept, not production. "
+st.caption("Sample data · simulated actions · build v52 — proof of concept, not production. "
            "See PROTOTYPE_NOTES.md for persistence limits.")
