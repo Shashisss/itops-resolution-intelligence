@@ -112,57 +112,6 @@ def _sla_txt(i):
     return "BREACHED" if rem <= 0 else f"{int(rem)}h {int((rem % 1) * 60)}m left"
 
 
-# ================================================================= Overview
-def render_overview():
-    dop = DE.load()
-    it_open = [i for i in _it_inc if i["status"] == "open"]
-    dop_open = [i for i in dop["incidents"] if i["status"] == "open"]
-    at_risk = sum(1 for i in it_open + dop_open if _sla_risk(i))
-    st.subheader("Overview — one workspace across IT Ops and DataOps")
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("IT Ops incidents (open)", len(it_open))
-    m2.metric("DataOps incidents (open)", len(dop_open))
-    m3.metric("SLA at risk", at_risk)
-    m4.metric("Cross-domain threads", 1)
-    st.caption("Start from **Incidents & resolution threads** to open any incident's workspace.")
-
-    st.markdown("#### Cross-domain resolution thread — live example")
-    viz.causal([("Schema mismatch", "DataOps"), ("Pipeline failure", "DataOps"),
-                ("Stale payments data", "DataOps"), ("Payment API impact", "IT Ops")])
-    corr = journey.correlation_for("INC-8841")
-    st.caption(f'🔗 **INC-8841** (IT Ops) ↔ **DOP-1001** (DataOps) · shared cause '
-               f'**{corr["shared_cause"] if corr else "—"}**')
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("Open INC-8841 (IT Ops)", key="ov_it", use_container_width=True,
-                     on_click=journey._goto, args=("IT Ops", None, "INC-8841")):
-            pass
-    with c2:
-        if st.button("Open DOP-1001 (DataOps)", key="ov_dop", use_container_width=True,
-                     on_click=journey._goto, args=("DataOps", None, "DOP-1001")):
-            pass
-
-    st.markdown("#### Collaboration now — the resolution accelerator")
-    _ci = _find_it("INC-8841")
-    if _ci and hasattr(journey, "collab_stats") and hasattr(viz, "collab_strip"):
-        _st = journey.collab_stats(_ci)
-        viz.collab_strip(_ci["owner_team"], (_st["participants"] or ["—"])[0], _st)
-    st.markdown("#### Impact — baseline ➜ with this platform (illustrative)")
-    viz.value_strip(command_center.IMPACT_ROWS,
-                    title="MTTR and resolution acceleration — baseline vs with-platform")
-
-    st.markdown("#### Recent activity — across all incidents")
-    rows = []
-    for ref in [i["id"] for i in _it_inc] + [i["id"] for i in dop["incidents"]]:
-        for cm in collab.comments(ref):
-            rows.append((cm["ts"], ref, cm["author"], cm["text"]))
-    rows.sort(reverse=True)
-    for ts, ref, author, text in rows[:6]:
-        st.markdown(f'`{ts[11:16]}` · **{ref}** · {author}  \n{text}')
-    if not rows:
-        st.caption("No activity yet.")
-
-
 # ================================================================= Collaboration (the hero)
 def render_collaboration():
     st.subheader("Collaboration — the resolution accelerator")
@@ -187,6 +136,44 @@ def render_collaboration():
                     title="Impact — MTTR and resolution acceleration (illustrative)")
 
 
+# ================================================================= At-a-glance overview (collapsible, on the incident page)
+def _overview_panel():
+    dop = DE.load()
+    it_open = [i for i in _it_inc if i["status"] == "open"]
+    dop_open = [i for i in dop["incidents"] if i["status"] == "open"]
+    at_risk = sum(1 for i in it_open + dop_open if _sla_risk(i))
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("IT Ops incidents (open)", len(it_open))
+    m2.metric("DataOps incidents (open)", len(dop_open))
+    m3.metric("SLA at risk", at_risk)
+    m4.metric("Cross-domain threads", 1)
+
+    st.markdown("**Cross-domain resolution thread — live example**")
+    viz.causal([("Schema mismatch", "DataOps"), ("Pipeline failure", "DataOps"),
+                ("Stale payments data", "DataOps"), ("Payment API impact", "IT Ops")])
+    corr = journey.correlation_for("INC-8841")
+    st.caption(f'🔗 **INC-8841** (IT Ops) ↔ **DOP-1001** (DataOps) · shared cause '
+               f'**{corr["shared_cause"] if corr else "—"}**')
+    c1, c2 = st.columns(2)
+    with c1:
+        st.button("Open INC-8841 (IT Ops)", key="ov_it", use_container_width=True,
+                  on_click=journey._goto, args=("IT Ops", None, "INC-8841"))
+    with c2:
+        st.button("Open DOP-1001 (DataOps)", key="ov_dop", use_container_width=True,
+                  on_click=journey._goto, args=("DataOps", None, "DOP-1001"))
+
+    st.markdown("**Recent activity — across all incidents**")
+    rows = []
+    for ref in [i["id"] for i in _it_inc] + [i["id"] for i in dop["incidents"]]:
+        for cm in collab.comments(ref):
+            rows.append((cm["ts"], ref, cm["author"], cm["text"]))
+    rows.sort(reverse=True)
+    for ts, ref, author, text in rows[:6]:
+        st.markdown(f'`{ts[11:16]}` · **{ref}** · {author}  \n{text}')
+    if not rows:
+        st.caption("No activity yet.")
+
+
 # ================================================================= Incidents & resolution threads
 def render_board():
     rows = ([{"inc": i, "domain": "IT Ops"} for i in _it_inc] +
@@ -195,9 +182,9 @@ def render_board():
         r["verdict"] = journey.display_verdict(r["inc"])
 
     st.subheader("Incidents & resolution threads")
-    st.caption("Open and closed incidents in one board. **Click a card to open its workspace** "
-               "(the resolution thread). Closed incidents read as **Verified** — closure only happens "
-               "after an independently verified recovery. Verdicts are session-scoped and reset on restart.")
+    st.caption("Open and closed incidents in one board. **Click a card to see its details at the top of "
+               "this page** (resolution thread, impact, verification). Closed incidents read as "
+               "**Verified** — closure only happens after an independently verified recovery.")
 
     n_open = sum(1 for r in rows if r["inc"].get("status") == "open")
     n_risk = sum(1 for r in rows if r["inc"].get("status") == "open" and _sla_risk(r["inc"]))
@@ -240,15 +227,8 @@ def render_board():
                            sla=(_sla_txt(r["inc"]) if r["inc"].get("status") == "open" else None))
 
 
-def render_incidents(you_role):
-    sel = st.session_state.get("open_incident")
-    if not sel:
-        render_board()
-        return
-    ref, dom = sel["ref"], sel["domain"]
-    if st.button("← All incidents", key="back_board"):
-        st.session_state.pop("open_incident", None)
-        st.rerun()
+def _render_incident_detail(dom, ref, you_role):
+    """The selected incident's details — rendered INLINE on the incidents page."""
     lens = st.radio("View", ["Resolution thread", "Guided journey", "By role"], horizontal=True,
                     key="ws_mode_" + ref)
     if dom == "DataOps":
@@ -286,6 +266,23 @@ def render_incidents(you_role):
         else:
             st.info(f"**{you_role}** is a DataOps role — switch the Demo persona to an IT Ops role "
                     f"(CSM / L1 / L2/L3 / Developer / Incident Manager) to use this lens.")
+
+
+def render_incidents(you_role):
+    """Default page. The incident board; clicking a card shows its details HERE (same page)."""
+    with st.expander("📊 At a glance — overview", expanded=False):
+        _overview_panel()
+    sel = st.session_state.get("open_incident")
+    if sel:
+        c1, c2 = st.columns([5, 1])
+        c1.markdown(f"### 🧭 {sel['ref']} — incident details")
+        if c2.button("✕ Close details", key="close_details"):
+            st.session_state.pop("open_incident", None)
+            st.rerun()
+        _render_incident_detail(sel["domain"], sel["ref"], you_role)
+        st.divider()
+        st.markdown("#### All incidents — pick another")
+    render_board()
 
 
 # ================================================================= Operations (pipelines + live signals + collaboration)
@@ -335,9 +332,7 @@ def render_placeholder(name, note):
 
 
 # ================================================================= dispatch
-if nav == "Overview":
-    render_overview()
-elif nav == journey.WORKSPACE_NAV:
+if nav == journey.WORKSPACE_NAV:
     render_incidents(you_role)
 elif nav == "Collaboration":
     render_collaboration()
@@ -348,5 +343,5 @@ elif nav == "Analytics":
                                     "resolution-confidence analytics over governed data.")
 
 st.divider()
-st.caption("Sample data · simulated actions · build v44 — proof of concept, not production. "
+st.caption("Sample data · simulated actions · build v45 — proof of concept, not production. "
            "See PROTOTYPE_NOTES.md for persistence limits.")

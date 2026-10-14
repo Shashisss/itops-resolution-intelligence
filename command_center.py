@@ -55,9 +55,12 @@ def _rail(inc, rec):
                            "[Demo] Added a status update to the incident thread (local only).")
         st.session_state["flash"] = "Status update posted to the thread (simulated, local only)."
         st.rerun()
-    st.markdown("#### 🕒 Recent activity")
-    for cm in collab.comments(inc["id"])[-4:]:
-        st.markdown(f'**{cm["author"]}** · _{cm["ts"][11:16]}_  \n{cm["text"]}')
+    with st.expander("🕒 Recent activity", expanded=False):
+        cms = collab.comments(inc["id"])[-6:]
+        if not cms:
+            st.caption("No activity yet.")
+        for cm in cms:
+            st.markdown(f'**{cm["author"]}** · _{cm["ts"][11:16]}_  \n{cm["text"]}')
 
 
 def _stage_ola_live(inc, stage, target):
@@ -156,6 +159,7 @@ def it_command(inc, ctx):
                                "incident onset", inc["created_at"].split("T")[-1][:5])
         st.caption(f'Affected service: {services[inc["service_id"]]["name"]} '
                    f'({services[inc["service_id"]]["type"].replace("_", " ")})')
+        viz.value_strip(IMPACT_ROWS)
 
     def investigation():
         P.hypotheses(inc, ctx)
@@ -178,7 +182,6 @@ def it_command(inc, ctx):
         if k:
             viz.impact_summary(_metric_label(k["metric"]), k["baseline"], k["current"], k["unit"],
                                "incident onset", inc["created_at"].split("T")[-1][:5])
-        viz.value_strip(IMPACT_ROWS)
 
     def collaboration():
         st.markdown("#### Team & ownership")
@@ -270,6 +273,7 @@ def dop_command(inc, data):
         ])
         st.info(inc["summary"])
         st.caption(f'Downstream datasets: {", ".join(data["datasets"][d]["name"] for d in downs) or "—"}')
+        viz.value_strip(IMPACT_ROWS)
 
     def investigation():
         DV.hypotheses(inc, data)
@@ -280,7 +284,6 @@ def dop_command(inc, data):
         viz.chain(chain, {d: data["datasets"][d]["name"] for d in data["datasets"]},
                   stale=stale, highlight=(ds,))
         st.markdown("**Consumers impacted:** " + (", ".join(cons) or "—"))
-        viz.value_strip(IMPACT_ROWS)
 
     def collaboration():
         st.markdown("#### Team & ownership")
