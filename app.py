@@ -16,6 +16,7 @@ import collab
 
 ROLES_UNION = ["CSM", "L1 Engineer", "L2 / L3 Engineer", "Developer", "Incident Manager",
                "Data Engineer", "Data Owner", "Platform Engineer", "Data Consumer"]
+VERDICT_OPTIONS = ["Investigating", "Mitigated", "Verified", "Recovery failed"]
 
 
 def _needs_seed():
@@ -95,12 +96,14 @@ _sv, _ed, _it_inc, _ch, _me, _G = E.load()
 _dop_inc = DE.load()["incidents"]
 _it_open = sum(1 for i in _it_inc if i["status"] == "open")
 _dop_open = sum(1 for i in _dop_inc if i["status"] == "open")
-_labels = {"IT Ops": f"IT Ops · {_it_open} open", "DataOps": f"DataOps · {_dop_open} open",
+_labels = {"All incidents": f"All incidents · {_it_open + _dop_open} open",
+           "IT Ops": f"IT Ops · {_it_open} open", "DataOps": f"DataOps · {_dop_open} open",
            "Live Operations": "Live Operations"}
 h1, h2, h3 = st.columns([2.1, 2.4, 1.0])
 with h1:
-    domain = st.radio("Operations domain", ["IT Ops", "DataOps", "Live Operations"], horizontal=True,
-                      key="ops_domain", label_visibility="collapsed", format_func=lambda x: _labels[x])
+    domain = st.radio("Operations domain", ["All incidents", "IT Ops", "DataOps", "Live Operations"],
+                      horizontal=True, key="ops_domain", label_visibility="collapsed",
+                      format_func=lambda x: _labels[x])
 with h2:
     _gs = st.text_input("Search", key="global_search", label_visibility="collapsed",
                         placeholder="🔎 Search incidents, services, owners…")
@@ -180,7 +183,56 @@ def render_liveops():
     liveops_view.render(name, you_role)
 
 
-if domain == "IT Ops":
+# ================================================================= All incidents
+def render_board():
+    """Cross-domain board: every incident as a card; clicking opens its lifecycle."""
+    _, _, it_inc, _, _, _ = E.load()
+    dop_inc = DE.load()["incidents"]
+    rows = ([{"inc": i, "domain": "IT Ops", "key": "it_inc"} for i in it_inc] +
+            [{"inc": i, "domain": "DataOps", "key": "dop_inc"} for i in dop_inc])
+    for r in rows:
+        r["verdict"] = journey.display_verdict(r["inc"])
+
+    st.subheader("All incidents — one board across IT Ops and DataOps")
+    st.caption("Open and closed incidents in one place. **Click a card to open its lifecycle** "
+               "(the resolution thread for that incident). Closed incidents read as **Verified** — "
+               "closure only happens after an independently verified recovery. Verdicts are "
+               "session-scoped and reset on restart.")
+
+    f1, f2, f3, f4, f5 = st.columns([2.2, 1.1, 1.0, 1.4, 1.0])
+    q = f1.text_input("Search", placeholder="id · title · owner", key="board_q")
+    domf = f2.selectbox("Domain", ["All", "IT Ops", "DataOps"], key="board_dom")
+    statf = f3.selectbox("Status", ["All", "Open", "Closed"], key="board_status")
+    verf = f4.selectbox("Verdict", ["All"] + VERDICT_OPTIONS, key="board_verdict")
+    prif = f5.selectbox("Priority", ["All", "P1", "P2", "P3"], key="board_pri")
+
+    def _match(r):
+        inc = r["inc"]
+        blob = (inc["id"] + " " + inc["title"] + " " + (inc.get("owner_team") or "")).lower()
+        return (not q or q.lower() in blob) \
+            and (domf == "All" or r["domain"] == domf) \
+            and (statf == "All" or (inc.get("status") or "").lower() == statf.lower()) \
+            and (verf == "All" or r["verdict"] == verf) \
+            and (prif == "All" or inc.get("priority") == prif)
+
+    order = {"P1": 0, "P2": 1, "P3": 2, "P4": 3}
+    shown = sorted((r for r in rows if _match(r)),
+                   key=lambda r: (r["inc"].get("status") != "open",
+                                  order.get(r["inc"].get("priority"), 9), r["inc"]["id"]))
+    st.caption(f'{len(shown)} of {len(rows)} incidents')
+    if not shown:
+        st.caption("No incidents match the filter.")
+        return
+    cols = st.columns(2)
+    for idx, r in enumerate(shown):
+        with cols[idx % 2]:
+            viz.board_card(r["inc"], r["domain"], r["verdict"],
+                           on_click=journey._goto, args=(r["domain"], r["key"], r["inc"]["id"]))
+
+
+if domain == "All incidents":
+    render_board()
+elif domain == "IT Ops":
     render_itops()
 elif domain == "DataOps":
     render_dataops()
@@ -188,4 +240,4 @@ else:
     render_liveops()
 
 st.divider()
-st.caption("Sample data · simulated actions · build v37 — proof of concept, not production.")
+st.caption("Sample data · simulated actions · build v38 — proof of concept, not production.")

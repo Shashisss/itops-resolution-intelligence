@@ -66,6 +66,18 @@ def verdict(rows, applied):
     return "Recovery failed"
 
 
+def display_verdict(inc):
+    """Board-facing verdict for an incident.
+
+    Closure only happens on an independently verified recovery, so a closed incident is Verified.
+    An open incident uses the session's live verdict (set when remediation is applied) and defaults
+    to Investigating. NOTE: session verdicts are not persisted, so they reset to Investigating on
+    restart/reboot — the board labels this honestly."""
+    if (inc.get("status") or "").lower() == "closed":
+        return "Verified"
+    return st.session_state.get(f'verdict_{inc["id"]}', "Investigating")
+
+
 def render_verdict(state):
     viz.verdict_badge(state)
 

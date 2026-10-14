@@ -45,6 +45,20 @@ CSS = """
 .ri-brand .s{color:#c7d2fe;font-size:11px}
 .block-container{padding-top:1.0rem;padding-bottom:1.25rem}
 div[data-testid="stVerticalBlock"]{gap:0.5rem}
+/* All-incidents board: each incident is ONE clickable card (a full-width keyed button). */
+div[class*="st-key-boardcard-"] button{width:100%!important;text-align:left!important;
+  justify-content:flex-start!important;height:auto!important;white-space:normal!important;
+  background:#fff!important;color:#0f172a!important;border:1px solid #e5e7eb!important;
+  border-left:6px solid #94a3b8!important;border-radius:12px!important;padding:11px 14px!important;
+  font-weight:600!important;font-size:13px!important;line-height:1.4!important;
+  box-shadow:0 1px 2px rgba(0,0,0,.04)!important;margin:2px 0!important}
+div[class*="st-key-boardcard-"] button p{font-weight:600!important;font-size:13px!important;
+  line-height:1.4!important;margin:0!important;text-align:left!important;color:#0f172a!important}
+div[class*="st-key-boardcard-"] button:hover{background:#f8fafc!important}
+div[class*="st-key-boardcard-P1-"] button{border-left-color:#dc2626!important}
+div[class*="st-key-boardcard-P2-"] button{border-left-color:#d97706!important}
+div[class*="st-key-boardcard-P3-"] button{border-left-color:#0891b2!important}
+div[class*="st-key-boardcard-P4-"] button{border-left-color:#64748b!important}
 </style>
 """
 
@@ -399,6 +413,22 @@ def queue_cards(rows):
             f'<div style="color:#334155;font-size:13px;margin-top:4px">{r["title"]}</div>'
             f'<div style="color:#64748b;font-size:12px;margin-top:3px">Owner: {r["owner"]}</div></div>',
             unsafe_allow_html=True)
+
+
+def board_card(inc, domain, verdict, on_click, args):
+    """One incident as a SINGLE clickable card, on the all-incidents board.
+
+    The whole card is a full-width keyed `st.button` (styled as a card via the
+    `st-key-boardcard-*` CSS rules above). Clicking it runs `on_click(*args)`, which the caller
+    wires to the lifecycle navigation (journey._goto) so the incident opens directly.
+    The `-P1/-P2/...` segment in the key drives the per-priority left border."""
+    pri = inc.get("priority", "P3")
+    status = (inc.get("status") or "open").title()
+    owner = inc.get("owner_team") or "—"
+    label = (f'**{inc["id"]}** · {domain} · {pri} · {status} · {verdict}  \n'
+             f'{inc["title"]}  \nowner: {owner}')
+    st.button(label, key=f'boardcard-{pri}-{inc["id"]}', use_container_width=True,
+              on_click=on_click, args=args)
 
 
 def chain(seq, labels, stale=(), highlight=(), arrows=True):
