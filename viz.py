@@ -442,17 +442,18 @@ def queue_cards(rows):
             unsafe_allow_html=True)
 
 
-def board_card(inc, domain, verdict, on_click, args, stage=None, sla=None):
+def board_card(inc, domain, verdict, on_click, args, stage=None, sla=None, open_=False):
     """One incident as a SINGLE clickable card, on the incidents board.
 
     The whole card is a full-width keyed `st.button` (styled as a card via the
-    `st-key-boardcard-*` CSS rules above). Clicking it runs `on_click(*args)`, wired to the
-    lifecycle navigation (journey._goto) so the incident opens directly.
-    The `-P1/-P2/...` segment in the key drives the per-priority left border."""
+    `st-key-boardcard-*` CSS rules above). Clicking it runs `on_click(*args)` — wired to a toggle
+    that opens/closes the incident's collapsible details. The `-P1/-P2/...` segment in the key
+    drives the per-priority left border; the ▸/▾ marker shows open/closed."""
     pri = inc.get("priority", "P3")
     status = (inc.get("status") or "open").title()
     owner = inc.get("owner_team") or "—"
-    line1 = f'**{inc["id"]}** · {domain} · {pri} · {status} · {verdict}'
+    mark = "▾" if open_ else "▸"
+    line1 = f'{mark} **{inc["id"]}** · {domain} · {pri} · {status} · {verdict}'
     if stage:
         line1 += f' · stage: {stage}'
     line3 = f'owner: {owner}' + (f' · SLA: {sla}' if sla else '')

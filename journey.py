@@ -400,6 +400,17 @@ def _goto(domain, inc_key, ref):
     st.session_state["open_incident"] = {"domain": domain, "ref": ref}
 
 
+def toggle_incident(domain, ref):
+    """Board-card toggle: clicking a card opens its collapsible details; clicking the same card
+    again closes them."""
+    cur = st.session_state.get("open_incident")
+    if cur and cur.get("ref") == ref:
+        st.session_state.pop("open_incident", None)
+    else:
+        st.session_state["nav"] = WORKSPACE_NAV
+        st.session_state["open_incident"] = {"domain": domain, "ref": ref}
+
+
 def render_correlation(inc_id):
     c = correlation_for(inc_id)
     if not c:
