@@ -17,7 +17,7 @@ KIND_ICON = {"change": "🔧", "alert": "🚨", "incident": "📟", "ticket": "�
 # The single progress model used across IT Ops and DataOps (see viz.thread_spine).
 LIFECYCLE = ["Detect", "Correlate", "Coordinate", "Verify", "Close"]
 # The nav target that opens an incident workspace (kept here so shell/app/callbacks agree).
-WORKSPACE_NAV = "Incidents & resolution threads"
+WORKSPACE_NAV = "Incidents"
 
 _IT_STAGE_TO_THREAD = {"Detected": "Detect", "Triaged": "Correlate", "Diagnosed": "Correlate",
                        "Change raised": "Coordinate", "Fix in progress": "Coordinate",

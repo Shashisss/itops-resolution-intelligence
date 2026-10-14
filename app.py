@@ -49,12 +49,10 @@ flash = st.session_state.pop("flash", None)
 if flash:
     st.success(flash)
 
-# ---- one shell: global navigation + global controls ----
-nav, you_role = shell.sidebar("CSM")
-
 _sv, _ed, _it_inc, _ch, _me, _G = E.load()
 _dop_inc = DE.load()["incidents"]
-shell.topbar(_it_inc, _dop_inc, you_role)
+# ---- top menu + global controls (no left bar) ----
+nav, you_role = shell.topbar(_it_inc, _dop_inc)
 
 
 def _it_ctx():
@@ -78,6 +76,16 @@ def _sla_risk(i):
     except Exception:
         elapsed = 0.0
     return (target - elapsed) < target * 0.5
+
+
+def _sla_txt(i):
+    target = personas.SLA_HOURS.get(i["priority"], 8)
+    try:
+        elapsed = (dt.datetime.now() - dt.datetime.fromisoformat(i["created_at"])).total_seconds() / 3600
+    except Exception:
+        elapsed = 0.0
+    rem = target - elapsed
+    return "BREACHED" if rem <= 0 else f"{int(rem)}h {int((rem % 1) * 60)}m left"
 
 
 # ================================================================= Overview
@@ -134,6 +142,14 @@ def render_board():
                "(the resolution thread). Closed incidents read as **Verified** — closure only happens "
                "after an independently verified recovery. Verdicts are session-scoped and reset on restart.")
 
+    n_open = sum(1 for r in rows if r["inc"].get("status") == "open")
+    n_risk = sum(1 for r in rows if r["inc"].get("status") == "open" and _sla_risk(r["inc"]))
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Total incidents", len(rows))
+    k2.metric("Open", n_open)
+    k3.metric("Closed", len(rows) - n_open)
+    k4.metric("SLA at risk", n_risk)
+
     f1, f2, f3, f4, f5 = st.columns([2.2, 1.1, 1.0, 1.4, 1.0])
     q = f1.text_input("Search", placeholder="id · title · owner", key="board_q")
     domf = f2.selectbox("Domain", ["All", "IT Ops", "DataOps"], key="board_dom")
@@ -162,7 +178,9 @@ def render_board():
     for idx, r in enumerate(shown):
         with cols[idx % 2]:
             viz.board_card(r["inc"], r["domain"], r["verdict"],
-                           on_click=journey._goto, args=(r["domain"], None, r["inc"]["id"]))
+                           on_click=journey._goto, args=(r["domain"], None, r["inc"]["id"]),
+                           stage=journey.lifecycle_stage(r["inc"]),
+                           sla=(_sla_txt(r["inc"]) if r["inc"].get("status") == "open" else None))
 
 
 def render_incidents():
@@ -200,23 +218,18 @@ def render_incidents():
 
 # ================================================================= By role
 def render_by_role(you_role):
+    """Persona lens — driven by the ONE Demo persona control in the top bar (no duplicate selector)."""
     st.subheader("By role — one governed record, shaped per role")
-    dom = st.radio("Domain", ["IT Ops", "DataOps"], horizontal=True, key="role_dom")
-    if dom == "IT Ops":
-        default = you_role if you_role in personas.PERSONAS else personas.PERSONAS[0]
-        persona = st.selectbox("View as role", personas.PERSONAS,
-                               index=personas.PERSONAS.index(default), key="role_persona_it")
+    st.caption(f'Showing the **{you_role}** lens. Change it with the Demo persona control in the top bar.')
+    if you_role in personas.PERSONAS:
         ordered = sorted(_it_inc, key=lambda i: (i["status"] != "open", i["id"]))
         titles = {i["id"]: f'{i["id"]} · {i["title"]} ({i["status"]})' for i in ordered}
         sel = st.selectbox("Incident", list(titles), format_func=lambda x: titles[x], key="role_inc_it")
         inc, ctx = _find_it(sel), _it_ctx()
         {"CSM": personas.csm_view, "L1 Engineer": personas.l1_view, "L2 / L3 Engineer": personas.l2_view,
          "Developer": lambda i, c: personas.developer_view(c),
-         "Incident Manager": personas.im_view}[persona](inc, ctx)
-    else:
-        default = you_role if you_role in DV.PERSONAS else DV.PERSONAS[0]
-        persona = st.selectbox("View as role", DV.PERSONAS,
-                               index=DV.PERSONAS.index(default), key="role_persona_dop")
+         "Incident Manager": personas.im_view}[you_role](inc, ctx)
+    elif you_role in DV.PERSONAS:
         data = DE.load()
         ordered = sorted(data["incidents"], key=lambda i: (i["status"] != "open", i["id"]))
         titles = {i["id"]: f'{i["id"]} · {i["title"]} ({i["status"]})' for i in ordered}
@@ -224,7 +237,9 @@ def render_by_role(you_role):
                            key="role_inc_dop")
         inc = next(i for i in data["incidents"] if i["id"] == sel)
         {"Data Engineer": DV.data_engineer_view, "Data Owner": DV.data_owner_view,
-         "Platform Engineer": DV.platform_engineer_view, "Data Consumer": DV.data_consumer_view}[persona](inc, data)
+         "Platform Engineer": DV.platform_engineer_view, "Data Consumer": DV.data_consumer_view}[you_role](inc, data)
+    else:
+        st.info("Choose an IT Ops or DataOps role in the top **Demo persona** control to use this view.")
 
 
 # ================================================================= Data pipelines
@@ -291,11 +306,11 @@ elif nav == journey.WORKSPACE_NAV:
     render_incidents()
 elif nav == "By role":
     render_by_role(you_role)
-elif nav == "Data pipelines":
+elif nav == "Pipelines":
     render_pipelines()
-elif nav == "Live operations":
+elif nav == "Live ops":
     render_liveops(you_role)
-elif nav == "Collaboration & activity":
+elif nav == "Collaboration":
     render_collab()
 elif nav == "Analytics":
     render_placeholder("Analytics", "Planned: MTTR, SLA/OLA breach trends, repeat-incident and "
@@ -305,4 +320,4 @@ elif nav == "Settings":
                                    "personas and access (RBAC) — production concerns, not simulated here.")
 
 st.divider()
-st.caption("Sample data · simulated actions · build v39 — proof of concept, not production.")
+st.caption("Sample data · simulated actions · build v40 — proof of concept, not production.")
