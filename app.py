@@ -55,8 +55,9 @@ def _needs_seed():
                     "olas", "stage_olas")
         for t in required:
             con.execute(f"SELECT 1 FROM {t} LIMIT 1")
+        v = con.execute("SELECT value FROM meta WHERE key='seed_version'").fetchone()
         con.close()
-        return False
+        return not (v and v[0] == "v49")
     except Exception:
         return True
 
@@ -78,8 +79,9 @@ _dop_data = DE.load()
 _dop_inc = _dop_data["incidents"]
 # ---- top menu + global controls (no left bar) ----
 nav, you_role = shell.topbar(_it_inc, _dop_inc, _sv, _dop_data["datasets"], _dop_data["pipelines"])
-# ---- ambient live strip: global, always visible on every page ----
-viz.ambient_strip(realtime.recent(6))
+# ---- ambient live strip: global, collapsible like the overview ----
+with st.expander("📡 Live — all domains", expanded=False):
+    viz.ambient_strip(realtime.recent(8))
 
 
 def _it_ctx():
@@ -113,30 +115,6 @@ def _sla_txt(i):
         elapsed = 0.0
     rem = target - elapsed
     return "BREACHED" if rem <= 0 else f"{int(rem)}h {int((rem % 1) * 60)}m left"
-
-
-# ================================================================= Collaboration (the hero)
-def render_collaboration():
-    st.subheader("Collaboration — the resolution accelerator")
-    st.caption("Who is engaged, how work is handed off, and the measured acceleration versus a siloed "
-               "flow. Collaboration is what shortens MTTR.")
-    for ref, dom in [("INC-8841", "IT Ops"), ("DOP-1001", "DataOps")]:
-        inc = _find_it(ref) if dom == "IT Ops" else _find_dop(ref)
-        if not inc:
-            continue
-        st.markdown(f"#### {dom} · {ref} — {inc['title']}")
-        if hasattr(journey, "collab_stats") and hasattr(viz, "collab_strip"):
-            stats = journey.collab_stats(inc)
-            viz.collab_strip(inc["owner_team"], (stats["participants"] or ["—"])[0], stats)
-        else:
-            st.caption("Collaboration metrics unavailable in this build.")
-        for c in collab.comments(ref)[-4:]:
-            st.markdown(f'`{c["ts"][11:16]}` · **{c["author"]}** ({c["role"]})  \n{c["text"]}')
-        st.button(f"Open {ref} workspace →", key="collab_open_" + ref,
-                  on_click=journey._goto, args=(dom, None, ref))
-    st.divider()
-    viz.value_strip(command_center.IMPACT_ROWS,
-                    title="Impact — MTTR and resolution acceleration (illustrative)")
 
 
 # ================================================================= Overview (collapsible, on the incident page)
@@ -296,15 +274,15 @@ def _render_incident_detail(dom, ref, you_role):
 
 
 def render_incidents(you_role):
-    """Default page. The incident board; clicking a card opens its details as a collapsible
-    (same page); clicking the card again closes them."""
-    with st.expander("📊 Overview — at a glance", expanded=False):
-        _overview_panel()
+    """Default page. Clicking a card opens that incident's details FIRST (same page, collapsible);
+    the at-a-glance overview and the board follow."""
     sel = st.session_state.get("open_incident")
     if sel:
         with st.expander(f"🧭 {sel['ref']} — incident details", expanded=True):
             _render_incident_detail(sel["domain"], sel["ref"], you_role)
         st.caption("▾ Click the incident card again to close its details.")
+    with st.expander("📊 Overview — at a glance", expanded=False):
+        _overview_panel()
     render_board()
 
 
@@ -356,8 +334,6 @@ def render_placeholder(name, note):
 # ================================================================= dispatch
 if nav == journey.WORKSPACE_NAV:
     render_incidents(you_role)
-elif nav == "Collaboration":
-    render_collaboration()
 elif nav == "Operations":
     render_operations(you_role)
 elif nav == "Analytics":
@@ -365,5 +341,5 @@ elif nav == "Analytics":
                                     "resolution-confidence analytics over governed data.")
 
 st.divider()
-st.caption("Sample data · simulated actions · build v48 — proof of concept, not production. "
+st.caption("Sample data · simulated actions · build v49 — proof of concept, not production. "
            "See PROTOTYPE_NOTES.md for persistence limits.")

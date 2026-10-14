@@ -11,7 +11,7 @@ import journey
 
 # Top menu — four primary destinations. journey.WORKSPACE_NAV ("Incidents") opens the
 # board/workspace and carries the role lens. Keep in sync.
-NAV = [journey.WORKSPACE_NAV, "Collaboration", "Operations", "Analytics"]
+NAV = [journey.WORKSPACE_NAV, "Operations", "Analytics"]
 
 ROLES_UNION = ["CIO", "CSM", "Incident Manager", "Service Desk", "L1 Engineer",
                "L2 / L3 Engineer", "Developer", "Data Engineer", "Data Owner",

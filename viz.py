@@ -345,9 +345,7 @@ def collab_strip(owner, next_actor, stats):
 
     st.markdown(
         f'<div class="ri-card" style="border-left:6px solid #4f46e5;background:#f7f8ff">'
-        f'<div style="font-weight:800;color:#0f172a;font-size:14px">'
-        f'🤝 Collaboration — the resolution accelerator</div>'
-        f'<div style="display:flex;gap:22px;flex-wrap:wrap;margin-top:9px">'
+        f'<div style="display:flex;gap:22px;flex-wrap:wrap">'
         + cell("Owner", owner) + cell("Next actor", next_actor)
         + cell("Participants", len(stats.get("participants", [])))
         + cell("Handoffs", f'{stats.get("handoffs", 0)} ({stats.get("handoffs_done", 0)} done)')
@@ -432,13 +430,13 @@ def feed(events):
             f'{e.get("message","")}</div></div>', unsafe_allow_html=True)
 
 
-def ambient_strip(events, title="📡 Live — all domains"):
-    """Compact, always-visible global live strip (one line of the latest events)."""
+def ambient_strip(events):
+    """Compact global live strip (chips only; the caller provides the collapsible label)."""
     if not events:
-        st.caption("📡 Live — no events yet.")
+        st.caption("No events yet.")
         return
     parts = []
-    for e in events[:5]:
+    for e in events[:6]:
         col = SEV_COLOR.get(e.get("severity"), "#94a3b8")
         dom = "DataOps" if e.get("domain") == "dataops" else "IT Ops"
         ts = str(e.get("ts", ""))
@@ -448,8 +446,7 @@ def ambient_strip(events, title="📡 Live — all domains"):
             msg = msg[:42] + "…"
         parts.append(f'<span class="ri-amb" style="border-left-color:{col}">'
                      f'<b style="color:{col}">{hhmm}</b> {dom} · {msg}</span>')
-    st.markdown(f'<div class="ri-ambient"><span class="ri-amb-l">{title}</span>'
-                + "".join(parts) + '</div>', unsafe_allow_html=True)
+    st.markdown('<div class="ri-ambient">' + "".join(parts) + '</div>', unsafe_allow_html=True)
 
 
 def queue_cards(rows):
@@ -478,7 +475,7 @@ def board_card(inc, domain, verdict, on_click, args, stage=None, sla=None, open_
     status = (inc.get("status") or "open").title()
     owner = inc.get("owner_team") or "—"
     mark = "▾" if open_ else "▸"
-    line1 = f'{mark} **{inc["id"]}** · {domain} · {pri} · {status} · {verdict}'
+    line1 = f'{mark} **{inc["id"]}** · {domain} · {status}'
     if stage:
         line1 += f' · stage: {stage}'
     line3 = f'owner: {owner}' + (f' · SLA: {sla}' if sla else '')

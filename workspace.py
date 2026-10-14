@@ -28,17 +28,20 @@ def render_workspace(hero_kwargs, lifecycle, edges, tabs, rail, thread_note=None
     st.caption("One shared lifecycle across **IT Ops** and **DataOps**. Each stage carries an internal "
                "**OLA** (owner-team target) — distinct from the customer **SLA** in the header. "
                "The active stage shows live remaining / BREACHED.")
-    if collab_banner:
-        collab_banner()
-    if corr:
-        st.caption(f'🔗 Thread links **{corr["other_domain"]} {corr["other_id"]}** · shared cause '
-                   f'**{corr["shared_cause"]}**.')
+
+    if collab_banner or corr:
+        with st.expander("🤝 Collaboration & handoffs", expanded=False):
+            if collab_banner:
+                collab_banner()
+            if corr:
+                st.caption(f'🔗 Thread links **{corr["other_domain"]} {corr["other_id"]}** · shared cause '
+                           f'**{corr["shared_cause"]}**.')
 
     if edges:
-        st.markdown("#### Cross-domain resolution thread")
-        viz.thread_edges(edges)
-        st.caption(thread_note or "**Observed** = a recorded signal/relationship. **Inferred** = a hypothesis "
-                                  "to confirm. Multiple contributing causes are allowed.")
+        with st.expander("🔗 Cross-domain resolution thread", expanded=False):
+            viz.thread_edges(edges)
+            st.caption(thread_note or "**Observed** = a recorded signal/relationship. **Inferred** = a "
+                                      "hypothesis to confirm. Multiple contributing causes are allowed.")
 
     main, r = st.columns([2.4, 1])
     with main:
