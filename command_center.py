@@ -286,6 +286,20 @@ def dop_command(inc, data):
         DV.hypotheses(inc, data)
 
     def impact():
+        st.markdown("#### Data estate context")
+        pipe = data["pipelines"].get(inc["pipeline_id"], {})
+        st.markdown(f'- **Pipeline:** {pipe.get("name","—")} · owner {pipe.get("owner_team","—")} · '
+                    f'{pipe.get("criticality","")} · {pipe.get("schedule","")} · '
+                    f'freshness SLA {pipe.get("freshness_sla_min","—")} min')
+        con = next((c for c in data["contracts"] if c["dataset_id"] == ds), None)
+        if con:
+            st.markdown(f'- **Data contract:** {con["name"]} {con["version"]} · owner {con["owner"]}')
+        drows = [{"dataset": data["datasets"][d]["name"], "freshness": DV._fresh(data, d)[0],
+                  "verdict": "🔴 breach" if DV._fresh(data, d)[1] else "🟢 ok"}
+                 for d in [ds] + list(downs)]
+        viz.card_rows(drows, "#0d9488")
+        st.caption("The estate behind this incident — pipeline, contract, dataset freshness and lineage.")
+
         st.markdown("#### Pipeline lineage")
         stale = tuple(d for d in data["datasets"] if DV._fresh(data, d)[1])
         viz.chain(chain, {d: data["datasets"][d]["name"] for d in data["datasets"]},

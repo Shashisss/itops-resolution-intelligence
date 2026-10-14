@@ -312,77 +312,71 @@ def render_incidents(you_role):
     render_board()
 
 
-# ================================================================= Operations (pipelines + live signals + collaboration)
-def render_operations(you_role):
-    st.subheader("Operations — data & pipeline estate, and live signals")
-    st.caption("The **estate and telemetry behind incidents** — pipeline/dataset health and the live "
-               "signal stream. The work items themselves (all IT Ops + DataOps incidents) live in "
-               "**Incidents**; there is deliberately no incident list here.")
-    with st.expander("🚰 Pipelines — dataset freshness, quality and lineage", expanded=True):
-        render_pipelines()
-    with st.expander("📡 Live signals — event stream (Live / Replay)", expanded=False):
-        render_liveops(you_role)
+# ================================================================= Analytics
+def render_analytics():
+    st.subheader("Analytics — resolution performance")
+    st.caption("Where a figure is derived from the sample incidents it is labelled **live data**; where "
+               "it is a scenario estimate it is labelled **illustrative** — nothing is presented as a "
+               "measured result unless it is.")
+    incidents = list(_it_inc) + list(_dop_inc)
+    verdicts = [journey.display_verdict(i) for i in incidents]
+    n_open = sum(1 for i in incidents if i.get("status") == "open")
+    n_verified = sum(1 for v in verdicts if v == "Verified")
+    at_risk = sum(1 for i in incidents if i.get("status") == "open" and _sla_risk(i))
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Incidents (total)", len(incidents))
+    c2.metric("Open", n_open)
+    c3.metric("Verified recoveries", n_verified)
+    c4.metric("SLA at risk", at_risk)
+    st.caption("**Live data** — from the current sample incidents and their authoritative verdicts.")
+
+    left, right = st.columns(2)
+    with left:
+        st.markdown("#### Resolution outcomes")
+        oc = ["Investigating", "Mitigated", "Verified", "Recovery failed"]
+        df = pd.DataFrame({"Outcome": oc, "Incidents": [verdicts.count(v) for v in oc]}).set_index("Outcome")
+        st.bar_chart(df)
+        st.caption("**Live data** — authoritative verdict counts.")
+    with right:
+        st.markdown("#### Incidents by domain")
+        dom = pd.DataFrame({
+            "Domain": ["IT Ops", "DataOps"],
+            "Open": [sum(1 for i in _it_inc if i.get("status") == "open"),
+                     sum(1 for i in _dop_inc if i.get("status") == "open")],
+            "Closed": [sum(1 for i in _it_inc if i.get("status") != "open"),
+                       sum(1 for i in _dop_inc if i.get("status") != "open")],
+        }).set_index("Domain")
+        st.bar_chart(dom)
+        st.caption("**Live data** — incident distribution across domains.")
+
+    st.markdown("#### MTTR — baseline vs with the platform")
+    mttr = pd.DataFrame({
+        "Month": ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+        "Baseline MTTR (h)": [7.8, 7.6, 8.1, 7.9, 8.0, 7.7],
+        "With platform MTTR (h)": [7.6, 6.9, 5.8, 4.6, 3.2, 2.4],
+    }).set_index("Month")
+    st.line_chart(mttr)
+    st.caption("**Illustrative** simulated trend — MTTR falling as cross-domain correlation and "
+               "coordination kick in. Measure against a real baseline in a pilot.")
+
+    st.markdown("#### Where the time goes — baseline vs with the platform")
+    steps = pd.DataFrame({
+        "Step": ["Identify likely cause", "Assign next owner", "Verified recovery"],
+        "Baseline (min)": [45, 30, 240],
+        "With platform (min)": [10, 2, 60],
+    }).set_index("Step")
+    st.bar_chart(steps)
+    st.caption("**Illustrative** simulated values — the acceleration the platform targets.")
+
+    st.markdown("#### SLA / OLA breaches per month")
+    br = pd.DataFrame({"Month": ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+                       "Breaches": [6, 6, 5, 4, 3, 2]}).set_index("Month")
+    st.bar_chart(br)
+    st.caption("**Illustrative** simulated totals.")
 
 
-# ================================================================= Data & pipeline estate (no incident list — that's Incidents)
-def render_pipelines():
-    data = DE.load()
-    st.markdown("**Dataset freshness (SLA)**")
-    drows = [{"dataset": data["datasets"][ds]["name"], "layer": data["datasets"][ds]["layer"],
-              "freshness": DV._fresh(data, ds)[0],
-              "verdict": "🔴 breach" if DV._fresh(data, ds)[1] else "🟢 ok"}
-             for ds in data["datasets"]]
-    st.dataframe(pd.DataFrame(drows), hide_index=True, width="stretch")
-
-    st.markdown("**Pipelines**")
-    prows = [{"pipeline": p["name"], "owner": p["owner_team"], "criticality": p["criticality"],
-              "schedule": p["schedule"], "freshness SLA": f'{p["freshness_sla_min"]} min'}
-             for p in data["pipelines"].values()]
-    st.dataframe(pd.DataFrame(prows), hide_index=True, width="stretch")
-
-    st.markdown("**Data contracts**")
-    crows = [{"dataset": data["datasets"][c["dataset_id"]]["name"], "contract": c["name"],
-              "version": c["version"], "owner": c["owner"]} for c in data["contracts"]]
-    st.dataframe(pd.DataFrame(crows), hide_index=True, width="stretch")
-
-    st.markdown("**Lineage**")
-    labels = {d: data["datasets"][d]["name"] for d in data["datasets"]}
-    stale = tuple(d for d in data["datasets"] if DV._fresh(data, d)[1])
-    viz.chain(["core_ledger", "ds_pay_bz", "ds_pay_sv", "ds_pay_gd"], labels, stale=stale)
-    st.caption("A dataset incident is a symptom of the pipeline that produces it. Incidents are in "
-               "**Incidents**; this view is the estate behind them.")
-
-
-# ================================================================= Live signals (stream only — no incident queue, no collaboration)
-def render_liveops(you_role):
-    mode = st.radio("Stream mode", ["Live", "Replay"], horizontal=True, key="ops_live_mode")
-    if mode == "Replay":
-        c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
-        if c1.button("⏮ Reset", key="ops_rst"):
-            realtime.clear_events()
-            st.session_state["ops_ridx"] = 0
-            st.session_state["ops_playing"] = False
-            st.rerun()
-        if c2.button("⏭ Next", key="ops_next"):
-            i = st.session_state.get("ops_ridx", 0)
-            if i < len(realtime.REPLAY_SCRIPT):
-                realtime.emit_replay_event(realtime.REPLAY_SCRIPT[i])
-                st.session_state["ops_ridx"] = i + 1
-            st.rerun()
-        playing = st.session_state.get("ops_playing", False)
-        if c3.button("⏸ Pause" if playing else "▶ Play", key="ops_pp"):
-            st.session_state["ops_playing"] = not playing
-            st.rerun()
-        c4.caption(f'replay step {st.session_state.get("ops_ridx", 0)}/{len(realtime.REPLAY_SCRIPT)} '
-                   f'— deterministic walkthrough')
-    else:
-        realtime.tick()
-    viz.feed(realtime.recent(14))
-    st.caption("Signals are **simulated**. Owners, handoffs, comments and delegation live in each "
-               "incident's workspace (open one from **Incidents**).")
-
-
-# ================================================================= Analytics / Settings placeholders
+# ================================================================= Settings placeholder
 def render_placeholder(name, note):
     st.subheader(name)
     st.info(f'**Placeholder — not yet implemented.** {note}')
@@ -391,12 +385,9 @@ def render_placeholder(name, note):
 # ================================================================= dispatch
 if nav == journey.WORKSPACE_NAV:
     render_incidents(you_role)
-elif nav == "Operations":
-    render_operations(you_role)
 elif nav == "Analytics":
-    render_placeholder("Analytics", "Planned: MTTR, SLA/OLA breach trends, repeat-incident and "
-                                    "resolution-confidence analytics over governed data.")
+    render_analytics()
 
 st.divider()
-st.caption("Sample data · simulated actions · build v52 — proof of concept, not production. "
+st.caption("Sample data · simulated actions · build v53 — proof of concept, not production. "
            "See PROTOTYPE_NOTES.md for persistence limits.")
