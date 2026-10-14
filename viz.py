@@ -61,6 +61,11 @@ div[class*="st-key-boardcard-P1-"] button{border-left-color:#dc2626!important}
 div[class*="st-key-boardcard-P2-"] button{border-left-color:#d97706!important}
 div[class*="st-key-boardcard-P3-"] button{border-left-color:#0891b2!important}
 div[class*="st-key-boardcard-P4-"] button{border-left-color:#64748b!important}
+/* Ambient live strip — global, always-visible (one compact line) */
+.ri-ambient{display:flex;gap:9px;flex-wrap:wrap;align-items:center;background:#f8fafc;
+  border:1px solid #e5e7eb;border-radius:10px;padding:6px 11px;margin:0 0 10px}
+.ri-ambient .ri-amb-l{font-weight:800;font-size:11.5px;color:#0f172a;white-space:nowrap}
+.ri-amb{border-left:3px solid #94a3b8;padding:1px 9px;font-size:11.5px;color:#334155;white-space:nowrap}
 </style>
 """
 
@@ -425,6 +430,26 @@ def feed(events):
             f'<span class="ri-tag" style="background:{col}">{e.get("severity","")}</span></span></div>'
             f'<div style="margin-top:4px;font-size:13px"><b>{e.get("source","")}</b> — '
             f'{e.get("message","")}</div></div>', unsafe_allow_html=True)
+
+
+def ambient_strip(events, title="📡 Live — all domains"):
+    """Compact, always-visible global live strip (one line of the latest events)."""
+    if not events:
+        st.caption("📡 Live — no events yet.")
+        return
+    parts = []
+    for e in events[:5]:
+        col = SEV_COLOR.get(e.get("severity"), "#94a3b8")
+        dom = "DataOps" if e.get("domain") == "dataops" else "IT Ops"
+        ts = str(e.get("ts", ""))
+        hhmm = ts.split("T")[-1][:5] if "T" in ts else ts
+        msg = str(e.get("message", ""))
+        if len(msg) > 44:
+            msg = msg[:42] + "…"
+        parts.append(f'<span class="ri-amb" style="border-left-color:{col}">'
+                     f'<b style="color:{col}">{hhmm}</b> {dom} · {msg}</span>')
+    st.markdown(f'<div class="ri-ambient"><span class="ri-amb-l">{title}</span>'
+                + "".join(parts) + '</div>', unsafe_allow_html=True)
 
 
 def queue_cards(rows):

@@ -35,9 +35,7 @@ IMPACT_ROWS = [
 
 
 def _rail(inc, rec):
-    """Shared right-hand rail (identical for IT Ops and DataOps)."""
-    with st.expander("📡 Live event feed · simulated", expanded=False):
-        viz.feed(realtime.recent(8))
+    """Shared right-hand rail (identical for IT Ops and DataOps) — INCIDENT-scoped."""
     st.markdown("#### 👥 Team & ownership")
     st.markdown(f'- **{inc["owner_team"]}** — owner')
     for a in journey.actors(rec):
@@ -55,6 +53,12 @@ def _rail(inc, rec):
                            "[Demo] Added a status update to the incident thread (local only).")
         st.session_state["flash"] = "Status update posted to the thread (simulated, local only)."
         st.rerun()
+    with st.expander("🧷 This incident — recent events", expanded=False):
+        evs = journey.timeline(inc["id"])[-6:]
+        if not evs:
+            st.caption("No events recorded yet.")
+        for ev in evs:
+            st.markdown(f'`{ev["ts"][11:16]}` · {ev["kind"]} — {ev["detail"]}')
     with st.expander("🕒 Recent activity", expanded=False):
         cms = collab.comments(inc["id"])[-6:]
         if not cms:

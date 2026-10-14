@@ -18,6 +18,7 @@ import journey
 import collab
 import shell
 import workspace
+import realtime
 
 
 def _refresh_modules_if_stale():
@@ -77,6 +78,8 @@ _dop_data = DE.load()
 _dop_inc = _dop_data["incidents"]
 # ---- top menu + global controls (no left bar) ----
 nav, you_role = shell.topbar(_it_inc, _dop_inc, _sv, _dop_data["datasets"], _dop_data["pipelines"])
+# ---- ambient live strip: global, always visible on every page ----
+viz.ambient_strip(realtime.recent(6))
 
 
 def _it_ctx():
@@ -161,6 +164,28 @@ def _overview_panel():
     with c2:
         st.button("Open DOP-1001 (DataOps)", key="ov_dop", use_container_width=True,
                   on_click=journey._goto, args=("DataOps", None, "DOP-1001"))
+
+    st.markdown("**Live event feed — all domains**")
+    f1, f2 = st.columns([1, 1])
+    domf = f1.selectbox("Domain", ["All", "IT Ops", "DataOps"], key="feed_dom")
+    sevf = f2.selectbox("Severity", ["All", "critical", "warning", "info"], key="feed_sev")
+
+    def _dom(e):
+        return "DataOps" if e.get("domain") == "dataops" else "IT Ops"
+
+    events = [e for e in realtime.recent(40)
+              if (domf == "All" or _dom(e) == domf) and (sevf == "All" or e.get("severity") == sevf)]
+    if not events:
+        st.caption("No events match the filter.")
+    for e in events[:12]:
+        hhmm = str(e.get("ts", "")).split("T")[-1][:5]
+        label = f'{hhmm} · {_dom(e)} · {e.get("severity","")} · {e.get("source","")} — {e.get("message","")}'
+        if e.get("ref_id"):
+            st.button(label, key=f'feed_ev_{e.get("id")}', on_click=journey._goto,
+                      args=(_dom(e), None, e["ref_id"]))
+        else:
+            st.markdown(f'`{hhmm}` · {_dom(e)} · {e.get("severity","")} — {e.get("message","")}')
+    st.caption("Click an event to open the related incident.")
 
     st.markdown("**Recent activity — across all incidents**")
     rows = []
@@ -340,5 +365,5 @@ elif nav == "Analytics":
                                     "resolution-confidence analytics over governed data.")
 
 st.divider()
-st.caption("Sample data · simulated actions · build v47 — proof of concept, not production. "
+st.caption("Sample data · simulated actions · build v48 — proof of concept, not production. "
            "See PROTOTYPE_NOTES.md for persistence limits.")
