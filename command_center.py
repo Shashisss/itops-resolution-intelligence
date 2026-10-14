@@ -20,6 +20,20 @@ def _metric_label(m):
     return m.replace("_pct", "").replace("_", " ").strip().capitalize()
 
 
+# Resolution-acceleration metrics (ILLUSTRATIVE — baseline vs with-platform). Honest framing:
+# simulated demo values; measure against a real baseline in a pilot.
+IMPACT_ROWS = [
+    ("MTTR — mean time to resolution", "~4 h 10 m", "~1 h 05 m"),
+    ("Time to identify likely cause", "~45 min", "~10 min"),
+    ("Time to assign next owner (coordination)", "~30 min", "~2 min"),
+    ("Time to verified recovery", "~4 h", "~1 h"),
+    ("Handoffs auto-coordinated", "0%", "~70%"),
+    ("SLA / OLA breaches (per month)", "6", "2"),
+    ("Repeat incidents (per month)", "12", "5"),
+    ("Operator effort (person-hours)", "9", "3"),
+]
+
+
 def _rail(inc, rec):
     """Shared right-hand rail (identical for IT Ops and DataOps)."""
     st.markdown("#### 📡 Live event feed · simulated")
@@ -164,14 +178,7 @@ def it_command(inc, ctx):
         if k:
             viz.impact_summary(_metric_label(k["metric"]), k["baseline"], k["current"], k["unit"],
                                "incident onset", inc["created_at"].split("T")[-1][:5])
-        viz.value_strip([
-            ("Time to identify likely cause", "~45 min", "~10 min"),
-            ("Time to assign next owner", "~30 min", "~2 min"),
-            ("Time to verified recovery", "~4 h", "~1 h"),
-            ("SLA / OLA breaches (per month)", "6", "2"),
-            ("Repeat incidents (per month)", "12", "5"),
-            ("Operator effort (person-hours)", "9", "3"),
-        ])
+        viz.value_strip(IMPACT_ROWS)
 
     def collaboration():
         st.markdown("#### Team & ownership")
@@ -220,7 +227,10 @@ def it_command(inc, ctx):
         hero_kwargs, lifecycle, edges,
         {"Overview": overview, "Investigation": investigation, "Impact": impact,
          "Collaboration": collaboration, "Verification": verification, "Timeline": timeline},
-        rail=lambda: _rail(inc, rec), corr=corr)
+        rail=lambda: _rail(inc, rec), corr=corr,
+        collab_banner=lambda: viz.collab_strip(inc["owner_team"],
+                                               (journey.actors(rec) or ["—"])[0],
+                                               journey.collab_stats(inc)))
 
 
 # ================================================================= DataOps workspace
@@ -269,6 +279,7 @@ def dop_command(inc, data):
         viz.chain(chain, {d: data["datasets"][d]["name"] for d in data["datasets"]},
                   stale=stale, highlight=(ds,))
         st.markdown("**Consumers impacted:** " + (", ".join(cons) or "—"))
+        viz.value_strip(IMPACT_ROWS)
 
     def collaboration():
         st.markdown("#### Team & ownership")
@@ -326,4 +337,7 @@ def dop_command(inc, data):
         hero_kwargs, lifecycle, edges,
         {"Overview": overview, "Investigation": investigation, "Impact": impact,
          "Collaboration": collaboration, "Verification": verification, "Timeline": timeline},
-        rail=lambda: _rail(inc, rec), corr=corr)
+        rail=lambda: _rail(inc, rec), corr=corr,
+        collab_banner=lambda: viz.collab_strip(inc["owner_team"],
+                                               (journey.actors(rec) or ["—"])[0],
+                                               journey.collab_stats(inc)))

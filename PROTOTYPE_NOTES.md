@@ -40,6 +40,14 @@ Inferred relationships are labelled as hypotheses, not proven facts.
 Remediation, notifications and status updates are **simulated and local**. The rail actions write
 local demo comments — they do not contact any external system or person, and say so.
 
+## Collaboration & resolution-acceleration metrics
+
+Collaboration is presented as the resolution accelerator: a banner in every incident workspace
+and a top-level **Collaboration** destination show who is engaged, handoffs, and coordination time
+(these are derived from real comment/delegation records). The **MTTR / resolution-acceleration**
+figures (baseline ➜ with-platform) are **illustrative simulated demo values**, clearly captioned,
+and must be measured against a real baseline in a pilot before being treated as results.
+
 ## Known limitations / production gaps
 
 - No live connectors (ServiceNow, Jira, observability); sample data only.

@@ -317,14 +317,39 @@ def thread_edges(edges):
             f'{(" · " + e["ts"]) if e.get("ts") else ""}</div></div>', unsafe_allow_html=True)
 
 
-def value_strip(rows, note="Simulated demo values — establish a real baseline and measure in a pilot."):
+def value_strip(rows, note="Simulated demo values — establish a real baseline and measure in a pilot.",
+                title="Impact — resolution acceleration (illustrative)"):
     """rows: list of (metric, baseline, observed)."""
-    st.markdown("#### Value — baseline vs observed")
+    st.markdown(f"#### {title}")
     for m, b, o in rows:
         st.markdown(f'<div class="ri-ev-chip" style="border-left-color:#4f46e5">'
                     f'<b>{m}</b> · baseline <b>{b}</b> ➜ observed <b style="color:#16a34a">{o}</b></div>',
                     unsafe_allow_html=True)
     st.caption(note)
+
+
+def collab_strip(owner, next_actor, stats):
+    """Prominent collaboration banner — collaboration is the resolution accelerator."""
+    parts = " · ".join(stats.get("participants", [])[:5]) or "—"
+    co = f'{stats["coord_min"]} min' if stats.get("coord_min") is not None else "—"
+
+    def cell(k, v):
+        return (f'<div style="min-width:110px"><div style="font-size:10.5px;color:#64748b;'
+                f'text-transform:uppercase;letter-spacing:.04em">{k}</div>'
+                f'<div style="font-size:16px;font-weight:800;color:#0f172a">{v}</div></div>')
+
+    st.markdown(
+        f'<div class="ri-card" style="border-left:6px solid #4f46e5;background:#f7f8ff">'
+        f'<div style="font-weight:800;color:#0f172a;font-size:14px">'
+        f'🤝 Collaboration — the resolution accelerator</div>'
+        f'<div style="display:flex;gap:22px;flex-wrap:wrap;margin-top:9px">'
+        + cell("Owner", owner) + cell("Next actor", next_actor)
+        + cell("Participants", len(stats.get("participants", [])))
+        + cell("Handoffs", f'{stats.get("handoffs", 0)} ({stats.get("handoffs_done", 0)} done)')
+        + cell("Coordinated in", co) + cell("Thread updates", stats.get("updates", 0))
+        + '</div>'
+        f'<div style="font-size:11.5px;color:#64748b;margin-top:7px">engaged: {parts}</div></div>',
+        unsafe_allow_html=True)
 
 
 def hero(priority, inc_id, title, meta, sla_text, verdict, chips):

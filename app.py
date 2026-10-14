@@ -119,6 +119,15 @@ def render_overview():
                      on_click=journey._goto, args=("DataOps", None, "DOP-1001")):
             pass
 
+    st.markdown("#### Collaboration now — the resolution accelerator")
+    _ci = _find_it("INC-8841")
+    if _ci:
+        _st = journey.collab_stats(_ci)
+        viz.collab_strip(_ci["owner_team"], (_st["participants"] or ["—"])[0], _st)
+    st.markdown("#### Impact — baseline ➜ with this platform (illustrative)")
+    viz.value_strip(command_center.IMPACT_ROWS,
+                    title="MTTR and resolution acceleration — baseline vs with-platform")
+
     st.markdown("#### Recent activity — across all incidents")
     rows = []
     for ref in [i["id"] for i in _it_inc] + [i["id"] for i in dop["incidents"]]:
@@ -129,6 +138,27 @@ def render_overview():
         st.markdown(f'`{ts[11:16]}` · **{ref}** · {author}  \n{text}')
     if not rows:
         st.caption("No activity yet.")
+
+
+# ================================================================= Collaboration (the hero)
+def render_collaboration():
+    st.subheader("Collaboration — the resolution accelerator")
+    st.caption("Who is engaged, how work is handed off, and the measured acceleration versus a siloed "
+               "flow. Collaboration is what shortens MTTR.")
+    for ref, dom in [("INC-8841", "IT Ops"), ("DOP-1001", "DataOps")]:
+        inc = _find_it(ref) if dom == "IT Ops" else _find_dop(ref)
+        if not inc:
+            continue
+        st.markdown(f"#### {dom} · {ref} — {inc['title']}")
+        stats = journey.collab_stats(inc)
+        viz.collab_strip(inc["owner_team"], (stats["participants"] or ["—"])[0], stats)
+        for c in collab.comments(ref)[-4:]:
+            st.markdown(f'`{c["ts"][11:16]}` · **{c["author"]}** ({c["role"]})  \n{c["text"]}')
+        st.button(f"Open {ref} workspace →", key="collab_open_" + ref,
+                  on_click=journey._goto, args=(dom, None, ref))
+    st.divider()
+    viz.value_strip(command_center.IMPACT_ROWS,
+                    title="Impact — MTTR and resolution acceleration (illustrative)")
 
 
 # ================================================================= Incidents & resolution threads
@@ -283,6 +313,8 @@ if nav == "Overview":
     render_overview()
 elif nav == journey.WORKSPACE_NAV:
     render_incidents(you_role)
+elif nav == "Collaboration":
+    render_collaboration()
 elif nav == "Operations":
     render_operations(you_role)
 elif nav == "Analytics":
@@ -290,5 +322,5 @@ elif nav == "Analytics":
                                     "resolution-confidence analytics over governed data.")
 
 st.divider()
-st.caption("Sample data · simulated actions · build v42 — proof of concept, not production. "
+st.caption("Sample data · simulated actions · build v43 — proof of concept, not production. "
            "See PROTOTYPE_NOTES.md for persistence limits.")

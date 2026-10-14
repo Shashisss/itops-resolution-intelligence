@@ -9,7 +9,8 @@ import streamlit as st
 import viz
 
 
-def render_workspace(hero_kwargs, lifecycle, edges, tabs, rail, thread_note=None, corr=None):
+def render_workspace(hero_kwargs, lifecycle, edges, tabs, rail, thread_note=None, corr=None,
+                     collab_banner=None):
     """Draw the shared workspace.
 
     hero_kwargs : dict for viz.hero (priority, inc_id, title, meta, sla_text, verdict, chips)
@@ -18,6 +19,7 @@ def render_workspace(hero_kwargs, lifecycle, edges, tabs, rail, thread_note=None
     tabs        : ordered {label: callable} rendered as the tabbed canvas
     rail        : callable rendering the right-hand activity rail
     corr        : optional correlation dict (adds the cross-domain link caption)
+    collab_banner: optional callable rendered prominently under the lifecycle
     """
     viz.hero(**hero_kwargs)
 
@@ -26,6 +28,8 @@ def render_workspace(hero_kwargs, lifecycle, edges, tabs, rail, thread_note=None
     st.caption("One shared lifecycle across **IT Ops** and **DataOps**. Each stage carries an internal "
                "**OLA** (owner-team target) — distinct from the customer **SLA** in the header. "
                "The active stage shows live remaining / BREACHED.")
+    if collab_banner:
+        collab_banner()
     if corr:
         st.caption(f'🔗 Thread links **{corr["other_domain"]} {corr["other_id"]}** · shared cause '
                    f'**{corr["shared_cause"]}**.')

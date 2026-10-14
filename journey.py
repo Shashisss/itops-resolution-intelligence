@@ -121,6 +121,26 @@ def _nav_to(value):
     st.session_state["nav"] = value
 
 
+# ---------------------------------------------------------------- collaboration stats
+def collab_stats(inc):
+    """Measured collaboration around an incident (from real comment/delegation records)."""
+    import collab
+    cs = collab.comments(inc["id"])
+    ds = collab.delegations(inc["id"])
+    participants = sorted({c["author"] for c in cs if c["author"] != "Recommendation engine"})
+    done = sum(1 for d in ds if d["status"] == "done")
+    first_ts = ds[-1]["ts"] if ds else None
+    coord_min = None
+    if first_ts:
+        try:
+            coord_min = int((dt.datetime.fromisoformat(first_ts)
+                             - dt.datetime.fromisoformat(inc["created_at"])).total_seconds() / 60)
+        except Exception:
+            coord_min = None
+    return {"participants": participants, "handoffs": len(ds), "handoffs_done": done,
+            "coord_min": coord_min, "updates": len(cs)}
+
+
 def verdict(rows, applied):
     """Overall recovery verdict from independently-checked rows."""
     if not applied or not rows:
