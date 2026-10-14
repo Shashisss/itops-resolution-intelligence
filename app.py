@@ -5,6 +5,7 @@ Unified shell · one incident workspace · one lifecycle · one status vocabular
 Deterministic graph + rule-based reasoning. SAMPLE DATA · SIMULATED ACTIONS."""
 import os
 import datetime as dt
+import importlib
 import streamlit as st
 import engine as E
 import personas
@@ -16,6 +17,28 @@ import viz
 import journey
 import collab
 import shell
+import workspace
+
+
+def _refresh_modules_if_stale():
+    """Self-heal for Streamlit Cloud hot-reload.
+
+    A deploy can hot-reload app.py while leaving imported sibling modules cached at an older
+    build, so newly added helpers (journey.collab_stats, viz.collab_strip, …) appear missing and
+    the page raises AttributeError. If we detect that, reload our own modules in place —
+    importlib.reload mutates the module object, so every importer sees the refreshed attributes."""
+    if all((hasattr(journey, "collab_stats"), hasattr(viz, "collab_strip"),
+            hasattr(command_center, "IMPACT_ROWS"))):
+        return
+    for _m in (viz, journey, collab, E, DE, personas, DV, workspace, command_center, shell,
+               liveops_view):
+        try:
+            importlib.reload(_m)
+        except Exception:
+            pass
+
+
+_refresh_modules_if_stale()
 
 VERDICT_OPTIONS = ["Investigating", "Mitigated", "Verified", "Recovery failed"]
 
@@ -121,7 +144,7 @@ def render_overview():
 
     st.markdown("#### Collaboration now — the resolution accelerator")
     _ci = _find_it("INC-8841")
-    if _ci:
+    if _ci and hasattr(journey, "collab_stats") and hasattr(viz, "collab_strip"):
         _st = journey.collab_stats(_ci)
         viz.collab_strip(_ci["owner_team"], (_st["participants"] or ["—"])[0], _st)
     st.markdown("#### Impact — baseline ➜ with this platform (illustrative)")
@@ -150,8 +173,11 @@ def render_collaboration():
         if not inc:
             continue
         st.markdown(f"#### {dom} · {ref} — {inc['title']}")
-        stats = journey.collab_stats(inc)
-        viz.collab_strip(inc["owner_team"], (stats["participants"] or ["—"])[0], stats)
+        if hasattr(journey, "collab_stats") and hasattr(viz, "collab_strip"):
+            stats = journey.collab_stats(inc)
+            viz.collab_strip(inc["owner_team"], (stats["participants"] or ["—"])[0], stats)
+        else:
+            st.caption("Collaboration metrics unavailable in this build.")
         for c in collab.comments(ref)[-4:]:
             st.markdown(f'`{c["ts"][11:16]}` · **{c["author"]}** ({c["role"]})  \n{c["text"]}')
         st.button(f"Open {ref} workspace →", key="collab_open_" + ref,
@@ -322,5 +348,5 @@ elif nav == "Analytics":
                                     "resolution-confidence analytics over governed data.")
 
 st.divider()
-st.caption("Sample data · simulated actions · build v43 — proof of concept, not production. "
+st.caption("Sample data · simulated actions · build v44 — proof of concept, not production. "
            "See PROTOTYPE_NOTES.md for persistence limits.")

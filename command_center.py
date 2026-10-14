@@ -228,9 +228,10 @@ def it_command(inc, ctx):
         {"Overview": overview, "Investigation": investigation, "Impact": impact,
          "Collaboration": collaboration, "Verification": verification, "Timeline": timeline},
         rail=lambda: _rail(inc, rec), corr=corr,
-        collab_banner=lambda: viz.collab_strip(inc["owner_team"],
+        collab_banner=(lambda: viz.collab_strip(inc["owner_team"],
                                                (journey.actors(rec) or ["—"])[0],
-                                               journey.collab_stats(inc)))
+                                               journey.collab_stats(inc))
+                       if hasattr(viz, "collab_strip") and hasattr(journey, "collab_stats") else None))
 
 
 # ================================================================= DataOps workspace
@@ -338,6 +339,7 @@ def dop_command(inc, data):
         {"Overview": overview, "Investigation": investigation, "Impact": impact,
          "Collaboration": collaboration, "Verification": verification, "Timeline": timeline},
         rail=lambda: _rail(inc, rec), corr=corr,
-        collab_banner=lambda: viz.collab_strip(inc["owner_team"],
+        collab_banner=(lambda: viz.collab_strip(inc["owner_team"],
                                                (journey.actors(rec) or ["—"])[0],
-                                               journey.collab_stats(inc)))
+                                               journey.collab_stats(inc))
+                       if hasattr(viz, "collab_strip") and hasattr(journey, "collab_stats") else None))
