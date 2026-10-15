@@ -392,6 +392,17 @@ def collab_strip(owner, next_actor, stats):
         unsafe_allow_html=True)
 
 
+def next_step(action, owner, gate):
+    """Prominent 'recommended next step' banner — next action, owner and approval gate."""
+    st.markdown(
+        f'<div class="ri-card" style="border-left:6px solid #4f46e5;background:#eef2ff">'
+        f'<div style="font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.04em">'
+        f'Recommended next step</div>'
+        f'<div style="font-weight:700;color:#0f172a;margin:3px 0;font-size:14px">{action}</div>'
+        f'<div style="font-size:12px;color:#334155">owner: <b>{owner}</b> · gate: <b>{gate}</b></div></div>',
+        unsafe_allow_html=True)
+
+
 def hero(priority, inc_id, title, meta, sla_text, verdict, chips):
     chip_html = " ".join(f'<span class="ri-tag" style="background:#1e293b;border:1px solid #334155">{c}</span>'
                          for c in chips)

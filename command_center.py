@@ -34,13 +34,13 @@ IMPACT_ROWS = [
 
 
 def _rail(inc, rec):
-    """Shared right-hand rail (identical for IT Ops and DataOps) — INCIDENT-scoped."""
-    st.markdown("#### 👥 Team & ownership")
+    """Right-hand rail — owner, next actor, quick actions and recent activity only. The full team,
+    handoffs and comments live in the **Collaboration** tab; the history is in **Timeline** — not
+    duplicated here."""
+    st.markdown("#### 👤 Owner & next actor")
     st.markdown(f'- **{inc["owner_team"]}** — owner')
     for a in journey.actors(rec):
         st.markdown(f'- {a} — next actor')
-    for c in collab.collaborators()[:3]:
-        st.markdown(f'- {c["who"]} — {c["role"]}')
     st.markdown("#### ⚡ Quick actions")
     if st.button("Notify CSM (simulated)", key="qa_csm_" + inc["id"]):
         collab.add_comment(inc["id"], "Recommendation engine", "System",
@@ -52,12 +52,6 @@ def _rail(inc, rec):
                            "[Demo] Added a status update to the incident thread (local only).")
         st.session_state["flash"] = "Status update posted to the thread (simulated, local only)."
         st.rerun()
-    with st.expander("🧷 This incident — recent events", expanded=False):
-        evs = journey.timeline(inc["id"])[-6:]
-        if not evs:
-            st.caption("No events recorded yet.")
-        for ev in evs:
-            st.markdown(f'`{ev["ts"][11:16]}` · {ev["kind"]} — {ev["detail"]}')
     with st.expander("🕒 Recent activity", expanded=False):
         cms = collab.comments(inc["id"])[-6:]
         if not cms:
@@ -156,9 +150,6 @@ def it_command(inc, ctx):
         viz.kpi_row([
             ("Business impact", bizname, "customer-facing", "#dc2626"),
             ("Status", verdict, journey.lifecycle_stage(inc), vcol),
-            ("Next owner", rec["actor"], f'gate: {rec["mode"]}', "#0891b2"),
-            ("Next action", (rec["action"][:64] + ("…" if len(rec["action"]) > 64 else "")),
-             "recommended", "#4f46e5"),
         ])
         st.info(inc["summary"])
         if k:
@@ -238,6 +229,7 @@ def it_command(inc, ctx):
         {"Overview": overview, "Investigation": investigation, "Impact": impact,
          "Collaboration": collaboration, "Verification": verification, "Timeline": timeline},
         rail=lambda: _rail(inc, rec), corr=corr,
+        next_step_banner=lambda: viz.next_step(rec["action"], rec["actor"], rec["mode"]),
         collab_banner=(lambda: viz.collab_strip(inc["owner_team"],
                                                (journey.actors(rec) or ["—"])[0],
                                                journey.collab_stats(inc))
@@ -364,6 +356,7 @@ def dop_command(inc, data):
         {"Overview": overview, "Investigation": investigation, "Impact": impact,
          "Collaboration": collaboration, "Verification": verification, "Timeline": timeline},
         rail=lambda: _rail(inc, rec), corr=corr,
+        next_step_banner=lambda: viz.next_step(rec["action"], rec["actor"], rec["mode"]),
         collab_banner=(lambda: viz.collab_strip(inc["owner_team"],
                                                (journey.actors(rec) or ["—"])[0],
                                                journey.collab_stats(inc))

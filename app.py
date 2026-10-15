@@ -380,5 +380,5 @@ elif nav == "Analytics":
     render_analytics()
 
 st.divider()
-st.caption("Sample data · simulated actions · build v55 — proof of concept, not production. "
+st.caption("Sample data · simulated actions · build v56 — proof of concept, not production. "
            "See PROTOTYPE_NOTES.md for persistence limits.")
