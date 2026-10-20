@@ -61,6 +61,14 @@ div[class*="st-key-boardcard-P1-"] button{border-left-color:#dc2626!important}
 div[class*="st-key-boardcard-P2-"] button{border-left-color:#d97706!important}
 div[class*="st-key-boardcard-P3-"] button{border-left-color:#0891b2!important}
 div[class*="st-key-boardcard-P4-"] button{border-left-color:#64748b!important}
+/* Clickable KPI cards (filters) */
+div[class*="st-key-kpi_"] button{height:auto!important;width:100%!important;text-align:left!important;
+  justify-content:flex-start!important;white-space:normal!important;background:#fff!important;color:#0f172a!important;
+  border:1px solid #e5e7eb!important;border-left:5px solid #4f46e5!important;border-radius:12px!important;
+  padding:11px 14px!important;box-shadow:0 1px 2px rgba(0,0,0,.04)!important}
+div[class*="st-key-kpi_"] button p{font-weight:700!important;font-size:15px!important;text-align:left!important;
+  color:#0f172a!important;margin:0!important}
+div[class*="st-key-kpi_"] button:hover{background:#f8fafc!important}
 /* Ambient live strip — global, always-visible (one compact line) */
 .ri-ambient{display:flex;gap:9px;flex-wrap:wrap;align-items:center;background:#f8fafc;
   border:1px solid #e5e7eb;border-radius:10px;padding:6px 11px;margin:0 0 10px}
@@ -392,15 +400,21 @@ def collab_strip(owner, next_actor, stats):
         unsafe_allow_html=True)
 
 
-def next_step(action, owner, gate):
-    """Prominent 'recommended next step' banner — next action, owner and approval gate."""
+def next_step(action, owner, gate, why=None, target=None, blast=None):
+    """Prominent 'recommended next step' banner — action, owner, gate, and why/target/blast."""
+    extra = " · ".join(x for x in (
+        f"why: {why}" if why else "",
+        f"target: {target}" if target else "",
+        f"blast: {blast}" if blast else "",
+    ) if x)
     st.markdown(
         f'<div class="ri-card" style="border-left:6px solid #4f46e5;background:#eef2ff">'
         f'<div style="font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.04em">'
         f'Recommended next step</div>'
         f'<div style="font-weight:700;color:#0f172a;margin:3px 0;font-size:14px">{action}</div>'
-        f'<div style="font-size:12px;color:#334155">owner: <b>{owner}</b> · gate: <b>{gate}</b></div></div>',
-        unsafe_allow_html=True)
+        f'<div style="font-size:12px;color:#334155">owner: <b>{owner}</b> · gate: <b>{gate}</b></div>'
+        + (f'<div style="font-size:11.5px;color:#64748b;margin-top:3px">{extra}</div>' if extra else "")
+        + '</div>', unsafe_allow_html=True)
 
 
 def hero(priority, inc_id, title, meta, sla_text, verdict, chips):

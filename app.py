@@ -188,18 +188,50 @@ def render_board():
 
     n_open = sum(1 for r in rows if r["inc"].get("status") == "open")
     n_risk = sum(1 for r in rows if r["inc"].get("status") == "open" and _sla_risk(r["inc"]))
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Total incidents", len(rows))
-    k2.metric("Open", n_open)
-    k3.metric("Closed", len(rows) - n_open)
-    k4.metric("SLA at risk", n_risk)
 
-    f1, f2, f3, f4, f5 = st.columns([2.2, 1.1, 1.0, 1.4, 1.0])
+    def _kpi(col, label, key, **sets):
+        if col.button(label, key=key, width="stretch"):
+            for k, v in sets.items():
+                st.session_state[k] = v
+
+    k1, k2, k3, k4 = st.columns(4)
+    _kpi(k1, f"{len(rows)}  ·  Total incidents", "kpi_total",
+         board_status="All", board_verdict="All", board_risk=False)
+    _kpi(k2, f"{n_open}  ·  Open", "kpi_open", board_status="Open", board_risk=False)
+    _kpi(k3, f"{len(rows) - n_open}  ·  Closed", "kpi_closed", board_status="Closed", board_risk=False)
+    _kpi(k4, f"{n_risk}  ·  SLA at risk", "kpi_risk", board_status="Open", board_risk=True)
+    st.caption("Click a KPI card to filter. Counts are live from the current incidents.")
+
+    f1, f2, f3, f4, f5, f6 = st.columns([2.2, 1.1, 1.0, 1.4, 1.0, 1.1])
     q = f1.text_input("Search", placeholder="id · title · owner", key="board_q")
     domf = f2.selectbox("Domain", ["All", "IT Ops", "DataOps"], key="board_dom")
     statf = f3.selectbox("Status", ["All", "Open", "Closed"], key="board_status")
     verf = f4.selectbox("Verdict", ["All"] + VERDICT_OPTIONS, key="board_verdict")
     prif = f5.selectbox("Priority", ["All", "P1", "P2", "P3"], key="board_pri")
+    risk_only = f6.checkbox("SLA at risk", key="board_risk")
+
+    def _reset_filters():
+        for k, v in (("board_q", ""), ("board_dom", "All"), ("board_status", "All"),
+                     ("board_verdict", "All"), ("board_pri", "All"), ("board_risk", False)):
+            st.session_state[k] = v
+
+    active = []
+    if q:
+        active.append(f"search: {q}")
+    if domf != "All":
+        active.append(f"domain: {domf}")
+    if statf != "All":
+        active.append(f"status: {statf}")
+    if verf != "All":
+        active.append(f"verdict: {verf}")
+    if prif != "All":
+        active.append(f"priority: {prif}")
+    if risk_only:
+        active.append("SLA at risk")
+    if active:
+        st.markdown(" ".join(f'<span class="ri-tag" style="background:#4f46e5">{c}</span>' for c in active),
+                    unsafe_allow_html=True)
+        st.button("Reset filters", key="board_reset", on_click=_reset_filters)
 
     def _match(r):
         inc = r["inc"]
@@ -208,7 +240,8 @@ def render_board():
             and (domf == "All" or r["domain"] == domf) \
             and (statf == "All" or (inc.get("status") or "").lower() == statf.lower()) \
             and (verf == "All" or r["verdict"] == verf) \
-            and (prif == "All" or inc.get("priority") == prif)
+            and (prif == "All" or inc.get("priority") == prif) \
+            and (not risk_only or _sla_risk(inc))
 
     order = {"P1": 0, "P2": 1, "P3": 2, "P4": 3}
     shown = sorted((r for r in rows if _match(r)),
@@ -216,7 +249,8 @@ def render_board():
                                   order.get(r["inc"].get("priority"), 9), r["inc"]["id"]))
     st.caption(f'{len(shown)} of {len(rows)} incidents')
     if not shown:
-        st.caption("No incidents match the filter.")
+        st.caption("No incidents match the filters.")
+        st.button("Clear filters", key="board_clear", on_click=_reset_filters)
         return
     view = st.radio("View", ["Cards", "Table"], horizontal=True, key="board_view",
                     help="Table is easier for comparison on a wide screen; cards read better when narrow.")
@@ -381,5 +415,5 @@ elif nav == "Analytics":
     render_analytics()
 
 st.divider()
-st.caption("Sample data · simulated actions · build v62 — proof of concept, not production. "
+st.caption("Sample data · simulated actions · build v63 — proof of concept, not production. "
            "See PROTOTYPE_NOTES.md for persistence limits.")

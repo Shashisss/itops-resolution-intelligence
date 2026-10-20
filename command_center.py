@@ -187,6 +187,9 @@ def it_command(inc, ctx):
     refs = [inc["id"]] + ([corr["other_id"]] if corr else [])
     k = P._kpi(ctx, biz)
     bizname = services[biz]["name"] if biz else "—"
+    _why = (causes[0].get("label") or causes[0].get("type")) if causes else "evidence insufficient"
+    _target = services[inc["service_id"]]["name"]
+    _blast = f"{len(E.impacted(G, inc['service_id']))} services"
 
     hero_kwargs = dict(
         priority=inc["priority"], inc_id=inc["id"], title=inc["title"],
@@ -222,6 +225,10 @@ def it_command(inc, ctx):
             if ch:
                 cr = E.change_risk(ch, G, services, incidents)
                 st.write(f'**{ch["id"]}** · {ch["description"]} · risk **{cr["risk"]}** (gate {cr["gate"]})')
+        st.markdown("**Unknowns / next diagnostic step**")
+        st.markdown("- Confirm the source schema-change window with the Data Owner.\n"
+                    "- Rule out DB saturation before any rollback.\n"
+                    "- Check other consumers of payments_gold.")
 
     def impact():
         st.markdown("#### Cross-domain causal chain")
@@ -282,7 +289,8 @@ def it_command(inc, ctx):
         {"Overview": overview, "Investigation": investigation, "Impact": impact,
          "Collaboration": collaboration, "Verification": verification, "Timeline": timeline},
         rail=lambda: _rail(inc, rec), corr=corr,
-        next_step_banner=lambda: viz.next_step(rec["action"], rec["actor"], rec["mode"]),
+        next_step_banner=lambda: viz.next_step(rec["action"], rec["actor"], rec["mode"],
+                                               why=_why, target=_target, blast=_blast),
         stage_key=inc["id"], stage_panel=lambda stage: _stage_panel(inc, rec, stage),
         collab_banner=(lambda: viz.collab_strip(inc["owner_team"],
                                                (journey.actors(rec) or ["—"])[0],
@@ -303,6 +311,9 @@ def dop_command(inc, data):
     corr = journey.correlation_for(inc["id"])
     refs = [inc["id"]] + ([corr["other_id"]] if corr else [])
     downs, cons = DE.impact(ds, data)
+    _why = (causes[0].get("label") or causes[0].get("type")) if causes else "evidence insufficient"
+    _target = data["datasets"][ds]["name"]
+    _blast = f"{len(cons)} consumers"
     try:
         elapsed = int((dt.datetime.now() - dt.datetime.fromisoformat(inc["created_at"])).total_seconds() / 60)
     except Exception:
@@ -331,6 +342,10 @@ def dop_command(inc, data):
 
     def investigation():
         DV.hypotheses(inc, data)
+        st.markdown("**Unknowns / next diagnostic step**")
+        st.markdown("- Confirm the upstream schema change with the source owner.\n"
+                    "- Validate the contract version against the new column.\n"
+                    "- Re-check downstream consumers after replay.")
 
     def impact():
         st.markdown("#### Data estate context")
@@ -410,7 +425,8 @@ def dop_command(inc, data):
         {"Overview": overview, "Investigation": investigation, "Impact": impact,
          "Collaboration": collaboration, "Verification": verification, "Timeline": timeline},
         rail=lambda: _rail(inc, rec), corr=corr,
-        next_step_banner=lambda: viz.next_step(rec["action"], rec["actor"], rec["mode"]),
+        next_step_banner=lambda: viz.next_step(rec["action"], rec["actor"], rec["mode"],
+                                               why=_why, target=_target, blast=_blast),
         stage_key=inc["id"], stage_panel=lambda stage: _stage_panel(inc, rec, stage),
         collab_banner=(lambda: viz.collab_strip(inc["owner_team"],
                                                (journey.actors(rec) or ["—"])[0],
