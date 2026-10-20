@@ -61,9 +61,9 @@ CREATE TABLE thread_edges(id TEXT PRIMARY KEY, thread_ref TEXT, src TEXT, dst TE
 CREATE TABLE live_events(id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, domain TEXT, severity TEXT,
                          source TEXT, message TEXT, ref_id TEXT);
 CREATE TABLE comments(id INTEGER PRIMARY KEY AUTOINCREMENT, ref_id TEXT, author TEXT, role TEXT,
-                      text TEXT, ts TEXT, channel TEXT);
+                      text TEXT, ts TEXT, channel TEXT, stage TEXT);
 CREATE TABLE delegations(id INTEGER PRIMARY KEY AUTOINCREMENT, ref_id TEXT, frm TEXT, to_ TEXT,
-                         action TEXT, status TEXT, ts TEXT, channel TEXT);
+                         action TEXT, status TEXT, ts TEXT, channel TEXT, stage TEXT);
 CREATE TABLE notifications(id INTEGER PRIMARY KEY AUTOINCREMENT, role TEXT, ref_id TEXT, text TEXT,
                            ts TEXT, read INTEGER DEFAULT 0);
 -- OLA = internal Operational Level Agreement per owning team (distinct from the customer SLA)
@@ -72,7 +72,7 @@ CREATE TABLE olas(team TEXT PRIMARY KEY, response_min INT, restore_min INT);
 CREATE TABLE stage_olas(stage TEXT PRIMARY KEY, target_min INT);
 CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT);
 """)
-c.execute("INSERT INTO meta VALUES('seed_version','v61')")
+c.execute("INSERT INTO meta VALUES('seed_version','v62')")
 
 # ------------------------------------------------------------------ IT Ops
 services = [
@@ -258,17 +258,49 @@ c.executemany("INSERT INTO live_events(ts,domain,severity,source,message,ref_id)
     (M(3), "itops", "warning", "payment-api", "data_age_min 45 > 15 (serving stale risk data)", "INC-8841"),
     (M(2), "dataops", "critical", "payments_bronze_ingest", "run R-9001 FAILED (SCHEMA_MISMATCH 'region_code')", "DOP-1001"),
 ])
-c.executemany("INSERT INTO comments(ref_id,author,role,text,ts,channel) VALUES(?,?,?,?,?,?)", [
-    ("DOP-1001", "Priya (Data Engineer)", "Data Engineer",
-     "Confirmed schema drift on core_ledger; drafting contract v4 before replay.", M(15), "Teams"),
-    ("INC-8841", "Amit (Incident Manager)", "Incident Manager",
-     "Business impact on Payments — engaging Data Owner and CSM for updates.", M(12), "Email"),
+c.executemany("INSERT INTO comments(ref_id,author,role,text,ts,channel,stage) VALUES(?,?,?,?,?,?,?)", [
+    ("INC-8841", "Monitoring (Observability)", "Observability",
+     "Alert: error_rate 8.1 > 1.0; data_age 45 > 15.", M(44), "App", "Detect"),
     ("INC-8841", "Priya (Data Engineer)", "Data Engineer",
-     "Schema drift confirmed; replay queued with the Data Owner.", M(10), "Teams"),
+     "Linked to DOP-1001: core_ledger schema drift.", M(30), "Teams", "Correlate"),
+    ("INC-8841", "Amit (Incident Manager)", "Incident Manager",
+     "Engaging Data Owner + Platform Engineering; CSM informed.", M(12), "Email", "Coordinate"),
+    ("INC-8841", "Priya (Data Engineer)", "Data Engineer",
+     "Replay approved; contract v4 applied.", M(6), "Teams", "Act"),
+    ("INC-8841", "SRE verification service", "System",
+     "Re-checking error rate, data age, business KPI.", M(3), "App", "Verify"),
+    ("INC-8841", "Amit (Incident Manager)", "Incident Manager",
+     "Closure gated on Verified checks.", M(2), "Email", "Close"),
+    ("DOP-1001", "Data observability", "System",
+     "Run R-9001 failed (SCHEMA_MISMATCH 'region_code').", M(36), "App", "Detect"),
+    ("DOP-1001", "Priya (Data Engineer)", "Data Engineer",
+     "Confirmed schema drift on core_ledger.", M(20), "Teams", "Correlate"),
+    ("DOP-1001", "Priya (Data Engineer)", "Data Engineer",
+     "Repair applied — replaying batch.", M(8), "Teams", "Act"),
+    ("DOP-1001", "Data-quality verification service", "System",
+     "Freshness + DQ + downstream checks.", M(4), "App", "Verify"),
+    ("DOP-1001", "Finance Data (Data Owner)", "Data Owner",
+     "Sign-off once validated.", M(2), "Email", "Close"),
+    ("INC-8850", "Monitoring (Observability)", "Observability",
+     "Orders API p95 1800 > 800 ms.", M(52), "App", "Detect"),
+    ("INC-8850", "Ravi (Developer)", "Developer",
+     "Suspect release 24.10 retry change.", M(40), "Teams", "Correlate"),
+    ("INC-8850", "Ravi (Developer)", "Developer",
+     "Backoff fix merged; deploying.", M(10), "Teams", "Act"),
+    ("DOP-1002", "Data observability", "System",
+     "Run R-9100 failed (SCHEMA_MISMATCH 'order_channel').", M(30), "App", "Detect"),
+    ("DOP-1002", "Priya (Data Engineer)", "Data Engineer",
+     "orders_feed schema drift confirmed.", M(18), "Teams", "Correlate"),
 ])
-c.executemany("INSERT INTO delegations(ref_id,frm,to_,action,status,ts,channel) VALUES(?,?,?,?,?,?,?)", [
-    ("DOP-1001", "Data Owner", "Data Engineer", "Reconcile schema (contract v4) + replay", "assigned", M(14), "Jira"),
-    ("INC-8841", "Incident Manager", "Platform Engineering", "Approve pipeline replay + service restart", "accepted", M(9), "Teams"),
+c.executemany("INSERT INTO delegations(ref_id,frm,to_,action,status,ts,channel,stage) VALUES(?,?,?,?,?,?,?,?)", [
+    ("INC-8841", "Incident Manager", "Platform Engineering",
+     "Approve pipeline replay + service restart", "accepted", M(9), "Teams", "Coordinate"),
+    ("DOP-1001", "Data Owner", "Data Engineer",
+     "Reconcile schema (contract v4) + replay", "assigned", M(14), "Jira", "Coordinate"),
+    ("INC-8850", "Orders Team", "Ravi (Developer)",
+     "Fix retry/backoff (JIRA-5530)", "assigned", M(35), "Jira", "Coordinate"),
+    ("DOP-1002", "Data Owner", "Data Engineer",
+     "Reconcile order_channel schema", "assigned", M(15), "Teams", "Coordinate"),
 ])
 c.executemany("INSERT INTO notifications(role,ref_id,text,ts,read) VALUES(?,?,?,?,?)", [
     ("Data Engineer", "DOP-1001", "Data Owner delegated to you: Reconcile schema (contract v4) + replay", M(14), 0),

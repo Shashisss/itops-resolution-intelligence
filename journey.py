@@ -127,11 +127,14 @@ def toggle_incident(domain, ref):
 
 
 # ---------------------------------------------------------------- collaboration stats
-def collab_stats(inc):
-    """Measured collaboration around an incident (from real comment/delegation records)."""
+def collab_stats(inc, stage=None):
+    """Collaboration around an incident — optionally filtered to one lifecycle stage."""
     import collab
     cs = collab.comments(inc["id"])
     ds = collab.delegations(inc["id"])
+    if stage:
+        cs = [c for c in cs if (c.get("stage") or "") == stage]
+        ds = [d for d in ds if (d.get("stage") or "") == stage]
     seen = {}
     for c in cs:
         a = c["author"]

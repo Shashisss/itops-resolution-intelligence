@@ -74,10 +74,10 @@ def _stage_panel(inc, rec, stage):
     else:
         st.caption("What: no events yet")
 
-    stats = journey.collab_stats(inc)
+    stats = journey.collab_stats(inc, stage=stage)
     details = stats.get("participants_detail", [])
     names = " · ".join(f'{p["who"].split(" (")[0]} ({p["channel"]})' for p in details[:3]) or "—"
-    ds = collab.delegations(inc["id"])
+    ds = [d for d in collab.delegations(inc["id"]) if (d.get("stage") or "") == stage]
     handoff = f' · handoff via {ds[0].get("channel", "Teams")} → {ds[0]["to_"]}' if ds else ""
     st.caption(f'Collab: {names}{handoff} · {stats.get("handoffs", 0)} handoff(s), '
                f'{stats.get("handoffs_done", 0)} done')
