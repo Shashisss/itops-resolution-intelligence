@@ -75,8 +75,12 @@ def _stage_panel(inc, rec, stage):
         st.caption("What: no events yet")
 
     stats = journey.collab_stats(inc)
-    st.caption(f'Collab: {len(stats.get("participants", []))} engaged · '
-               f'{stats.get("handoffs", 0)} handoff(s), {stats.get("handoffs_done", 0)} done')
+    details = stats.get("participants_detail", [])
+    names = " · ".join(f'{p["who"].split(" (")[0]} ({p["channel"]})' for p in details[:3]) or "—"
+    ds = collab.delegations(inc["id"])
+    handoff = f' · handoff via {ds[0].get("channel", "Teams")} → {ds[0]["to_"]}' if ds else ""
+    st.caption(f'Collab: {names}{handoff} · {stats.get("handoffs", 0)} handoff(s), '
+               f'{stats.get("handoffs_done", 0)} done')
     st.caption(f'MTTR {total_base}→{total_obs}m · stage {obs}m')
 
 
@@ -91,12 +95,14 @@ def _rail(inc, rec):
     st.markdown("#### ⚡ Quick actions")
     if st.button("Notify CSM (simulated)", key="qa_csm_" + inc["id"]):
         collab.add_comment(inc["id"], "Recommendation engine", "System",
-                           "[Demo] Logged a CSM notification locally — no external message was sent.")
+                           "[Demo] Logged a CSM notification locally — no external message was sent.",
+                           channel="Email")
         st.session_state["flash"] = "CSM notification logged (simulated, local only)."
         st.rerun()
     if st.button("Post status update (simulated)", key="qa_upd_" + inc["id"]):
         collab.add_comment(inc["id"], "Recommendation engine", "System",
-                           "[Demo] Added a status update to the incident thread (local only).")
+                           "[Demo] Added a status update to the incident thread (local only).",
+                           channel="App")
         st.session_state["flash"] = "Status update posted to the thread (simulated, local only)."
         st.rerun()
     with st.expander("🕒 Recent activity", expanded=False):

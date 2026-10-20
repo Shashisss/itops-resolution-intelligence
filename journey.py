@@ -132,7 +132,13 @@ def collab_stats(inc):
     import collab
     cs = collab.comments(inc["id"])
     ds = collab.delegations(inc["id"])
-    participants = sorted({c["author"] for c in cs if c["author"] != "Recommendation engine"})
+    seen = {}
+    for c in cs:
+        a = c["author"]
+        if a == "Recommendation engine" or a in seen:
+            continue
+        seen[a] = c.get("channel") or "App"
+    participants = sorted(seen)
     done = sum(1 for d in ds if d["status"] == "done")
     first_ts = ds[-1]["ts"] if ds else None
     coord_min = None
@@ -143,7 +149,8 @@ def collab_stats(inc):
         except Exception:
             coord_min = None
     return {"participants": participants, "handoffs": len(ds), "handoffs_done": done,
-            "coord_min": coord_min, "updates": len(cs)}
+            "coord_min": coord_min, "updates": len(cs),
+            "participants_detail": [{"who": a, "channel": ch} for a, ch in seen.items()]}
 
 
 def verdict(rows, applied):

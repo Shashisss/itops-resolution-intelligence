@@ -54,7 +54,7 @@ def _needs_seed():
             con.execute(f"SELECT 1 FROM {t} LIMIT 1")
         v = con.execute("SELECT value FROM meta WHERE key='seed_version'").fetchone()
         con.close()
-        return not (v and v[0] == "v49")
+        return not (v and v[0] == "v61")
     except Exception:
         return True
 
@@ -381,5 +381,5 @@ elif nav == "Analytics":
     render_analytics()
 
 st.divider()
-st.caption("Sample data · simulated actions · build v60 — proof of concept, not production. "
+st.caption("Sample data · simulated actions · build v61 — proof of concept, not production. "
            "See PROTOTYPE_NOTES.md for persistence limits.")

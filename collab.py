@@ -18,12 +18,12 @@ def comments(ref_id):
     return rows
 
 
-def add_comment(ref_id, author, role, text):
+def add_comment(ref_id, author, role, text, channel="App"):
     if not text.strip():
         return
     con = sqlite3.connect(DB)
-    con.execute("INSERT INTO comments(ref_id,author,role,text,ts) VALUES(?,?,?,?,?)",
-                (ref_id, author, role, text.strip(), _now()))
+    con.execute("INSERT INTO comments(ref_id,author,role,text,ts,channel) VALUES(?,?,?,?,?,?)",
+                (ref_id, author, role, text.strip(), _now(), channel))
     con.commit()
     con.close()
 
@@ -36,10 +36,10 @@ def delegations(ref_id):
     return rows
 
 
-def add_delegation(ref_id, frm, to, action, status="assigned"):
+def add_delegation(ref_id, frm, to, action, status="assigned", channel="Teams"):
     con = sqlite3.connect(DB)
-    con.execute("INSERT INTO delegations(ref_id,frm,to_,action,status,ts) VALUES(?,?,?,?,?,?)",
-                (ref_id, frm, to, action, status, _now()))
+    con.execute("INSERT INTO delegations(ref_id,frm,to_,action,status,ts,channel) VALUES(?,?,?,?,?,?,?)",
+                (ref_id, frm, to, action, status, _now(), channel))
     con.commit()
     con.close()
 
