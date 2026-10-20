@@ -37,8 +37,17 @@ IMPACT_ROWS = [
 STAGE_KINDS = {"Detect": {"alert", "detect", "incident"}, "Correlate": {"change", "impact", "alert"},
                "Coordinate": {"incident", "ticket"}, "Act": {"repair"}, "Verify": {"verify"},
                "Close": {"verify"}}
-STAGE_ACCEL = {"Detect": (30, 5), "Correlate": (45, 10), "Coordinate": (30, 2),
-               "Act": (60, 30), "Verify": (240, 60), "Close": (15, 2)}
+# Click-to-open stage detail: which timeline events belong to a stage, and the illustrative per-stage
+# metric (label, baseline minutes, with-platform minutes). The observed values sum to ~65 min and the
+# baselines to ~250 min, matching the incident-level MTTR (~4h10 → ~1h05).
+STAGE_METRIC = {
+    "Detect":     ("Time to detect",            20, 4),
+    "Correlate":  ("Time to identify cause",    35, 8),
+    "Coordinate": ("Time to assign owner",      25, 2),
+    "Act":        ("Time to act",               55, 18),
+    "Verify":     ("Time to verify recovery",  105, 30),
+    "Close":      ("Time to close",             10, 3),
+}
 
 
 def _stage_panel(inc, rec, stage):
@@ -61,12 +70,36 @@ def _stage_panel(inc, rec, stage):
     for d in collab.delegations(inc["id"])[:4]:
         st.markdown(f'- {d["frm"]} → {d["to_"]} · {d["action"][:60]} · _{d["status"]}_')
 
-    base, obs = STAGE_ACCEL.get(stage, (0, 0))
+    # OLA + this stage's metric — accelerated / decelerated vs baseline
+    st.markdown("**OLA & metric at this stage**")
+    olas = {o["stage"]: o["target_min"] for o in E.load_stage_olas()}
+    label, base, obs = STAGE_METRIC.get(stage, (stage, None, None))
+    total_base = sum(v[1] for v in STAGE_METRIC.values())
+    total_obs = sum(v[2] for v in STAGE_METRIC.values())
+    cols = st.columns(3)
+    ola = olas.get(stage)
+    if ola is not None:
+        cols[0].metric("OLA target", f"{ola} min",
+                       "✅ within" if obs <= ola else "🔴 breached")
+    else:
+        cols[0].metric("OLA target", "—", "not defined")
     if base:
         saved = base - obs
-        pct = int(100 * saved / base)
-        st.markdown(f'**Acceleration at this stage (illustrative)** — baseline **{base} min** ➜ with the '
-                    f'platform **{obs} min** · saved **{saved} min** (~{pct}% faster)')
+        if saved > 0:
+            direction, delta = f"▲ accelerated {saved} min (~{int(100 * saved / base)}%)", f"-{saved} min"
+        elif saved < 0:
+            direction, delta = f"▼ decelerated {abs(saved)} min", f"+{abs(saved)} min"
+        else:
+            direction, delta = "unchanged", "0 min"
+        cols[1].metric(label, f"{obs} min", delta)
+        cols[2].metric("Share of MTTR", f"{int(100 * obs / total_obs)}%", f"of ~{total_obs} min")
+        st.markdown(f'**{label}:** baseline **{base} min** ➜ with the platform **{obs} min** · '
+                    f'**{direction}**.')
+    st.markdown(f'**MTTR (whole incident, illustrative):** baseline **{total_base} min** ➜ with the platform '
+                f'**{total_obs} min** · accelerated by **{total_base - total_obs} min** '
+                f'(~{int(100 * (total_base - total_obs) / total_base)}%). This stage contributes '
+                f'**{obs} min**.')
+    st.caption("Illustrative simulated values — measure against a real baseline in a pilot.")
 
 
 def _rail(inc, rec):
