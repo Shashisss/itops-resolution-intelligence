@@ -85,8 +85,11 @@ div[class*="st-key-kpi_"] button:hover{background:#f8fafc!important}
 .ri-amb{font-size:12.5px!important}
 .ri-hero .id{font-size:24px!important}
 .ri-hero .meta{font-size:13.5px!important}
-div[class*="st-key-boardcard-"] button p{font-size:14px!important}
+div[class*="st-key-boardcard-"] button p{font-size:13.5px!important}
 div[class*="st-key-kpi_"] button p{font-size:16px!important}
+div[class*="st-key-boardcard-"] button{padding:8px 12px!important;border-radius:10px!important;
+  border-left-width:4px!important}
+div[class*="st-key-boardcard-"] button p{line-height:1.35!important}
 .ri-card{padding:12px 14px!important}
 .ri-kpi{padding:10px 12px!important}
 .ri-hero{padding:16px 20px!important}
@@ -528,25 +531,23 @@ def ambient_strip(events):
     st.markdown('<div class="ri-ambient">' + "".join(parts) + '</div>', unsafe_allow_html=True)
 
 
-def board_card(inc, domain, verdict, on_click, args, stage=None, sla=None, open_=False, linked=False):
-    """One incident as a SINGLE clickable card, on the incidents board.
+SEV_LABEL = {"P1": ("🔴", "Critical"), "P2": ("🟠", "Major"), "P3": ("🔵", "Minor"),
+             "P4": ("⚪", "Low")}
 
-    The whole card is a full-width keyed `st.button` (styled as a card via the
-    `st-key-boardcard-*` CSS rules above). Clicking it runs `on_click(*args)` — wired to a toggle
-    that opens/closes the incident's collapsible details. The `-P1/-P2/...` segment in the key
-    drives the per-priority left border; the ▸/▾ marker shows open/closed; 🔗 marks a
-    cross-domain incident (linked to another domain) vs a single-domain one."""
+
+def board_card(inc, domain, verdict, on_click, args, stage=None, sla=None, open_=False, linked=False):
+    """Compact incident row (Linear-style): line 1 = ID + title; line 2 = severity · status ·
+    domain · owner · time. The whole row is clickable (keyed button styled as a card); the
+    per-priority left border and 🔗 marker carry severity and cross-domain at a glance."""
     pri = inc.get("priority", "P3")
     status = (inc.get("status") or "open").title()
     owner = inc.get("owner_team") or "—"
     mark = "▾" if open_ else "▸"
     link = "🔗 " if linked else ""
-    line1 = f'{mark} {link}**{inc["id"]}** · {domain} · {status}'
-    if stage:
-        line1 += f' · stage: {stage}'
-    line3 = f'owner: {owner}' + (f' · SLA: {sla}' if sla else '')
-    label = f'{line1}  \n{inc["title"]}  \n{line3}'
-    st.button(label, key=f'boardcard-{pri}-{inc["id"]}', width="stretch",
+    icon, sev = SEV_LABEL.get(pri, ("🔵", "Minor"))
+    line1 = f'{mark}{link}**{inc["id"]}**  {inc["title"]}'
+    line2 = f'{icon} {sev} · {status} · {domain} · {owner}' + (f' · ⏱ {sla}' if sla else '')
+    st.button(f'{line1}  \n{line2}', key=f'boardcard-{pri}-{inc["id"]}', width="stretch",
               on_click=on_click, args=args)
 
 
