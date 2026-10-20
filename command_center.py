@@ -272,6 +272,10 @@ def it_command(inc, ctx):
         viz.audit_record(audit, inc["id"])
         journey.render_verdict(journey.current_verdict(inc))
         applied_any = bool(res and res.get("checks")) or bool(st.session_state.get(f'it_opt_applied_{inc["id"]}'))
+        st.markdown(f'**Execution:** {opt["id"]} · {opt["label"][:55]} — '
+                    + ("applied (simulated)" if applied_any else "not applied")
+                    + f' · **Independent verification:** {journey.current_verdict(inc)} '
+                      f'(separate from execution)')
         journey.render_resolution(inc["id"], applied_any, sla_txt, inc["owner_team"], verdict=verdict)
         if applied_any:
             journey.render_recovery_by_verdict(
@@ -290,7 +294,8 @@ def it_command(inc, ctx):
          "Collaboration": collaboration, "Verification": verification, "Timeline": timeline},
         rail=lambda: _rail(inc, rec), corr=corr,
         next_step_banner=lambda: viz.next_step(rec["action"], rec["actor"], rec["mode"],
-                                               why=_why, target=_target, blast=_blast),
+                                               why=_why, target=_target, blast=_blast,
+                                               risk=rec.get("risk")),
         stage_key=inc["id"], stage_panel=lambda stage: _stage_panel(inc, rec, stage),
         collab_banner=(lambda: viz.collab_strip(inc["owner_team"],
                                                (journey.actors(rec) or ["—"])[0],
@@ -407,6 +412,10 @@ def dop_command(inc, data):
         viz.audit_record(audit, inc["id"])
         journey.render_verdict(journey.current_verdict(inc))
         applied_any = bool(res and res.get("checks")) or bool(st.session_state.get(f'dop_opt_applied_{inc["id"]}'))
+        st.markdown(f'**Execution:** {opt["id"]} · {opt["label"][:55]} — '
+                    + ("applied (simulated)" if applied_any else "not applied")
+                    + f' · **Independent verification:** {journey.current_verdict(inc)} '
+                      f'(separate from execution)')
         journey.render_resolution(inc["id"], applied_any, f'freshness {fresh_txt}', inc["owner_team"],
                                   verdict=verdict)
         if applied_any:
@@ -426,7 +435,8 @@ def dop_command(inc, data):
          "Collaboration": collaboration, "Verification": verification, "Timeline": timeline},
         rail=lambda: _rail(inc, rec), corr=corr,
         next_step_banner=lambda: viz.next_step(rec["action"], rec["actor"], rec["mode"],
-                                               why=_why, target=_target, blast=_blast),
+                                               why=_why, target=_target, blast=_blast,
+                                               risk=rec.get("risk")),
         stage_key=inc["id"], stage_panel=lambda stage: _stage_panel(inc, rec, stage),
         collab_banner=(lambda: viz.collab_strip(inc["owner_team"],
                                                (journey.actors(rec) or ["—"])[0],

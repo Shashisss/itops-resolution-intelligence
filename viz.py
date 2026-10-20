@@ -74,6 +74,22 @@ div[class*="st-key-kpi_"] button:hover{background:#f8fafc!important}
   border:1px solid #e5e7eb;border-radius:10px;padding:6px 11px;margin:0 0 10px}
 .ri-ambient .ri-amb-l{font-weight:800;font-size:11.5px;color:#0f172a;white-space:nowrap}
 .ri-amb{border-left:3px solid #94a3b8;padding:1px 9px;font-size:11.5px;color:#334155;white-space:nowrap}
+/* ---- readability: typography scale + tighter cards (build v64) ---- */
+.ri-tag{font-size:11.5px!important}
+.ri-kpi .l{font-size:12px!important}
+.ri-kpi .s{font-size:12.5px!important}
+.ri-kpi .v{font-size:20px!important}
+.ri-ev-chip{font-size:13.5px!important}
+.ri-lc-stage{font-size:13.5px!important}
+.ri-tl-kind{font-size:12px!important}
+.ri-amb{font-size:12.5px!important}
+.ri-hero .id{font-size:24px!important}
+.ri-hero .meta{font-size:13.5px!important}
+div[class*="st-key-boardcard-"] button p{font-size:14px!important}
+div[class*="st-key-kpi_"] button p{font-size:16px!important}
+.ri-card{padding:12px 14px!important}
+.ri-kpi{padding:10px 12px!important}
+.ri-hero{padding:16px 20px!important}
 /* ---- design tokens + responsive guards (build v51) ---- */
 :root{--ri-accent:#4f46e5;--ri-ink:#0f172a;--ri-muted:#64748b;--ri-line:#e5e7eb;--ri-soft:#f8fafc;--ri-r:12px}
 .ri-hero .id,.ri-card,.ri-kpi .v,.ri-kpi .s,.ri-ev-chip,.ri-qcard,.ri-lc-stage{overflow-wrap:anywhere;word-break:break-word}
@@ -400,12 +416,13 @@ def collab_strip(owner, next_actor, stats):
         unsafe_allow_html=True)
 
 
-def next_step(action, owner, gate, why=None, target=None, blast=None):
-    """Prominent 'recommended next step' banner — action, owner, gate, and why/target/blast."""
+def next_step(action, owner, gate, why=None, target=None, blast=None, risk=None):
+    """Prominent 'recommended next step' banner — action, owner, gate, and why/target/blast/risk."""
     extra = " · ".join(x for x in (
         f"why: {why}" if why else "",
         f"target: {target}" if target else "",
         f"blast: {blast}" if blast else "",
+        f"risk: {risk}" if risk else "",
     ) if x)
     st.markdown(
         f'<div class="ri-card" style="border-left:6px solid #4f46e5;background:#eef2ff">'
