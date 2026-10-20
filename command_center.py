@@ -41,49 +41,43 @@ STAGE_KINDS = {"Detect": {"alert", "detect", "incident"}, "Correlate": {"change"
 # metric (label, baseline minutes, with-platform minutes). The observed values sum to ~65 min and the
 # baselines to ~250 min, matching the incident-level MTTR (~4h10 → ~1h05).
 STAGE_METRIC = {
-    "Detect":     ("Time to detect",            20, 4),
-    "Correlate":  ("Time to identify cause",    35, 8),
-    "Coordinate": ("Time to assign owner",      25, 2),
-    "Act":        ("Time to act",               55, 18),
-    "Verify":     ("Time to verify recovery",  105, 30),
-    "Close":      ("Time to close",             10, 3),
+    "Detect":     ("Detect",           20, 4),
+    "Correlate":  ("Identify cause",   35, 8),
+    "Coordinate": ("Assign owner",     25, 2),
+    "Act":        ("Act",              55, 18),
+    "Verify":     ("Verify recovery", 105, 30),
+    "Close":      ("Close",            10, 3),
 }
 
 
 def _stage_panel(inc, rec, stage):
-    """Compact card for the clicked stage: OLA + metric direction, what happened, collaboration."""
+    """Short, scannable stage card: OLA, metric delta, evidence, collaboration, MTTR."""
     olas = {o["stage"]: o["target_min"] for o in E.load_stage_olas()}
     label, base, obs = STAGE_METRIC.get(stage, (stage, None, None))
     total_base = sum(v[1] for v in STAGE_METRIC.values())
     total_obs = sum(v[2] for v in STAGE_METRIC.values())
     ola = olas.get(stage)
 
-    bits = []
-    if ola is not None:
-        bits.append(f'OLA **{ola} min** {"✅" if obs <= ola else "🔴 breached"}')
-    else:
-        bits.append('OLA —')
+    parts = []
+    parts.append(f'OLA {ola}m {"✅" if obs <= ola else "🔴"}' if ola is not None else 'OLA —')
     if base:
         saved = base - obs
-        direction = (f'▲ accelerated {saved} min' if saved > 0
-                     else f'▼ decelerated {abs(saved)} min' if saved < 0 else 'unchanged')
-        bits.append(f'{label} **{obs} min** ({direction} vs {base} min baseline)')
-        bits.append(f'share of MTTR **{int(100 * obs / total_obs)}%**')
-    st.markdown(" · ".join(bits))
+        dirn = (f'▲{saved}m faster' if saved > 0 else f'▼{abs(saved)}m slower' if saved < 0 else '±0')
+        parts.append(f'{label} {obs}m {dirn}')
+        parts.append(f'{int(100 * obs / total_obs)}% MTTR')
+    st.markdown(" · ".join(parts))
 
     kinds = STAGE_KINDS.get(stage, set())
     evs = [e for e in journey.timeline(inc["id"]) if e["kind"] in kinds] or journey.timeline(inc["id"])[-2:]
     if evs:
-        st.caption("What happened: " + " · ".join(
-            f'{e["ts"][11:16]} {e["detail"][:70]}' for e in evs[-2:]))
+        st.caption("What: " + " · ".join(f'{e["ts"][11:16]} {e["detail"][:38]}' for e in evs[-2:]))
     else:
-        st.caption("What happened: no events recorded for this stage yet.")
+        st.caption("What: no events yet")
 
     stats = journey.collab_stats(inc)
-    engaged = f' · {", ".join(stats["participants"][:3])}' if stats.get("participants") else ""
-    st.caption(f'Collaboration: {len(stats.get("participants", []))} engaged · '
-               f'{stats.get("handoffs", 0)} handoffs ({stats.get("handoffs_done", 0)} done){engaged}')
-    st.caption(f'MTTR (illustrative): {total_base} min → {total_obs} min · this stage {obs} min.')
+    st.caption(f'Collab: {len(stats.get("participants", []))} engaged · '
+               f'{stats.get("handoffs", 0)} handoff(s), {stats.get("handoffs_done", 0)} done')
+    st.caption(f'MTTR {total_base}→{total_obs}m · stage {obs}m')
 
 
 def _rail(inc, rec):
