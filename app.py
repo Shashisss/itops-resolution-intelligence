@@ -220,9 +220,11 @@ def render_board():
         return
     view = st.radio("View", ["Cards", "Table"], horizontal=True, key="board_view",
                     help="Table is easier for comparison on a wide screen; cards read better when narrow.")
+    linked_map = {r["inc"]["id"]: bool(journey.correlation_for(r["inc"]["id"])) for r in shown}
     if view == "Table":
         df = pd.DataFrame([{
-            "ID": r["inc"]["id"], "Domain": r["domain"], "Title": r["inc"]["title"],
+            "ID": r["inc"]["id"], "Cross-domain": "🔗" if linked_map[r["inc"]["id"]] else "—",
+            "Domain": r["domain"], "Title": r["inc"]["title"],
             "Status": (r["inc"].get("status") or "").title(), "Verdict": r["verdict"],
             "Stage": journey.lifecycle_stage(r["inc"]), "Owner": r["inc"].get("owner_team"),
             "SLA": (_sla_txt(r["inc"]) if r["inc"].get("status") == "open" else "—"),
@@ -233,21 +235,35 @@ def render_board():
         st.button("Open incident details →", key="board_open_sel", type="primary",
                   on_click=journey._goto, args=(dom_of[pick], None, pick))
         return
-    cols = st.columns(2)
+
     _open_ref = (st.session_state.get("open_incident") or {}).get("ref")
-    for idx, r in enumerate(shown):
-        with cols[idx % 2]:
-            viz.board_card(r["inc"], r["domain"], r["verdict"],
-                           on_click=journey.toggle_incident, args=(r["domain"], r["inc"]["id"]),
-                           stage=journey.lifecycle_stage(r["inc"]),
-                           sla=(_sla_txt(r["inc"]) if r["inc"].get("status") == "open" else None),
-                           open_=(r["inc"]["id"] == _open_ref),
-                           linked=bool(journey.correlation_for(r["inc"]["id"])))
+
+    def _render_cards(subset):
+        cols = st.columns(2)
+        for idx, r in enumerate(subset):
+            with cols[idx % 2]:
+                viz.board_card(r["inc"], r["domain"], r["verdict"],
+                               on_click=journey.toggle_incident, args=(r["domain"], r["inc"]["id"]),
+                               stage=journey.lifecycle_stage(r["inc"]),
+                               sla=(_sla_txt(r["inc"]) if r["inc"].get("status") == "open" else None),
+                               open_=(r["inc"]["id"] == _open_ref),
+                               linked=linked_map[r["inc"]["id"]])
+
+    cross = [r for r in shown if linked_map[r["inc"]["id"]]]
+    single = [r for r in shown if not linked_map[r["inc"]["id"]]]
+    if cross:
+        st.markdown("#### 🔗 Cross-domain threads")
+        st.caption("IT Ops and DataOps incidents resolved together as one governed thread.")
+        _render_cards(cross)
+    if single:
+        st.markdown("#### Single-domain incidents")
+        st.caption("Independent IT Ops or DataOps incidents.")
+        _render_cards(single)
 
 
 def _render_incident_detail(dom, ref, you_role):
-    """The selected incident's details — rendered INLINE on the incidents page."""
-    lens = st.radio("View", ["Resolution thread", "Guided journey", "By role"], horizontal=True,
+    """The selected incident's details — rendered in the incident dialog."""
+    lens = st.radio("View", ["Resolution thread", "Guided journey"], horizontal=True,
                     key="ws_mode_" + ref)
     if dom == "DataOps":
         data = DE.load()
@@ -257,15 +273,8 @@ def _render_incident_detail(dom, ref, you_role):
             return
         if lens == "Resolution thread":
             command_center.dop_command(inc, data)
-        elif lens == "Guided journey":
-            DV.pipeline_view(inc, data)
-        elif you_role in DV.PERSONAS:
-            {"Data Engineer": DV.data_engineer_view, "Data Owner": DV.data_owner_view,
-             "Platform Engineer": DV.platform_engineer_view,
-             "Data Consumer": DV.data_consumer_view}[you_role](inc, data)
         else:
-            st.info(f"**{you_role}** is an IT Ops role — switch the Demo persona to a DataOps role "
-                    f"(Data Engineer / Data Owner / Platform Engineer / Data Consumer) to use this lens.")
+            DV.pipeline_view(inc, data)
     else:
         ctx = _it_ctx()
         inc = _find_it(ref)
@@ -274,16 +283,8 @@ def _render_incident_detail(dom, ref, you_role):
             return
         if lens == "Resolution thread":
             command_center.it_command(inc, ctx)
-        elif lens == "Guided journey":
-            personas.incident_view(inc, ctx)
-        elif you_role in personas.PERSONAS:
-            {"CIO": personas.cio_view, "CSM": personas.csm_view, "Service Desk": personas.l1_view,
-             "L1 Engineer": personas.l1_view, "L2 / L3 Engineer": personas.l2_view,
-             "Developer": lambda i, c: personas.developer_view(c),
-             "Incident Manager": personas.im_view}[you_role](inc, ctx)
         else:
-            st.info(f"**{you_role}** is a DataOps role — switch the Demo persona to an IT Ops role "
-                    f"(CSM / L1 / L2/L3 / Developer / Incident Manager) to use this lens.")
+            personas.incident_view(inc, ctx)
 
 
 @st.dialog("🧭 Incident details", width="large",
@@ -380,5 +381,5 @@ elif nav == "Analytics":
     render_analytics()
 
 st.divider()
-st.caption("Sample data · simulated actions · build v56 — proof of concept, not production. "
+st.caption("Sample data · simulated actions · build v57 — proof of concept, not production. "
            "See PROTOTYPE_NOTES.md for persistence limits.")

@@ -32,6 +32,42 @@ IMPACT_ROWS = [
     ("Operator effort (person-hours)", "9", "3"),
 ]
 
+# Click-to-open stage detail: which timeline events belong to a stage, and the illustrative
+# per-stage acceleration (baseline minutes ➜ with-platform minutes).
+STAGE_KINDS = {"Detect": {"alert", "detect", "incident"}, "Correlate": {"change", "impact", "alert"},
+               "Coordinate": {"incident", "ticket"}, "Act": {"repair"}, "Verify": {"verify"},
+               "Close": {"verify"}}
+STAGE_ACCEL = {"Detect": (30, 5), "Correlate": (45, 10), "Coordinate": (30, 2),
+               "Act": (60, 30), "Verify": (240, 60), "Close": (15, 2)}
+
+
+def _stage_panel(inc, rec, stage):
+    """Detail for the clicked lifecycle stage: what happened, who collaborated, acceleration."""
+    st.markdown("**What happened**")
+    kinds = STAGE_KINDS.get(stage, set())
+    evs = [e for e in journey.timeline(inc["id"]) if e["kind"] in kinds] or journey.timeline(inc["id"])[-4:]
+    if evs:
+        for e in evs[-5:]:
+            st.markdown(f'- `{e["ts"][11:16]}` · {e["kind"]} — {e["detail"]}')
+    else:
+        st.caption("No events recorded for this stage yet.")
+
+    st.markdown("**Collaboration at this stage**")
+    stats = journey.collab_stats(inc)
+    st.markdown(f'- Participants engaged: **{len(stats.get("participants", []))}** · handoffs: '
+                f'**{stats.get("handoffs", 0)}** ({stats.get("handoffs_done", 0)} done)')
+    if stats.get("participants"):
+        st.markdown(f'- Engaged: {", ".join(stats["participants"][:6])}')
+    for d in collab.delegations(inc["id"])[:4]:
+        st.markdown(f'- {d["frm"]} → {d["to_"]} · {d["action"][:60]} · _{d["status"]}_')
+
+    base, obs = STAGE_ACCEL.get(stage, (0, 0))
+    if base:
+        saved = base - obs
+        pct = int(100 * saved / base)
+        st.markdown(f'**Acceleration at this stage (illustrative)** — baseline **{base} min** ➜ with the '
+                    f'platform **{obs} min** · saved **{saved} min** (~{pct}% faster)')
+
 
 def _rail(inc, rec):
     """Right-hand rail — owner, next actor, quick actions and recent activity only. The full team,
@@ -230,6 +266,7 @@ def it_command(inc, ctx):
          "Collaboration": collaboration, "Verification": verification, "Timeline": timeline},
         rail=lambda: _rail(inc, rec), corr=corr,
         next_step_banner=lambda: viz.next_step(rec["action"], rec["actor"], rec["mode"]),
+        stage_key=inc["id"], stage_panel=lambda stage: _stage_panel(inc, rec, stage),
         collab_banner=(lambda: viz.collab_strip(inc["owner_team"],
                                                (journey.actors(rec) or ["—"])[0],
                                                journey.collab_stats(inc))
@@ -357,6 +394,7 @@ def dop_command(inc, data):
          "Collaboration": collaboration, "Verification": verification, "Timeline": timeline},
         rail=lambda: _rail(inc, rec), corr=corr,
         next_step_banner=lambda: viz.next_step(rec["action"], rec["actor"], rec["mode"]),
+        stage_key=inc["id"], stage_panel=lambda stage: _stage_panel(inc, rec, stage),
         collab_banner=(lambda: viz.collab_strip(inc["owner_team"],
                                                (journey.actors(rec) or ["—"])[0],
                                                journey.collab_stats(inc))
