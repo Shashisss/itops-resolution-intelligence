@@ -34,12 +34,13 @@ def _lifecycle_clickable(lifecycle, stage_key, stage_panel):
 
     sel = st.session_state.get(sel_key)
     if sel:
-        c1, c2 = st.columns([5, 1])
-        c1.markdown(f"#### {sel} — detail")
-        if c2.button("✕ Close", key=f"lcx_{stage_key}", width="stretch"):
-            st.session_state.pop(sel_key, None)
-            st.rerun()
-        stage_panel(sel)
+        with st.container(border=True):
+            c1, c2 = st.columns([9, 1])
+            c1.markdown(f'**{sel} — stage detail**')
+            if c2.button("✕", key=f"lcx_{stage_key}", width="stretch"):
+                st.session_state.pop(sel_key, None)
+                st.rerun()
+            stage_panel(sel)
 
 
 def render_workspace(hero_kwargs, lifecycle, edges, tabs, rail, thread_note=None, corr=None,

@@ -51,55 +51,39 @@ STAGE_METRIC = {
 
 
 def _stage_panel(inc, rec, stage):
-    """Detail for the clicked lifecycle stage: what happened, who collaborated, acceleration."""
-    st.markdown("**What happened**")
-    kinds = STAGE_KINDS.get(stage, set())
-    evs = [e for e in journey.timeline(inc["id"]) if e["kind"] in kinds] or journey.timeline(inc["id"])[-4:]
-    if evs:
-        for e in evs[-5:]:
-            st.markdown(f'- `{e["ts"][11:16]}` · {e["kind"]} — {e["detail"]}')
-    else:
-        st.caption("No events recorded for this stage yet.")
-
-    st.markdown("**Collaboration at this stage**")
-    stats = journey.collab_stats(inc)
-    st.markdown(f'- Participants engaged: **{len(stats.get("participants", []))}** · handoffs: '
-                f'**{stats.get("handoffs", 0)}** ({stats.get("handoffs_done", 0)} done)')
-    if stats.get("participants"):
-        st.markdown(f'- Engaged: {", ".join(stats["participants"][:6])}')
-    for d in collab.delegations(inc["id"])[:4]:
-        st.markdown(f'- {d["frm"]} → {d["to_"]} · {d["action"][:60]} · _{d["status"]}_')
-
-    # OLA + this stage's metric — accelerated / decelerated vs baseline
-    st.markdown("**OLA & metric at this stage**")
+    """Compact card for the clicked stage: OLA + metric direction, what happened, collaboration."""
     olas = {o["stage"]: o["target_min"] for o in E.load_stage_olas()}
     label, base, obs = STAGE_METRIC.get(stage, (stage, None, None))
     total_base = sum(v[1] for v in STAGE_METRIC.values())
     total_obs = sum(v[2] for v in STAGE_METRIC.values())
-    cols = st.columns(3)
     ola = olas.get(stage)
+
+    bits = []
     if ola is not None:
-        cols[0].metric("OLA target", f"{ola} min",
-                       "✅ within" if obs <= ola else "🔴 breached")
+        bits.append(f'OLA **{ola} min** {"✅" if obs <= ola else "🔴 breached"}')
     else:
-        cols[0].metric("OLA target", "—", "not defined")
+        bits.append('OLA —')
     if base:
         saved = base - obs
-        if saved > 0:
-            direction, delta = f"▲ accelerated {saved} min (~{int(100 * saved / base)}%)", f"-{saved} min"
-        elif saved < 0:
-            direction, delta = f"▼ decelerated {abs(saved)} min", f"+{abs(saved)} min"
-        else:
-            direction, delta = "unchanged", "0 min"
-        cols[1].metric(label, f"{obs} min", delta)
-        cols[2].metric("Share of MTTR", f"{int(100 * obs / total_obs)}%", f"of ~{total_obs} min")
-        st.markdown(f'**{label}:** baseline **{base} min** ➜ with the platform **{obs} min** · '
-                    f'**{direction}**.')
-    st.markdown(f'**MTTR (whole incident, illustrative):** baseline **{total_base} min** ➜ with the platform '
-                f'**{total_obs} min** · accelerated by **{total_base - total_obs} min** '
-                f'(~{int(100 * (total_base - total_obs) / total_base)}%). This stage contributes '
-                f'**{obs} min**.')
-    st.caption("Illustrative simulated values — measure against a real baseline in a pilot.")
+        direction = (f'▲ accelerated {saved} min' if saved > 0
+                     else f'▼ decelerated {abs(saved)} min' if saved < 0 else 'unchanged')
+        bits.append(f'{label} **{obs} min** ({direction} vs {base} min baseline)')
+        bits.append(f'share of MTTR **{int(100 * obs / total_obs)}%**')
+    st.markdown(" · ".join(bits))
+
+    kinds = STAGE_KINDS.get(stage, set())
+    evs = [e for e in journey.timeline(inc["id"]) if e["kind"] in kinds] or journey.timeline(inc["id"])[-2:]
+    if evs:
+        st.caption("What happened: " + " · ".join(
+            f'{e["ts"][11:16]} {e["detail"][:70]}' for e in evs[-2:]))
+    else:
+        st.caption("What happened: no events recorded for this stage yet.")
+
+    stats = journey.collab_stats(inc)
+    engaged = f' · {", ".join(stats["participants"][:3])}' if stats.get("participants") else ""
+    st.caption(f'Collaboration: {len(stats.get("participants", []))} engaged · '
+               f'{stats.get("handoffs", 0)} handoffs ({stats.get("handoffs_done", 0)} done){engaged}')
+    st.caption(f'MTTR (illustrative): {total_base} min → {total_obs} min · this stage {obs} min.')
 
 
 def _rail(inc, rec):
