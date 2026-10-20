@@ -324,9 +324,9 @@ def _render_incident_detail(dom, ref, you_role):
 @st.dialog("🧭 Incident details", width="large",
            on_dismiss=lambda: st.session_state.pop("open_incident", None))
 def _incident_dialog(dom, ref, you_role):
-    """Modal incident workspace. The board behind it never moves; sections are collapsible."""
-    c1, c2 = st.columns([5, 1])
-    c1.markdown(f'**{ref}** · {dom}')
+    """Modal incident workspace. The board behind it never moves; sections are collapsible.
+    The hero already shows the ID/domain, so the header only carries the Close control."""
+    _, c2 = st.columns([6, 1])
     if c2.button("✕ Close", key="dlg_close_" + ref):
         st.session_state.pop("open_incident", None)
         st.rerun()
@@ -415,5 +415,5 @@ elif nav == "Analytics":
     render_analytics()
 
 st.divider()
-st.caption("Sample data · simulated actions · build v64 — proof of concept, not production. "
+st.caption("Sample data · simulated actions · build v65 — proof of concept, not production. "
            "See PROTOTYPE_NOTES.md for persistence limits.")
