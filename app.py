@@ -74,9 +74,10 @@ if flash:
 _sv, _ed, _it_inc, _ch, _me, _G = E.load()
 _dop_data = DE.load()
 _dop_inc = _dop_data["incidents"]
-# ---- top menu + global controls (no left bar) ----
-nav, you_role = shell.topbar(_it_inc, _dop_inc, _sv, _dop_data["datasets"], _dop_data["pipelines"])
-# ---- ambient live strip: global, collapsible like the overview ----
+# ---- left sidebar navigation (five sections) ----
+nav, you_role = shell.sidebar("CSM")
+# ---- global controls + ambient live strip ----
+shell.topbar(_it_inc, _dop_inc, _sv, _dop_data["datasets"], _dop_data["pipelines"], you_role)
 with st.expander("📡 Live — all domains", expanded=False):
     viz.ambient_strip(realtime.recent(8))
 
@@ -408,12 +409,168 @@ def render_analytics():
     st.caption("**Illustrative** simulated totals.")
 
 
+# ================================================================= Overview (page)
+def _live_feed_panel():
+    f1, f2 = st.columns([1, 1])
+    domf = f1.selectbox("Domain", ["All", "IT Ops", "DataOps"], key="ov_feed_dom")
+    sevf = f2.selectbox("Severity", ["All", "critical", "warning", "info"], key="ov_feed_sev")
+
+    def _dom(e):
+        return "DataOps" if e.get("domain") == "dataops" else "IT Ops"
+
+    events = [e for e in realtime.recent(40)
+              if (domf == "All" or _dom(e) == domf) and (sevf == "All" or e.get("severity") == sevf)]
+    if not events:
+        st.caption("No events match the filter.")
+    for e in events[:10]:
+        hhmm = str(e.get("ts", "")).split("T")[-1][:5]
+        label = f'{hhmm} · {_dom(e)} · {e.get("severity","")} · {e.get("source","")} — {e.get("message","")}'
+        if e.get("ref_id"):
+            st.button(label, key=f'ov_ev_{e.get("id")}', on_click=journey._goto,
+                      args=(_dom(e), None, e["ref_id"]))
+        else:
+            st.markdown(f'`{hhmm}` · {_dom(e)} · {e.get("severity","")} — {e.get("message","")}')
+    st.caption("Click an event to open the related incident.")
+
+
+def render_overview_page():
+    dop = DE.load()
+    incidents = list(_it_inc) + list(dop["incidents"])
+    it_open = [i for i in _it_inc if i["status"] == "open"]
+    dop_open = [i for i in dop["incidents"] if i["status"] == "open"]
+    at_risk = sum(1 for i in it_open + dop_open if _sla_risk(i))
+    threads = len([i for i in _it_inc if journey.correlation_for(i["id"])])
+    verified = sum(1 for i in incidents if journey.display_verdict(i) == "Verified")
+
+    st.subheader("Overview — what needs attention")
+    st.caption("Live counts from the current incidents. Click a card to open it.")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Open incidents", len(it_open) + len(dop_open))
+    m2.metric("SLA at risk", at_risk)
+    m3.metric("Cross-domain threads", threads)
+    m4.metric("Verified recoveries", verified)
+
+    st.markdown("#### Needs attention")
+    order = {"P1": 0, "P2": 1, "P3": 2, "P4": 3}
+    attention = sorted([i for i in incidents if i["status"] == "open"],
+                       key=lambda i: (not _sla_risk(i), order.get(i["priority"], 9), i["id"]))[:4]
+    cols = st.columns(2)
+    for idx, inc in enumerate(attention):
+        dom = "IT Ops" if inc["id"].startswith("INC") else "DataOps"
+        with cols[idx % 2]:
+            viz.board_card(inc, dom, journey.display_verdict(inc), on_click=journey._goto,
+                           args=(dom, None, inc["id"]), stage=journey.lifecycle_stage(inc),
+                           sla=(_sla_txt(inc) if inc["status"] == "open" else None),
+                           linked=bool(journey.correlation_for(inc["id"])))
+
+    st.markdown("#### Cross-domain resolution thread")
+    viz.causal([("Schema mismatch", "DataOps"), ("Pipeline failure", "DataOps"),
+                ("Stale payments data", "DataOps"), ("Payment API impact", "IT Ops")])
+    corr = journey.correlation_for("INC-8841")
+    if corr:
+        st.caption(f'🔗 **INC-8841** (IT Ops) ↔ **DOP-1001** (DataOps) · shared cause '
+                   f'**{corr["shared_cause"]}**')
+
+    with st.expander("📡 Live event feed — all domains", expanded=False):
+        _live_feed_panel()
+
+    st.markdown("#### Recent activity")
+    rows = []
+    for ref in [i["id"] for i in _it_inc] + [i["id"] for i in dop["incidents"]]:
+        for cm in collab.comments(ref):
+            rows.append((cm["ts"], ref, cm["author"], cm.get("channel", ""), cm["text"]))
+    rows.sort(reverse=True)
+    for ts, ref, author, ch, text in rows[:6]:
+        st.markdown(f'`{ts[11:16]}` · **{ref}** · {author}' + (f' · {ch}' if ch else '') + f'  \n{text}')
+    if not rows:
+        st.caption("No activity yet.")
+
+
+# ================================================================= Resolution threads (page)
+def render_threads(you_role):
+    st.subheader("Resolution threads — cross-domain")
+    st.caption("IT Ops and DataOps resolved as one thread. Observed facts and inferred relationships "
+               "are labelled.")
+    pairs = [(inc, journey.correlation_for(inc["id"])) for inc in _it_inc]
+    pairs = [(inc, c) for inc, c in pairs if c]
+    if not pairs:
+        st.info("No cross-domain threads in the current data.")
+        return
+    for inc, c in pairs:
+        other = _find_dop(c["other_id"])
+        edges = journey.thread_edges_for(inc["id"])
+        obs = sum(1 for e in edges if e["kind"] == "observed")
+        inf = sum(1 for e in edges if e["kind"] == "inferred")
+        with st.container(border=True):
+            st.markdown(f'**{inc["id"]}** — {inc["title"]}  \n'
+                        f'↔ **{c["other_domain"]} {c["other_id"]}** — {other["title"] if other else "—"}')
+            st.caption(f'shared cause: **{c["shared_cause"]}** · evidence: **{obs} observed**, '
+                       f'**{inf} inferred** · verdict: **{journey.display_verdict(inc)}**')
+            b1, b2 = st.columns(2)
+            b1.button(f'Open {inc["id"]} →', key=f'th_it_{inc["id"]}', width="stretch",
+                      on_click=journey._goto, args=("IT Ops", None, inc["id"]))
+            b2.button(f'Open {c["other_id"]} →', key=f'th_dop_{inc["id"]}', width="stretch",
+                      on_click=journey._goto, args=("DataOps", None, c["other_id"]))
+            with st.expander("Thread edges — observed vs inferred", expanded=False):
+                viz.thread_edges(edges)
+
+
+# ================================================================= Activity & audit (page)
+def render_activity():
+    st.subheader("Activity & audit — actions, handoffs, verification")
+    st.caption("Persisted records from the current data (sample).")
+    refs = [i["id"] for i in _it_inc] + [i["id"] for i in _dop_inc]
+    t1, t2, t3 = st.tabs(["Comments", "Handoffs", "Verification records"])
+    with t1:
+        rows = []
+        for r in refs:
+            for cm in collab.comments(r):
+                rows.append({"ref": r, "ts": cm["ts"], "author": cm["author"],
+                             "channel": cm.get("channel") or "—", "stage": cm.get("stage") or "—",
+                             "text": cm["text"]})
+        rows.sort(key=lambda x: x["ts"], reverse=True)
+        if rows:
+            st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+        else:
+            st.caption("No comments.")
+    with t2:
+        rows = []
+        for r in refs:
+            for d in collab.delegations(r):
+                rows.append({"ref": r, "from": d["frm"], "to": d["to_"], "action": d["action"],
+                             "status": d["status"], "channel": d.get("channel") or "—",
+                             "stage": d.get("stage") or "—", "ts": d["ts"]})
+        rows.sort(key=lambda x: x["ts"], reverse=True)
+        if rows:
+            st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+        else:
+            st.caption("No handoffs.")
+    with t3:
+        rows = []
+        for r in refs:
+            rec = journey.resolution_record(r)
+            if rec:
+                rows.append({"ref": r, "verdict": rec.get("verdict"), "action": rec.get("action_id"),
+                             "actor": rec.get("actor"), "closed_at": rec.get("closed_at") or "—",
+                             "checks": len(rec.get("checks") or [])})
+        if rows:
+            st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+        else:
+            st.caption("No verification records yet — apply a remediation to create one.")
+
+
 # ================================================================= dispatch
-if nav == journey.WORKSPACE_NAV:
+if nav == "Overview":
+    render_overview_page()
+elif nav == journey.WORKSPACE_NAV:
     render_incidents(you_role)
+elif nav == "Resolution threads":
+    render_threads(you_role)
 elif nav == "Analytics":
     render_analytics()
+elif nav == "Activity & audit":
+    render_activity()
 
 st.divider()
-st.caption("Sample data · simulated actions · build v66 — proof of concept, not production. "
+st.caption("Sample data · simulated actions · build v67 — proof of concept, not production. "
            "See PROTOTYPE_NOTES.md for persistence limits.")

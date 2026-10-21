@@ -47,6 +47,8 @@ CSS = """
 div[data-testid="stVerticalBlock"]{gap:0.5rem}
 .ri-topbrand{font-weight:800;font-size:19px;color:#0f172a;letter-spacing:-.01em;margin:0 0 4px}
 .ri-topbrand span{color:#64748b;font-weight:600;font-size:12.5px}
+.ri-sidebrand{font-weight:800;font-size:17px;color:#0f172a;line-height:1.25;margin:0 0 10px}
+.ri-sidebrand span{font-weight:600;font-size:11.5px;color:#64748b}
 /* All-incidents board: each incident is ONE clickable card (a full-width keyed button). */
 div[class*="st-key-boardcard-"] button{width:100%!important;text-align:left!important;
   justify-content:flex-start!important;height:auto!important;white-space:normal!important;

@@ -1,21 +1,29 @@
 #!/usr/bin/env python3
-"""Application shell — a TOP menu + global controls. No left sidebar.
+"""Application shell — LEFT SIDEBAR navigation (screenshot layout).
 
-One navigation model (a horizontal top menu), one role control (the Demo persona in the top
-bar — there is no second persona selector anywhere), and the global controls (search ·
-notifications · demo settings) on one row."""
+Five sections with an icon and a one-line description, exactly as in the proposed structure:
+Overview · Incidents · Resolution threads · Analytics · Activity & audit.
+Global controls (search, notifications, demo persona, demo menu) stay available."""
 import streamlit as st
 import viz
 import collab
-import journey
 
-# Top menu — four primary destinations. journey.WORKSPACE_NAV ("Incidents") opens the
-# board/workspace and carries the role lens. Keep in sync.
-NAV = [journey.WORKSPACE_NAV, "Analytics"]
+NAV_ITEMS = [
+    ("Overview", "◫", "What needs attention across IT Ops and DataOps?"),
+    ("Incidents", "▤", "Unified list, filters, severity, ownership, lifecycle."),
+    ("Resolution threads", "⇄", "Cross-domain dependencies and coordinated resolution."),
+    ("Analytics", "↗", "MTTR, recurrence, verification outcomes, operational trends."),
+    ("Activity & audit", "◷", "Actions, approvals, handoffs, verification records."),
+]
+NAV = [n for n, _, _ in NAV_ITEMS]
 
 ROLES_UNION = ["CIO", "CSM", "Incident Manager", "Service Desk", "L1 Engineer",
                "L2 / L3 Engineer", "Developer", "Data Engineer", "Data Owner",
                "Platform Engineer", "Data Consumer"]
+
+
+def _set_nav(value):
+    st.session_state["nav"] = value
 
 
 def _reset():
@@ -23,6 +31,19 @@ def _reset():
     import seed
     importlib.reload(seed)
     st.session_state.clear()
+
+
+def _notif_list(role):
+    notes = collab.notifications_for(role)
+    if not notes:
+        st.caption("No notifications.")
+        return
+    for n in notes:
+        mark = "•" if n["read"] else "🔵"
+        st.markdown(f'{mark} {n["text"]} · _{n["ref_id"]}_')
+    if st.button("Mark all read", key="bell_read"):
+        collab.mark_all_read(role)
+        st.rerun()
 
 
 def _reset_control():
@@ -41,22 +62,6 @@ def _reset_control():
         st.rerun()
 
 
-def _bell(role):
-    unread = collab.unread_count(role)
-    notes = collab.notifications_for(role)
-    label = f"🔔 {unread}"
-    box = st.popover(label) if hasattr(st, "popover") else st.expander(label)
-    with box:
-        if not notes:
-            st.caption("No notifications.")
-        for n in notes:
-            mark = "•" if n["read"] else "🔵"
-            st.markdown(f'{mark} {n["text"]} · _{n["ref_id"]}_')
-        if notes and st.button("Mark all read", key="bell_read"):
-            collab.mark_all_read(role)
-            st.rerun()
-
-
 def _demo_menu():
     box = st.popover("⚙️ Demo") if hasattr(st, "popover") else st.expander("⚙️ Demo")
     with box:
@@ -71,24 +76,39 @@ def _demo_menu():
         _reset_control()
 
 
-def topbar(it_inc, dop_inc, services, datasets, pipelines):
-    """Render the top menu + global controls. Returns (nav, role)."""
-    st.markdown('<div class="ri-topbrand">Resolution Intelligence '
-                '<span>· unified operations workspace</span></div>', unsafe_allow_html=True)
-    nav = st.radio("Navigation", NAV, horizontal=True, key="nav", label_visibility="collapsed")
+def sidebar(default_role="CSM"):
+    """Left sidebar: brand, five sections (icon + description), persona, demo menu."""
+    st.sidebar.markdown(
+        '<div class="ri-sidebrand">Resolution Intelligence<br>'
+        '<span>Unified IT Ops + DataOps</span></div>', unsafe_allow_html=True)
+    nav = st.session_state.get("nav", "Overview")
+    for label, icon, desc in NAV_ITEMS:
+        st.sidebar.button(f"{icon}  {label}", key=f"nav_{label}", width="stretch",
+                          type=("primary" if nav == label else "secondary"),
+                          on_click=_set_nav, args=(label,), help=desc)
+        if nav == label:
+            st.sidebar.caption(desc)
+    st.sidebar.divider()
+    role = st.sidebar.selectbox("👤 Demo persona", ROLES_UNION, key="you_role")
+    with st.sidebar:
+        _demo_menu()
+    return nav, role
 
-    c1, c2, c3, c4 = st.columns([3.4, 1.6, 0.9, 0.9])
+
+def topbar(it_inc, dop_inc, services, datasets, pipelines, role):
+    """Global controls: search (navigates to incidents) + notifications."""
+    c1, c2 = st.columns([4.6, 1])
     with c1:
         gs = st.text_input("Search", key="global_search", label_visibility="collapsed",
                            placeholder="🔎 Search incidents, services, datasets, pipelines, owners…")
     with c2:
-        role = st.selectbox("👤 Demo persona", ROLES_UNION, key="you_role")
-    with c3:
-        _bell(role)
-    with c4:
-        _demo_menu()
+        unread = collab.unread_count(role)
+        box = st.popover(f"🔔 {unread}") if hasattr(st, "popover") else st.expander(f"🔔 {unread}")
+        with box:
+            _notif_list(role)
 
     if gs:
+        import journey
         lo = gs.lower()
 
         def hit(blob):
@@ -105,16 +125,14 @@ def topbar(it_inc, dop_inc, services, datasets, pipelines):
                     (f'DataOps · {i["id"]} · {i["title"]}', ("DataOps", i["id"])))
         for sid, s in services.items():
             if hit(sid + " " + s["name"] + " " + s.get("owner", "")):
-                groups.setdefault("Services", []).append(
-                    (f'{s["name"]} · {s["type"]} · {s["owner"]}', None))
+                groups.setdefault("Services", []).append((f'{s["name"]} · {s["type"]} · {s["owner"]}', None))
         for did, d in datasets.items():
             if hit(did + " " + d["name"] + " " + d.get("owner_team", "") + " " + d.get("layer", "")):
                 groups.setdefault("Datasets", []).append(
                     (f'{d["name"]} · {d["layer"]} · {d.get("owner_team","")}', None))
         for pid, p in pipelines.items():
             if hit(pid + " " + p["name"] + " " + p.get("owner_team", "")):
-                groups.setdefault("Pipelines", []).append(
-                    (f'{p["name"]} · {p.get("owner_team","")}', None))
+                groups.setdefault("Pipelines", []).append((f'{p["name"]} · {p.get("owner_team","")}', None))
         if not groups:
             st.caption("No matches.")
         for group, items in groups.items():
@@ -125,4 +143,3 @@ def topbar(it_inc, dop_inc, services, datasets, pipelines):
                               on_click=journey._goto, args=(target[0], None, target[1]))
                 else:
                     st.markdown(f'- {label}')
-    return nav, role
