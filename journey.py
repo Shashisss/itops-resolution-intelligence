@@ -282,18 +282,24 @@ def render_detection(inc_id, verifier):
     st.caption(f'Detection verified by: **{verifier}** (rule-based signals, not model output).')
 
 
-def render_timeline(inc_id):
-    st.markdown("**Operational timeline (time-correlated across systems)**")
-    viz.timeline(timeline(inc_id))
+def render_timeline(inc_id, limit=None):
+    rows = timeline(inc_id)
+    if limit and len(rows) > limit:
+        st.caption(f'Latest {limit} of {len(rows)} events — full history in the Timeline section.')
+        rows = rows[-limit:]
+    viz.timeline(rows)
 
 
-def render_hypotheses(hyps, title="Root cause — ranked hypotheses (suspected vs confirmed)"):
+def render_hypotheses(hyps, title="Root cause — ranked hypotheses (suspected vs confirmed)", limit=None):
     hyps = rank(hyps)
     st.markdown(f"**{title}**")
     if not hyps:
         st.info("No signal linked yet.")
         return hyps
-    viz.hypothesis_cards(hyps)
+    viz.hypothesis_cards(hyps[:limit] if limit else hyps)
+    if limit and len(hyps) > limit:
+        with st.expander(f"Show all {len(hyps)} hypotheses"):
+            viz.hypothesis_cards(hyps[limit:])
     st.caption(confidence_note(hyps))
     return hyps
 

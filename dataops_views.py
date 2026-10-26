@@ -56,16 +56,16 @@ def context_header(inc, data):
     viz.fact_cards([
         ("Stage", journey.lifecycle_stage(inc), "#4f46e5"),
         ("Pipeline owner", _owner, "#0d9488"),
-        ("Freshness (SLA)", fresh_txt, "#dc2626" if breach else "#16a34a"),
-        ("OLA (owner)", ola_txt, "#0891b2"),
-        ("Downstream consumers", str(len(cons)), "#7c3aed"),
+        ("Freshness", fresh_txt, "#dc2626" if breach else "#16a34a"),
+        ("OLA", ola_txt, "#0891b2"),
     ])
-    st.markdown(f'**Dataset:** {name} ({data["datasets"][ds]["layer"]})   ·   **Blocker:** {inc["blocker"] or "—"}   ·   '
-                f'**Priority:** {inc["priority"]}')
-    con = next((c for c in data["contracts"] if c["dataset_id"] == ds), None)
-    if con:
-        st.markdown(f'**Data contract:** {con["name"]} {con["version"]} · owner {con["owner"]}')
-    if breach or _dq(data, ds):
+    st.caption(f'Blocker: {inc["blocker"] or "—"} · Priority: {inc["priority"]} · '
+               f'Dataset: {name} ({data["datasets"][ds]["layer"]})')
+    with st.expander("🧾 Record, sources & assumptions", expanded=False):
+        con = next((c for c in data["contracts"] if c["dataset_id"] == ds), None)
+        if con:
+            st.markdown(f'**Data contract:** {con["name"]} {con["version"]} · owner {con["owner"]}')
+        st.caption(f'Downstream consumers: {len(cons)}')
         st.caption("Detection is rule-based (freshness SLA, DQ thresholds, run status) — not autonomous/learned.")
     journey.render_verdict(journey.current_verdict(inc))
 
@@ -83,7 +83,10 @@ def hypotheses(inc, data):
         st.info("No failing run, DQ breach or freshness breach linked yet.")
         return hyps
     hyps = journey.rank(hyps)
-    viz.hypothesis_cards(hyps)
+    viz.hypothesis_cards(hyps[:2])
+    if len(hyps) > 2:
+        with st.expander(f"Show all {len(hyps)} hypotheses"):
+            viz.hypothesis_cards(hyps[2:])
     top = hyps[0]
     if top["status"] != "confirmed":
         c1, c2 = st.columns([1, 1])
@@ -107,7 +110,7 @@ def action_panel(inc, data):
                 unsafe_allow_html=True)
     st.caption("The outcome depends on the action chosen; verification is independent. Approval is enforced for "
                "high-risk actions.")
-    labels = [f'{o["id"]} · {o["label"]}' for o in DE.DOP_REMEDIATION]
+    labels = [f'{o["id"]} · {o["label"][:60]}{"…" if len(o["label"]) > 60 else ""}' for o in DE.DOP_REMEDIATION]
     sel = st.radio("Repair option", labels, key="dop_opt_" + inc["id"])
     opt = DE.DOP_REMEDIATION[labels.index(sel)]
     approved = True
@@ -135,7 +138,7 @@ def action_panel(inc, data):
 def verify_panel(inc, data):
     st.markdown("#### Verify — independent verification")
     rec = journey.resolution_record(inc["id"])
-    labels = [f'{o["id"]} · {o["label"]}' for o in DE.DOP_REMEDIATION]
+    labels = [f'{o["id"]} · {o["label"][:60]}{"…" if len(o["label"]) > 60 else ""}' for o in DE.DOP_REMEDIATION]
     sel = st.session_state.get("dop_opt_" + inc["id"], labels[0])
     opt = DE.DOP_REMEDIATION[labels.index(sel)] if sel in labels else DE.DOP_REMEDIATION[0]
     if rec and rec.get("checks"):
@@ -147,8 +150,7 @@ def verify_panel(inc, data):
         verdict = journey.verdict(rows, applied)
     journey.render_verification(rows, "Data-quality verification service")
     journey.render_verdict(verdict)
-    st.caption("Recovery is **simulated**; thresholds checked are shown above (freshness SLA, DQ rules, "
-               "downstream health).")
+    st.caption("Simulated checks.")
     a = DE.analytics(inc, data)
     a1, a2, a3, a4 = st.columns(4)
     a1.metric("Incident age", f'{a["incident_age_min"]} min')
@@ -179,7 +181,7 @@ def pipeline_view(inc, data):
         with st.expander("🔎 Detection", expanded=True):
             journey.render_detection(inc["id"], "Data observability")
         with st.expander("🕒 Operational timeline", expanded=False):
-            journey.render_timeline(inc["id"])
+            journey.render_timeline(inc["id"], limit=6)
         with st.expander("🔗 The pipeline story (lineage)", expanded=False):
             labels = {d: data["datasets"][d]["name"] for d in data["datasets"]}
             stale = tuple(d for d in data["datasets"] if _fresh(data, d)[1])

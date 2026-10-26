@@ -83,20 +83,21 @@ def context_header(inc, ctx):
     viz.fact_cards([
         ("Stage", journey.lifecycle_stage(inc), "#4f46e5"),
         ("Owner", inc["owner_team"], "#0d9488"),
-        ("SLA (customer)", sla_txt, "#d97706"),
-        ("OLA (owner team)", ola_txt, "#0891b2"),
-        ("Business KPI", (f'{k["metric"].replace("_"," ")} {k["current"]:.0f}{k["unit"]}' if k else "not mapped"),
-         "#7c3aed"),
+        ("SLA", sla_txt, "#d97706"),
+        ("OLA", ola_txt, "#0891b2"),
     ])
-    st.markdown(f'**Blocker:** {inc["blocker"] or "—"}   ·   **Business service:** '
-                f'{services[biz]["name"] if biz else "—"}   ·   **Priority:** {inc["priority"]}')
-    tk = next((t for t in ctx["tickets"] if t["incident_id"] == inc["id"]), None)
-    if tk:
-        st.markdown(f'**Jira defect:** {tk["id"]} ({tk["status"]}) · {tk["assignee"]}')
-    st.caption("**Sources:** ServiceNow (incident) · Jira (defect) · Observability · CMDB")
-    st.caption(f'SLA — {SLA_ASSUMPTION}')
-    if not k:
-        st.caption("No business KPI is mapped for this scenario — impact shown as service-level only.")
+    st.caption(f'Blocker: {inc["blocker"] or "—"} · Priority: {inc["priority"]} · '
+               f'Service: {services[biz]["name"] if biz else "—"}')
+    with st.expander("🧾 Record, sources & assumptions", expanded=False):
+        tk = next((t for t in ctx["tickets"] if t["incident_id"] == inc["id"]), None)
+        if tk:
+            st.markdown(f'**Jira defect:** {tk["id"]} ({tk["status"]}) · {tk["assignee"]}')
+        st.caption("Sources: ServiceNow · Jira · Observability · CMDB")
+        st.caption(f'SLA — {SLA_ASSUMPTION}')
+        if k:
+            st.caption(f'Business KPI: {k["metric"].replace("_"," ")} {k["current"]:.0f}{k["unit"]}')
+        else:
+            st.caption("No business KPI mapped — impact shown at service level.")
     journey.render_verdict(journey.current_verdict(inc))
 
 
@@ -119,7 +120,8 @@ def _carried(inc, ctx, biz, sla_txt):
 
 
 def hypotheses(inc, ctx):
-    hyps = journey.render_hypotheses(E.causes(inc, ctx["G"], ctx["changes"], ctx["metrics"], ctx["services"]))
+    hyps = journey.render_hypotheses(E.causes(inc, ctx["G"], ctx["changes"], ctx["metrics"], ctx["services"]),
+                                      limit=2)
     if not hyps:
         return hyps
     top = journey.rank(hyps)[0]
@@ -168,7 +170,7 @@ def action_panel(inc, ctx):
                 unsafe_allow_html=True)
     st.caption("The outcome depends on the action chosen; verification is independent. Approval is enforced for "
                "high-risk actions.")
-    labels = [f'{o["id"]} · {o["label"]}' for o in E.IT_REMEDIATION]
+    labels = [f'{o["id"]} · {o["label"][:60]}{"…" if len(o["label"]) > 60 else ""}' for o in E.IT_REMEDIATION]
     sel = st.radio("Remediation option", labels, key="it_opt_" + inc["id"])
     opt = E.IT_REMEDIATION[labels.index(sel)]
     approved = True
@@ -195,7 +197,7 @@ def action_panel(inc, ctx):
 def verify_panel(inc, ctx):
     st.markdown("#### Verify — independent verification")
     rec = journey.resolution_record(inc["id"])
-    labels = [f'{o["id"]} · {o["label"]}' for o in E.IT_REMEDIATION]
+    labels = [f'{o["id"]} · {o["label"][:60]}{"…" if len(o["label"]) > 60 else ""}' for o in E.IT_REMEDIATION]
     sel = st.session_state.get("it_opt_" + inc["id"], labels[0])
     opt = E.IT_REMEDIATION[labels.index(sel)] if sel in labels else E.IT_REMEDIATION[0]
     if rec and rec.get("checks"):
@@ -207,8 +209,7 @@ def verify_panel(inc, ctx):
         verdict = journey.verdict(rows, applied)
     journey.render_verification(rows, "SRE verification service")
     journey.render_verdict(verdict)
-    st.caption("Recovery is **simulated**; the thresholds checked are shown above (latency, error rate, DB "
-               "connections, business KPI).")
+    st.caption("Simulated checks.")
     journey.render_resolution(inc["id"], applied_any, _sla_detail(inc)[0], inc["owner_team"], verdict=verdict)
     if applied_any:
         journey.render_recovery_by_verdict(
@@ -233,7 +234,7 @@ def incident_view(inc, ctx):
         with st.expander("🔎 Detection", expanded=True):
             journey.render_detection(inc["id"], "Monitoring / SRE")
         with st.expander("🕒 Operational timeline", expanded=False):
-            journey.render_timeline(inc["id"])
+            journey.render_timeline(inc["id"], limit=6)
         with st.expander("🔗 The operational story", expanded=False):
             st.write(" → ".join(services[n]["name"] for n in E.dependency_paths(G, inc["service_id"])[0]))
             st.info(inc["summary"])
