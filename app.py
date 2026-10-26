@@ -469,5 +469,5 @@ elif nav == "Activity & audit":
     render_activity()
 
 st.divider()
-st.caption("Sample data · simulated actions · build v70 — proof of concept, not production. "
+st.caption("Sample data · simulated actions · build v71 — proof of concept, not production. "
            "See PROTOTYPE_NOTES.md for persistence limits.")

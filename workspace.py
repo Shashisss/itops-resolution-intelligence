@@ -25,12 +25,12 @@ def _lifecycle_clickable(lifecycle, stage_key, stage_panel):
     cols = st.columns(len(lifecycle))
     sel_key = f"lc_stage_{stage_key}"
     for col, (title, status, detail, ola) in zip(cols, lifecycle):
-        sym = _LC_SYM.get(status, "○")
-        col.button(f"{sym} {title}", key=f"lcb_{stage_key}_{title}", width="stretch",
+        icon = viz.STAGE_ICON.get(title, "⬜")
+        col.button(f"{icon} {title}", key=f"lcb_{stage_key}_{title}", width="stretch",
                    type=("primary" if status == "current" else "secondary"),
                    on_click=_toggle_stage, args=(sel_key, title))
-    st.caption("✔ done · ● active · ⏸ blocked · ✖ failed · ○ not started — click a stage to see what "
-               "happened, who collaborated, and the acceleration at that stage.")
+    st.caption("Each stage has its own colour; the **active** stage is highlighted. Click a stage to see "
+               "what happened, who collaborated, and the acceleration at that stage.")
 
     sel = st.session_state.get(sel_key)
     if sel:
@@ -76,16 +76,11 @@ def render_workspace(hero_kwargs, lifecycle, edges, tabs, rail, thread_note=None
     if edges:
         with st.expander("🔗 Cross-domain resolution thread", expanded=bool(corr)):
             viz.thread_edges(edges)
-            st.caption(thread_note or "**Observed** = a recorded signal/relationship. **Inferred** = a "
-                                      "hypothesis to confirm. Multiple contributing causes are allowed.")
-
-    if collab_banner or corr:
-        with st.expander("🤝 Collaboration & handoffs", expanded=False):
-            if collab_banner:
-                collab_banner()
             if corr:
                 st.caption(f'🔗 Thread links **{corr["other_domain"]} {corr["other_id"]}** · shared cause '
                            f'**{corr["shared_cause"]}**.')
+            st.caption(thread_note or "**Observed** = a recorded signal/relationship. **Inferred** = a "
+                                      "hypothesis to confirm. Multiple contributing causes are allowed.")
 
     main, r = st.columns([2.4, 1])
     with main:
