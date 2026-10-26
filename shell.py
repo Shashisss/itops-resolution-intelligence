@@ -160,14 +160,16 @@ def sidebar(default_role="CSM", stats=None):
 
 def topbar(it_inc, dop_inc, services, datasets, pipelines, role):
     """Global controls: one search that drives the board, plus notifications."""
-    c1, c2 = st.columns([4.6, 1])
+    c1, c2 = st.columns([4.6, 1], vertical_alignment="bottom")
     with c1:
-        gs = st.text_input("Search", key="global_search", label_visibility="collapsed",
-                           placeholder="Search incidents, services, datasets, pipelines, owners — press Enter")
+        gs = st.text_input("Search everything", key="global_search",
+                           placeholder="incident id, title, owner, service, dataset or pipeline — then Enter")
     with c2:
         unread = collab.unread_count(role)
-        box = st.popover(f"Notifications · {unread}") if hasattr(st, "popover") else st.expander(f"Notifications · {unread}")
-        with box:
+        if st.button(f"Notifications · {unread}", key="notif_toggle", width="stretch"):
+            st.session_state["show_notifs"] = not st.session_state.get("show_notifs", False)
+    if st.session_state.get("show_notifs"):
+        with st.container(border=True):
             _notif_list(role)
 
     if not gs:
