@@ -193,8 +193,8 @@ def it_command(inc, ctx):
 
     hero_kwargs = dict(
         priority=inc["priority"], inc_id=inc["id"], title=inc["title"],
-        meta=(f'Service {services[inc["service_id"]]["name"]} · Business impact {bizname} · '
-              f'Owner {inc["owner_team"]} · Stage {journey.lifecycle_stage(inc)} · Elapsed {int(elapsed)}m'),
+        meta=(f'{services[inc["service_id"]]["name"]} · impact {bizname} · '
+              f'owner {inc["owner_team"]} · stage {journey.lifecycle_stage(inc)}'),
         sla_text=sla_txt, verdict=verdict,
         chips=(["IT Ops"] + (["🔗 Cross-Domain"] if corr else []) + ["ServiceNow · Jira"]))
     lifecycle = _thread_spine(inc, deleg, confirmed, verdict)
@@ -213,7 +213,8 @@ def it_command(inc, ctx):
                                "incident onset", inc["created_at"].split("T")[-1][:5])
         st.caption(f'Affected service: {services[inc["service_id"]]["name"]} '
                    f'({services[inc["service_id"]]["type"].replace("_", " ")})')
-        viz.value_strip(IMPACT_ROWS)
+        with st.expander("📈 Impact & value (illustrative)", expanded=False):
+            viz.value_strip(IMPACT_ROWS)
 
     def investigation():
         P.hypotheses(inc, ctx)
@@ -326,8 +327,8 @@ def dop_command(inc, data):
 
     hero_kwargs = dict(
         priority=inc["priority"], inc_id=inc["id"], title=inc["title"],
-        meta=(f'Pipeline {inc["pipeline_id"]} · Dataset {data["datasets"][ds]["name"]} · '
-              f'Owner {inc["owner_team"]} · Stage {journey.lifecycle_stage(inc)} · Elapsed {elapsed}m'),
+        meta=(f'{data["datasets"][ds]["name"]} · pipeline {inc["pipeline_id"]} · '
+              f'owner {inc["owner_team"]} · stage {journey.lifecycle_stage(inc)}'),
         sla_text=fresh_txt, verdict=verdict,
         chips=(["DataOps"] + (["🔗 Cross-Domain"] if corr else []) + ["Pipeline failure", "Lineage + DQ"]))
     lifecycle = _thread_spine(inc, deleg, confirmed, verdict)
@@ -343,7 +344,8 @@ def dop_command(inc, data):
         ])
         st.info(inc["summary"])
         st.caption(f'Downstream datasets: {", ".join(data["datasets"][d]["name"] for d in downs) or "—"}')
-        viz.value_strip(IMPACT_ROWS)
+        with st.expander("📈 Impact & value (illustrative)", expanded=False):
+            viz.value_strip(IMPACT_ROWS)
 
     def investigation():
         DV.hypotheses(inc, data)

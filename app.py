@@ -76,10 +76,8 @@ _dop_data = DE.load()
 _dop_inc = _dop_data["incidents"]
 # ---- left sidebar navigation (five sections) ----
 nav, you_role = shell.sidebar("CSM")
-# ---- global controls + ambient live strip ----
+# ---- global controls ----
 shell.topbar(_it_inc, _dop_inc, _sv, _dop_data["datasets"], _dop_data["pipelines"], you_role)
-with st.expander("📡 Live — all domains", expanded=False):
-    viz.ambient_strip(realtime.recent(8))
 
 
 def _it_ctx():
@@ -321,7 +319,7 @@ def _render_incident_detail(dom, ref, you_role):
             personas.incident_view(inc, ctx)
 
 
-@st.dialog("🧭 Incident details", width="large",
+@st.dialog("🧭 Incident details", width="medium",
            on_dismiss=lambda: st.session_state.pop("open_incident", None))
 def _incident_dialog(dom, ref, you_role):
     """Modal incident workspace. The board behind it never moves; sections are collapsible.
@@ -334,13 +332,19 @@ def _incident_dialog(dom, ref, you_role):
 
 
 def render_incidents(you_role):
-    """Incident-first page: short collapsible sections; drill down from there."""
-    with st.expander("⚡ Needs attention", expanded=True):
-        _needs_attention_cards()
-    with st.expander("🔗 Cross-domain resolution threads", expanded=False):
-        _thread_cards("inc")
-    with st.expander("🕒 Recent activity", expanded=False):
-        _recent_activity()
+    """Incident-first page: short collapsible sections on the left, a compact rail on the right."""
+    main, rail = st.columns([3.4, 1])
+    with main:
+        with st.expander("⚡ Needs attention", expanded=True):
+            _needs_attention_cards()
+        with st.expander("🔗 Cross-domain resolution threads", expanded=False):
+            _thread_cards("inc")
+    with rail:
+        with st.expander("📡 Live events", expanded=False):
+            viz.feed(realtime.recent(8))
+            st.caption("Simulated.")
+        with st.expander("🕒 Recent activity", expanded=False):
+            _recent_activity(n=8)
     with st.expander("▤ Incidents & resolution threads", expanded=True):
         render_board()
     sel = st.session_state.get("open_incident")
@@ -465,5 +469,5 @@ elif nav == "Activity & audit":
     render_activity()
 
 st.divider()
-st.caption("Sample data · simulated actions · build v68 — proof of concept, not production. "
+st.caption("Sample data · simulated actions · build v69 — proof of concept, not production. "
            "See PROTOTYPE_NOTES.md for persistence limits.")
