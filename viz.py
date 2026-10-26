@@ -157,6 +157,42 @@ div[class*="st-key-boardcard-"] button p,div[class*="st-key-attn-"] button p{lin
 .ri-chartnote{font-size:11.5px;color:#64748b;margin:-2px 0 10px}
 /* section headings: no decorative emoji, tighter rhythm (v76) */
 .ri-sect{font-size:13px;font-weight:800;color:#0f172a;letter-spacing:.01em;margin:6px 0 6px}
+/* ---- v77: page header, breadcrumb, participants, sections ---- */
+.ri-phead{padding:0 0 2px}
+.ri-phead .t{font-size:28px;font-weight:800;letter-spacing:-.02em;color:#0f172a;line-height:1.15}
+.ri-phead .s{font-size:13.5px;color:#64748b;margin-top:3px}
+.ri-phead .s b{color:#334155}
+.ri-phead .t.sid{font-size:21px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:-.01em}
+.ri-participants{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:2px 0 10px}
+.ri-person{display:inline-flex;align-items:center;gap:7px;background:#fff;border:1px solid #e5e7eb;
+  border-radius:999px;padding:3px 10px 3px 3px;font-size:12px;color:#334155}
+.ri-person b{font-weight:650}
+.ri-avatar{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;
+  border-radius:50%;background:#eef2ff;color:#4338ca;font-size:10px;font-weight:800;letter-spacing:.02em}
+.ri-person:before{content:"";width:22px;height:22px;border-radius:50%;background:#eef2ff;display:none}
+.ri-wait{margin-left:4px;font-size:11.5px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;
+  border-radius:999px;padding:3px 9px;font-weight:650}
+.ri-shead{display:flex;align-items:baseline;gap:10px;margin:14px 0 6px}
+.ri-shead .t{font-size:15.5px;font-weight:750;color:#0f172a;letter-spacing:-.01em}
+.ri-hint{font-size:12px;color:#64748b}
+.ri-ask{display:flex;gap:10px;align-items:flex-start;border:1px solid #e5e7eb;border-left:4px solid #4f46e5;
+  border-radius:10px;padding:9px 12px;margin:6px 0;background:#fff}
+.ri-ask.done{border-left-color:#16a34a;background:#f8fafc;opacity:.85}
+.ri-ask .who{font-weight:700;color:#0f172a;font-size:12.5px}
+.ri-ask .what{font-size:12.5px;color:#334155}
+.ri-ask .meta{font-size:11px;color:#64748b;margin-top:2px}
+div[class*="st-key-nav_"] button{justify-content:flex-start!important;font-weight:600!important}
+.ri-sidecounts{display:flex;gap:10px;flex-wrap:wrap;font-size:11.5px;color:#64748b;margin:-2px 0 10px}
+.ri-sidecounts b{color:#0f172a;font-weight:800}
+/* --- cards: the label wrapper Streamlit adds must span the row, not centre itself (v77) --- */
+div[class*="st-key-boardcard-"] button>div,
+div[class*="st-key-attn-"] button>div{width:100%!important;justify-content:flex-start!important}
+div[class*="st-key-boardcard-"] button .stMarkdownEllipsis,
+div[class*="st-key-attn-"] button .stMarkdownEllipsis{width:100%!important;text-align:left!important;
+  overflow:visible!important;text-overflow:clip!important;white-space:normal!important}
+div[class*="st-key-boardcard-"] button .stMarkdownEllipsis p,
+div[class*="st-key-attn-"] button .stMarkdownEllipsis p{width:100%!important;text-align:left!important}
+div[class*="st-key-nav_"] button p{font-size:13.5px!important}
 </style>
 """
 
@@ -689,3 +725,54 @@ def chart_lines(df, xf, yf, cf, *, sort=None, height=250, colors=(BASE_C, LIVE_C
         color=alt.Color(f"{cf}:N", legend=alt.Legend(title=None), scale=alt.Scale(range=list(colors))),
         tooltip=[alt.Tooltip(f"{xf}:N"), alt.Tooltip(f"{cf}:N"), alt.Tooltip(f"{yf}:Q")])
     return chart_style(chart, height)
+
+
+# ------------------------------------------------------------------ shell + collab UI (v77)
+def page_head(title, subtitle=None, right=None):
+    """Consistent page header: title + one-line purpose, with an optional right-hand action row."""
+    c1, c2 = st.columns([5.2, 1.8], vertical_alignment="bottom")
+    with c1:
+        st.markdown(f'<div class="ri-phead"><div class="t">{title}</div>'
+                    + (f'<div class="s">{subtitle}</div>' if subtitle else "")
+                    + "</div>", unsafe_allow_html=True)
+    with c2:
+        if right:
+            right()
+
+
+def crumb(text, on_click, args=()):
+    """Small back-link above a workspace title."""
+    st.button(f"← {text}", key=f"crumb_{abs(hash(text)) % 10**8}", on_click=on_click, args=args,
+              type="tertiary")
+
+
+def collab_chips(participants, waiting=None, limit=4):
+    """Who is on the incident, and what the team is currently waiting on."""
+    shown = list(participants)[:limit]
+    chips = "".join(f'<span class="ri-person"><span class="ri-avatar">{viz_initials(p)}</span>'
+                    f'<b>{p}</b></span>' for p in shown)
+    extra = len(participants) - len(shown)
+    if extra > 0:
+        chips += f'<span class="ri-person"><b>+{extra}</b></span>'
+    wait = f'<span class="ri-wait">{waiting}</span>' if waiting else ""
+    st.markdown(f'<div class="ri-participants">{chips}{wait}</div>', unsafe_allow_html=True)
+
+
+def viz_initials(name):
+    """Two-letter monogram for a team or a person: 'Platform Engineering' → PE, 'Data observability' → DO."""
+    words = [w for w in str(name).replace("(", " ").replace(")", " ").split() if w]
+    if len(words) >= 2:
+        return (words[0][0] + words[1][0]).upper()
+    return (words[0][:2] if words else "•").upper()
+
+
+def section(title, hint=None, right=None):
+    """Uniform section heading so every block reads the same — no ad-hoc #### levels."""
+    c1, c2 = st.columns([5, 1.4], vertical_alignment="center")
+    with c1:
+        extra = f'<span class="ri-hint">{hint}</span>' if hint else ""
+        st.markdown(f'<div class="ri-shead"><span class="t">{title}</span>{extra}</div>',
+                    unsafe_allow_html=True)
+    with c2:
+        if right:
+            right()

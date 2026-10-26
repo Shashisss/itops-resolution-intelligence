@@ -127,11 +127,16 @@ def _demo_menu():
         _reset_control()
 
 
-def sidebar(default_role="CSM"):
-    """Left sidebar: brand, five sections (icon + description), persona, demo menu."""
+def sidebar(default_role="CSM", stats=None):
+    """Left sidebar: brand, live counts, sections, persona, demo menu."""
     st.sidebar.markdown(
         '<div class="ri-sidebrand">Resolution Intelligence<br>'
         '<span>Unified IT Ops + DataOps</span></div>', unsafe_allow_html=True)
+    if stats:
+        st.sidebar.markdown(
+            f'<div class="ri-sidecounts"><span><b>{stats["open"]}</b> open</span>'
+            f'<span><b>{stats["cross"]}</b> cross-domain</span>'
+            f'<span><b>{stats["total"]}</b> total</span></div>', unsafe_allow_html=True)
     nav = st.session_state.get("nav", "Incidents")
     if nav not in NAV:
         nav = "Incidents"
