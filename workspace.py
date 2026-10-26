@@ -68,7 +68,8 @@ def render_workspace(hero_kwargs, lifecycle, edges, tabs, rail, thread_note=None
             viz.thread_spine(lifecycle)
 
     if next_step_banner:
-        next_step_banner()
+        with st.expander("👉 Recommended next step", expanded=True):
+            next_step_banner()
 
     # The cross-domain resolution thread is the product's focal object: prominent (open) when the
     # incident is cross-domain; collapsed when it is a single-domain incident.
@@ -88,9 +89,8 @@ def render_workspace(hero_kwargs, lifecycle, edges, tabs, rail, thread_note=None
 
     main, r = st.columns([2.4, 1])
     with main:
-        tab_objs = st.tabs(list(tabs.keys()))
-        for tab, fn in zip(tab_objs, tabs.values()):
-            with tab:
+        for label, fn in tabs.items():
+            with st.expander(label, expanded=(label == "Overview")):
                 fn()
     with r:
         rail()

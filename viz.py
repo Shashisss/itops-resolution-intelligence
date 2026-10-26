@@ -422,7 +422,7 @@ def collab_strip(owner, next_actor, stats):
 
 
 def next_step(action, owner, gate, why=None, target=None, blast=None, risk=None):
-    """Prominent 'recommended next step' banner — action, owner, gate, and why/target/blast/risk."""
+    """Compact next-step card (the section label is provided by the collapsible around it)."""
     extra = " · ".join(x for x in (
         f"why: {why}" if why else "",
         f"target: {target}" if target else "",
@@ -430,12 +430,11 @@ def next_step(action, owner, gate, why=None, target=None, blast=None, risk=None)
         f"risk: {risk}" if risk else "",
     ) if x)
     st.markdown(
-        f'<div class="ri-card" style="border-left:6px solid #4f46e5;background:#eef2ff">'
-        f'<div style="font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.04em">'
-        f'Recommended next step</div>'
-        f'<div style="font-weight:700;color:#0f172a;margin:3px 0;font-size:14px">{action}</div>'
-        f'<div style="font-size:12px;color:#334155">owner: <b>{owner}</b> · gate: <b>{gate}</b></div>'
-        + (f'<div style="font-size:11.5px;color:#64748b;margin-top:3px">{extra}</div>' if extra else "")
+        f'<div class="ri-card" style="border-left:5px solid #4f46e5;background:#eef2ff;padding:9px 12px">'
+        f'<div style="font-weight:700;color:#0f172a;font-size:13.5px">{action}</div>'
+        f'<div style="font-size:11.5px;color:#334155;margin-top:2px">owner: <b>{owner}</b> · '
+        f'gate: <b>{gate}</b></div>'
+        + (f'<div style="font-size:11px;color:#64748b;margin-top:2px">{extra}</div>' if extra else "")
         + '</div>', unsafe_allow_html=True)
 
 
@@ -535,6 +534,8 @@ def ambient_strip(events):
 
 SEV_LABEL = {"P1": ("🔴", "Critical"), "P2": ("🟠", "Major"), "P3": ("🔵", "Minor"),
              "P4": ("⚪", "Low")}
+STAGE_ICON = {"Detect": "🟦", "Correlate": "🟪", "Coordinate": "🟨", "Act": "🟧",
+              "Verify": "🟩", "Close": "⬛"}
 
 
 def board_card(inc, domain, verdict, on_click, args, stage=None, sla=None, open_=False, linked=False,
@@ -549,8 +550,8 @@ def board_card(inc, domain, verdict, on_click, args, stage=None, sla=None, open_
     link = "🔗 " if linked else ""
     icon, sev = SEV_LABEL.get(pri, ("🔵", "Minor"))
     line1 = f'{mark}{link}**{inc["id"]}**  {inc["title"]}'
-    line2 = (f'{icon} {sev} · {status} · {domain} · {stage or "—"} · '
-             f'⏱ {sla or "—"} · {owner}')
+    stage_txt = f'{STAGE_ICON.get(stage, "⬜")} {stage}' if stage else "—"
+    line2 = f'{icon} {sev} · {status} · {stage_txt} · ⏱ {sla or "—"} · {owner}'
     st.button(f'{line1}  \n{line2}', key=f'{prefix}-{pri}-{inc["id"]}', width="stretch",
               on_click=on_click, args=args)
 
