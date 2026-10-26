@@ -48,7 +48,10 @@ div[data-testid="stVerticalBlock"]{gap:0.5rem}
 .ri-topbrand{font-weight:800;font-size:19px;color:#0f172a;letter-spacing:-.01em;margin:0 0 4px}
 .ri-topbrand span{color:#64748b;font-weight:600;font-size:12.5px}
 .ri-sidebrand{font-weight:800;font-size:17px;color:#0f172a;line-height:1.25;margin:0 0 10px}
-.ri-sidebrand span{font-weight:600;font-size:11.5px;color:#64748b}
+.ri-sidebrand span{font-weight:600;font-size:11.5px;color:#475569}
+.ri-kpi{min-width:0}
+.ri-kpi .v{overflow-wrap:break-word!important;word-break:normal!important;hyphens:none!important}
+.ri-kpi .s{overflow-wrap:break-word!important;word-break:normal!important;hyphens:none!important}
 /* All-incidents board: each incident is ONE clickable card (a full-width keyed button). */
 div[class*="st-key-boardcard-"] button{width:100%!important;text-align:left!important;
   justify-content:flex-start!important;height:auto!important;white-space:normal!important;
@@ -163,7 +166,7 @@ def verdict_badge(state):
                 unsafe_allow_html=True)
 
 
-RESOLUTION_FLOW = ["Detect", "Diagnose", "Decide", "Act", "Verify"]
+RESOLUTION_FLOW = ["Detect", "Correlate", "Coordinate", "Act", "Verify", "Close"]
 
 
 def resolution_flow(current=None):
@@ -454,7 +457,7 @@ def next_step(action, owner, gate, why=None, target=None, blast=None, risk=None)
         + '</div>', unsafe_allow_html=True)
 
 
-def hero(priority, inc_id, title, meta, sla_text, verdict, chips):
+def hero(priority, inc_id, title, meta, sla_text, verdict, chips, sla_label="SLA remaining"):
     chip_html = " ".join(f'<span class="ri-tag" style="background:#1e293b;border:1px solid #334155">{c}</span>'
                          for c in chips)
     vcol = {"Verified": "#16a34a", "Mitigated": "#d97706", "Recovery failed": "#dc2626"}.get(verdict, "#2563eb")
@@ -465,7 +468,7 @@ def hero(priority, inc_id, title, meta, sla_text, verdict, chips):
         f'<div class="id">{inc_id} · {title}</div>'
         f'<div class="meta">{meta}</div></div>'
         f'<div style="text-align:right;white-space:nowrap">'
-        f'<div class="meta">SLA remaining</div>'
+        f'<div class="meta">{sla_label}</div>'
         f'<div style="font-size:26px;font-weight:800;color:#fca5a5">{sla_text}</div>'
         f'<div style="margin-top:6px">{chip_html}</div></div></div></div>',
         unsafe_allow_html=True)
@@ -567,8 +570,9 @@ def board_card(inc, domain, verdict, on_click, args, stage=None, sla=None, open_
     icon, sev = SEV_LABEL.get(pri, ("🔵", "Minor"))
     line1 = f'{mark}{link}**{inc["id"]}**  {inc["title"]}'
     stage_txt = f'{STAGE_ICON.get(stage, "⬜")} {stage}' if stage else "—"
-    line2 = f'{icon} {sev} · {status} · {stage_txt} · ⏱ {sla or "—"} · {owner}'
-    st.button(f'{line1}  \n{line2}', key=f'{prefix}-{pri}-{inc["id"]}', width="stretch",
+    line2 = f'{icon} {sev} · {status} · {stage_txt}'
+    line3 = f'⏱ {sla or "—"} · {owner}'
+    st.button(f'{line1}  \n{line2}  \n{line3}', key=f'{prefix}-{pri}-{inc["id"]}', width="stretch",
               on_click=on_click, args=args)
 
 

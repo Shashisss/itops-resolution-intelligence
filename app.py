@@ -54,7 +54,7 @@ def _needs_seed():
             con.execute(f"SELECT 1 FROM {t} LIMIT 1")
         v = con.execute("SELECT value FROM meta WHERE key='seed_version'").fetchone()
         con.close()
-        return not (v and v[0] == "v62")
+        return not (v and v[0] == "v75")
     except Exception:
         return True
 
@@ -62,7 +62,7 @@ def _needs_seed():
 if _needs_seed():
     import seed  # noqa: F401
 
-st.set_page_config(page_title="Resolution Intelligence — POC", layout="wide")
+st.set_page_config(page_title="Resolution Intelligence — POC", page_icon="🧭", layout="wide")
 viz.inject_css()
 st.title("Resolution Intelligence")
 st.caption("Operational intelligence across IT Ops and DataOps — one governed platform")
@@ -256,6 +256,8 @@ def render_board():
     if view == "Table":
         df = pd.DataFrame([{
             "ID": r["inc"]["id"], "Cross-domain": "🔗" if linked_map[r["inc"]["id"]] else "—",
+            "Severity": f'{viz.SEV_LABEL.get(r["inc"].get("priority"), ("", "Minor"))[1]}',
+            "Priority": r["inc"].get("priority"),
             "Domain": r["domain"], "Title": r["inc"]["title"],
             "Status": (r["inc"].get("status") or "").title(), "Verdict": r["verdict"],
             "Stage": journey.lifecycle_stage(r["inc"]), "Owner": r["inc"].get("owner_team"),
@@ -377,7 +379,8 @@ def render_analytics():
         oc = ["Investigating", "Mitigated", "Verified", "Recovery failed"]
         df = pd.DataFrame({"Outcome": oc, "Incidents": [verdicts.count(v) for v in oc]}).set_index("Outcome")
         st.bar_chart(df)
-        st.caption("**Live data** — authoritative verdict counts.")
+        st.dataframe(df.reset_index(), hide_index=True, width="stretch")
+        st.caption("**Live data** — authoritative verdict counts (zeros shown in the table).")
     with right:
         st.markdown("#### Incidents by domain")
         dom = pd.DataFrame({
@@ -412,7 +415,10 @@ def render_analytics():
     st.markdown("#### SLA / OLA breaches per month")
     br = pd.DataFrame({"Month": ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
                        "Breaches": [6, 6, 5, 4, 3, 2]}).set_index("Month")
+    br.index = pd.CategoricalIndex(br.index, categories=["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+                                   ordered=True)
     st.bar_chart(br)
+    st.dataframe(br.reset_index(), hide_index=True, width="stretch")
     st.caption("**Illustrative** simulated totals.")
 
 
@@ -469,5 +475,5 @@ elif nav == "Activity & audit":
     render_activity()
 
 st.divider()
-st.caption("Sample data · simulated actions · build v74 — proof of concept, not production. "
+st.caption("Sample data · simulated actions · build v75 — proof of concept, not production. "
            "See PROTOTYPE_NOTES.md for persistence limits.")

@@ -99,27 +99,29 @@ def _stage_panel(inc, rec, stage):
     st.caption(f'MTTR {total_base}→{total_obs}m · stage {obs}m')
 
 
-def _rail(inc, rec):
-    """Right-hand rail — owner, next actor, quick actions and recent activity only. The full team,
-    handoffs and comments live in the **Collaboration** tab; the history is in **Timeline** — not
-    duplicated here."""
-    st.markdown("#### 👤 Owner & next actor")
-    st.markdown(f'- **{inc["owner_team"]}** — owner')
-    for a in journey.actors(rec):
-        st.markdown(f'- {a} — next actor')
-    st.markdown("#### ⚡ Quick actions")
-    if st.button("Notify CSM (simulated)", key="qa_csm_" + inc["id"]):
-        collab.add_comment(inc["id"], "Recommendation engine", "System",
-                           "[Demo] Logged a CSM notification locally — no external message was sent.",
-                           channel="Email")
-        st.session_state["flash"] = "CSM notification logged (simulated, local only)."
-        st.rerun()
-    if st.button("Post status update (simulated)", key="qa_upd_" + inc["id"]):
-        collab.add_comment(inc["id"], "Recommendation engine", "System",
-                           "[Demo] Added a status update to the incident thread (local only).",
-                           channel="App")
-        st.session_state["flash"] = "Status update posted to the thread (simulated, local only)."
-        st.rerun()
+def _rail(inc, rec, closed=False):
+    """Right rail — owner/next actor + quick actions for open incidents; read-only when closed."""
+    if closed:
+        st.markdown("#### 🏁 Closed — read-only")
+        st.caption("Historical record. Post-incident: link a problem or export the verification ledger.")
+    else:
+        st.markdown("#### 👤 Owner & next actor")
+        st.markdown(f'- **{inc["owner_team"]}** — owner')
+        for a in journey.actors(rec):
+            st.markdown(f'- {a} — next actor')
+        st.markdown("#### ⚡ Quick actions")
+        if st.button("Notify CSM (simulated)", key="qa_csm_" + inc["id"]):
+            collab.add_comment(inc["id"], "Recommendation engine", "System",
+                               "[Demo] Logged a CSM notification locally — no external message was sent.",
+                               channel="Email")
+            st.session_state["flash"] = "CSM notification logged (simulated, local only)."
+            st.rerun()
+        if st.button("Post status update (simulated)", key="qa_upd_" + inc["id"]):
+            collab.add_comment(inc["id"], "Recommendation engine", "System",
+                               "[Demo] Added a status update to the incident thread (local only).",
+                               channel="App")
+            st.session_state["flash"] = "Status update posted to the thread (simulated, local only)."
+            st.rerun()
     with st.expander("🕒 Recent activity", expanded=False):
         cms = collab.comments(inc["id"])[-6:]
         if not cms:
@@ -196,6 +198,9 @@ def it_command(inc, ctx):
     rec = E.recommend(inc, causes)
     sla_txt, rem, target, elapsed = P._sla_detail(inc)
     verdict = journey.current_verdict(inc)
+    closed = (inc.get("status") or "").lower() == "closed"
+    if closed:
+        sla_txt = "Closed"
     deleg = bool(collab.delegations(inc["id"]))
     confirmed = any(c["status"] == "confirmed" for c in causes)
     corr = journey.correlation_for(inc["id"])
@@ -211,6 +216,7 @@ def it_command(inc, ctx):
         meta=(f'{services[inc["service_id"]]["name"]} · impact {bizname} · '
               f'owner {inc["owner_team"]} · stage {journey.lifecycle_stage(inc)}'),
         sla_text=sla_txt, verdict=verdict,
+        sla_label=("Status" if closed else "SLA remaining"),
         chips=(["IT Ops"] + (["🔗 Cross-Domain"] if corr else []) + ["ServiceNow · Jira"]))
     lifecycle = _thread_spine(inc, deleg, confirmed, verdict)
     edges = journey.thread_edges_for(inc["id"])
@@ -308,10 +314,10 @@ def it_command(inc, ctx):
         hero_kwargs, lifecycle, edges,
         {"Overview": overview, "Investigation": investigation, "Impact": impact,
          "Collaboration": collaboration, "Verification": verification, "Timeline": timeline},
-        rail=lambda: _rail(inc, rec), corr=corr,
-        next_step_banner=lambda: viz.next_step(rec["action"], rec["actor"], rec["mode"],
-                                               why=_why, target=_target, blast=_blast,
-                                               risk=rec.get("risk")),
+        rail=lambda: _rail(inc, rec, closed), corr=corr,
+        next_step_banner=(None if closed else (lambda: viz.next_step(
+            rec["action"], rec["actor"], rec["mode"], why=_why, target=_target, blast=_blast,
+            risk=rec.get("risk")))),
         stage_key=inc["id"], stage_panel=lambda stage: _stage_panel(inc, rec, stage),
         collab_banner=(lambda: viz.collab_strip(inc["owner_team"],
                                                (journey.actors(rec) or ["—"])[0],
@@ -332,6 +338,7 @@ def dop_command(inc, data):
     corr = journey.correlation_for(inc["id"])
     refs = [inc["id"]] + ([corr["other_id"]] if corr else [])
     downs, cons = DE.impact(ds, data)
+    closed = (inc.get("status") or "").lower() == "closed"
     _why = (causes[0].get("label") or causes[0].get("type")) if causes else "evidence insufficient"
     _target = data["datasets"][ds]["name"]
     _blast = f"{len(cons)} consumers"
@@ -344,7 +351,8 @@ def dop_command(inc, data):
         priority=inc["priority"], inc_id=inc["id"], title=inc["title"],
         meta=(f'{data["datasets"][ds]["name"]} · pipeline {inc["pipeline_id"]} · '
               f'owner {inc["owner_team"]} · stage {journey.lifecycle_stage(inc)}'),
-        sla_text=fresh_txt, verdict=verdict,
+        sla_text=("Closed" if closed else fresh_txt), verdict=verdict,
+        sla_label=("Status" if closed else "Freshness SLA"),
         chips=(["DataOps"] + (["🔗 Cross-Domain"] if corr else []) + ["Pipeline failure", "Lineage + DQ"]))
     lifecycle = _thread_spine(inc, deleg, confirmed, verdict)
     edges = journey.thread_edges_for(inc["id"])
@@ -450,10 +458,10 @@ def dop_command(inc, data):
         hero_kwargs, lifecycle, edges,
         {"Overview": overview, "Investigation": investigation, "Impact": impact,
          "Collaboration": collaboration, "Verification": verification, "Timeline": timeline},
-        rail=lambda: _rail(inc, rec), corr=corr,
-        next_step_banner=lambda: viz.next_step(rec["action"], rec["actor"], rec["mode"],
-                                               why=_why, target=_target, blast=_blast,
-                                               risk=rec.get("risk")),
+        rail=lambda: _rail(inc, rec, closed), corr=corr,
+        next_step_banner=(None if closed else (lambda: viz.next_step(
+            rec["action"], rec["actor"], rec["mode"], why=_why, target=_target, blast=_blast,
+            risk=rec.get("risk")))),
         stage_key=inc["id"], stage_panel=lambda stage: _stage_panel(inc, rec, stage),
         collab_banner=(lambda: viz.collab_strip(inc["owner_team"],
                                                (journey.actors(rec) or ["—"])[0],

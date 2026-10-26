@@ -225,10 +225,12 @@ def resolution_record(ref_id):
 
 
 def current_verdict(inc):
-    """The verdict every view must agree on: persisted record first, then session."""
+    """The verdict every view must agree on: persisted record → closed (Verified) → session."""
     rec = resolution_record(inc["id"])
     if rec and rec.get("verdict"):
         return rec["verdict"]
+    if (inc.get("status") or "").lower() == "closed":
+        return "Verified"
     return st.session_state.get(f'verdict_{inc["id"]}', "Investigating")
 
 

@@ -13,17 +13,19 @@ import collab
 PERSONAS = ["Data Engineer", "Data Owner", "Platform Engineer", "Data Consumer"]
 DOP_STEP_HELP = {
     "Detect": "What failed and when — the failing pipeline run, freshness / DQ alerts, and the lineage of affected datasets.",
-    "Diagnose": "Ranked pipeline root-cause hypotheses (schema drift, data quality, backlog) with evidence and confidence.",
-    "Decide": "The recommended repair, the next responsible engineer, and the data-product SLA / OLA at risk.",
+    "Correlate": "Ranked pipeline root-cause hypotheses (schema drift, data quality, backlog) with evidence and confidence.",
+    "Coordinate": "The recommended repair, the next responsible engineer, and the data-product SLA / OLA at risk.",
     "Act": "Run the chosen repair (simulated) — production data changes require human approval.",
     "Verify": "An independent re-check of freshness, DQ and downstream health → Verified / Mitigated / Recovery failed.",
+    "Close": "Closure record — only when independent verification passed.",
 }
 DOP_HANDOFFS = {
     "Detect": "Data observability → Data Engineer  (failing run + freshness/DQ alerts detected)  ·  OLA 5m",
-    "Diagnose": "Data Engineer → Data Owner  (root-cause context shared)  ·  OLA 15m",
-    "Decide": "Data Engineer + Data Owner  (repair recommendation and ownership)  ·  OLA 15m",
+    "Correlate": "Data Engineer → Data Owner  (root-cause context shared)  ·  OLA 15m",
+    "Coordinate": "Data Engineer + Data Owner  (repair recommendation and ownership)  ·  OLA 15m",
     "Act": "Data Owner → Data Engineer / Platform Engineer  (execution under the approval gate)  ·  OLA 30m",
     "Verify": "Verification service → Data Owner sign-off → Data Consumer update  ·  OLA 15m",
+    "Close": "Data Owner → Data Consumer  (verified closure + post-incident notes)",
 }
 
 
@@ -203,9 +205,19 @@ def pipeline_view(inc, data):
             viz.rec_card(rec["action"], rec["risk"], rec["mode"], journey.actors(rec))
             journey.engage_block(inc["id"], rec["action"], journey.actors(rec))
 
+    def close():
+        with st.expander("🏁 Closure record", expanded=True):
+            rec = journey.resolution_record(inc["id"])
+            applied_any = bool(rec and rec.get("checks")) or bool(
+                st.session_state.get(f'dop_opt_applied_{inc["id"]}'))
+            fresh_txt0, _, _, _ = _fresh(data, inc["dataset_id"])
+            journey.render_resolution(inc["id"], applied_any, f'freshness {fresh_txt0}',
+                                      inc["owner_team"], verdict=journey.current_verdict(inc))
+
     journey.wizard("dop_step_" + inc["id"], viz.RESOLUTION_FLOW,
-                   {"Detect": detect, "Diagnose": diagnose, "Decide": decide,
-                    "Act": lambda: action_panel(inc, data), "Verify": lambda: verify_panel(inc, data)},
+                   {"Detect": detect, "Correlate": diagnose, "Coordinate": decide,
+                    "Act": lambda: action_panel(inc, data), "Verify": lambda: verify_panel(inc, data),
+                    "Close": close},
                    default=0, help=DOP_STEP_HELP, handoffs=DOP_HANDOFFS)
 
 

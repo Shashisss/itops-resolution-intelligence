@@ -18,19 +18,21 @@ STAGES = ["Detected", "Triaged", "Diagnosed", "Change raised", "Fix in progress"
 PERSONAS = ["CIO", "CSM", "Service Desk", "L1 Engineer", "L2 / L3 Engineer", "Developer", "Incident Manager"]
 IT_STEP_HELP = {
     "Detect": "What fired and when — the ServiceNow incident, the Jira defect and observability alerts on one timeline.",
-    "Diagnose": "Ranked root-cause hypotheses with the evidence and confidence behind each — human-confirmed, never assumed.",
-    "Decide": "The recommended action, the next responsible actor, and the SLA / OLA at risk. Coordination is "
-              "autonomous; execution is gated.",
+    "Correlate": "Ranked root-cause hypotheses with the evidence and confidence behind each — human-confirmed, never assumed.",
+    "Coordinate": "The recommended action, the next responsible actor, and the SLA / OLA at risk. Coordination is "
+                  "autonomous; execution is gated.",
     "Act": "Run the chosen remediation (simulated) — production changes require human approval.",
     "Verify": "An independent re-check of telemetry against thresholds → Verified / Mitigated / Recovery failed. "
               "Only Verified closes the incident.",
+    "Close": "Closure record — only when independent verification passed. A fix applied is not a closure.",
 }
 IT_HANDOFFS = {
     "Detect": "Monitoring → Service Desk  (auto-detected; incident raised in ServiceNow)  ·  OLA 5m",
-    "Diagnose": "Service Desk (L1) → L2 / L3  (escalated with the assembled context)  ·  OLA 15m",
-    "Decide": "L2 / L3 + Incident Manager  (recommendation and next-actor coordination)  ·  OLA 15m",
+    "Correlate": "Service Desk (L1) → L2 / L3  (escalated with the assembled context)  ·  OLA 15m",
+    "Coordinate": "L2 / L3 + Incident Manager  (recommendation and next-actor coordination)  ·  OLA 15m",
     "Act": "Incident Manager → owning team  (execution under the approval gate)  ·  OLA 30m",
     "Verify": "Verification service → Incident Manager sign-off → CSM update  ·  OLA 15m",
+    "Close": "Incident Manager → CSM / Data Owner  (verified closure + post-incident notes)",
 }
 METRIC_LABELS = {"p95_latency_ms": "Latency (p95, ms)", "error_rate_pct": "Error rate (%)",
                  "active_connections": "DB connections", "cpu_pct": "DB CPU (%)"}
@@ -264,9 +266,18 @@ def incident_view(inc, ctx):
             viz.rec_card(rec["action"], rec["risk"], rec["mode"], journey.actors(rec))
             journey.engage_block(inc["id"], rec["action"], journey.actors(rec))
 
+    def close():
+        with st.expander("🏁 Closure record", expanded=True):
+            rec = journey.resolution_record(inc["id"])
+            applied_any = bool(rec and rec.get("checks")) or bool(
+                st.session_state.get(f'it_opt_applied_{inc["id"]}'))
+            journey.render_resolution(inc["id"], applied_any, _sla_detail(inc)[0], inc["owner_team"],
+                                      verdict=journey.current_verdict(inc))
+
     journey.wizard("it_step_" + inc["id"], viz.RESOLUTION_FLOW,
-                   {"Detect": detect, "Diagnose": diagnose, "Decide": decide,
-                    "Act": lambda: action_panel(inc, ctx), "Verify": lambda: verify_panel(inc, ctx)},
+                   {"Detect": detect, "Correlate": diagnose, "Coordinate": decide,
+                    "Act": lambda: action_panel(inc, ctx), "Verify": lambda: verify_panel(inc, ctx),
+                    "Close": close},
                    default=0, help=IT_STEP_HELP, handoffs=IT_HANDOFFS)
 
 

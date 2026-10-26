@@ -7,7 +7,7 @@ ONE connected story across two domains:
   →  business incident (INC-8841) on the Payments service.
 
 All data is synthetic; all actions are simulated."""
-import os, sqlite3, datetime as dt
+import os, sqlite3, datetime as dt, json
 import duckdb
 
 os.makedirs("data", exist_ok=True)
@@ -71,8 +71,10 @@ CREATE TABLE olas(team TEXT PRIMARY KEY, response_min INT, restore_min INT);
 -- Per-stage OLA targets (configurable) for the resolution thread
 CREATE TABLE stage_olas(stage TEXT PRIMARY KEY, target_min INT);
 CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE resolution_state(ref_id TEXT PRIMARY KEY, verdict TEXT, action_id TEXT, actor TEXT,
+                              closed_at TEXT, updated_at TEXT, checks TEXT);
 """)
-c.execute("INSERT INTO meta VALUES('seed_version','v62')")
+c.execute("INSERT INTO meta VALUES('seed_version','v75')")
 
 # ------------------------------------------------------------------ IT Ops
 services = [
@@ -145,6 +147,20 @@ c.executemany("INSERT INTO tickets VALUES(?,?,?,?,?,?,?,?,?)", tickets)
 kpis = [("K1", "bs_payments", "checkout_success_pct", "%", 98.5, 90.0),
         ("K2", "bs_orders", "order_success_pct", "%", 99.0, 96.5)]
 c.executemany("INSERT INTO kpis VALUES(?,?,?,?,?,?)", kpis)
+
+# Historical verification records for the closed incidents (so the audit trail is complete).
+_closed_checks = json.dumps([
+    {"check": "Error rate (%)", "before": "8.1", "threshold checked": "< 1.0",
+     "after (simulated)": "0.4", "result": "✅ pass"},
+    {"check": "Business KPI", "before": "90.0%", "threshold checked": "≥ 98.5%",
+     "after (simulated)": "98.5%", "result": "✅ pass"},
+])
+c.executemany("INSERT INTO resolution_state(ref_id,verdict,action_id,actor,closed_at,updated_at,checks) "
+              "VALUES(?,?,?,?,?,?,?)", [
+    ("INC-8802", "Verified", "A", "SRE verification service", M(6 * 24 * 60 - 30), M(6 * 24 * 60 - 30), _closed_checks),
+    ("INC-8711", "Verified", "A", "SRE verification service", M(14 * 24 * 60 - 30), M(14 * 24 * 60 - 30), _closed_checks),
+    ("INC-8655", "Verified", "A", "SRE verification service", M(21 * 24 * 60 - 30), M(21 * 24 * 60 - 30), _closed_checks),
+])
 
 # ------------------------------------------------------------------ DataOps
 pipelines = [

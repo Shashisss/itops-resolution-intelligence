@@ -22,9 +22,10 @@ def _toggle_stage(sel_key, value):
 def _lifecycle_clickable(lifecycle, stage_key, stage_panel):
     """One clickable stage per lifecycle step. Selecting a stage reveals its detail (what happened,
     collaboration, acceleration) with a Close control — no duplicate lifecycle blocks."""
-    cols = st.columns(len(lifecycle))
+    cols = st.columns(3)
     sel_key = f"lc_stage_{stage_key}"
-    for col, (title, status, detail, ola) in zip(cols, lifecycle):
+    for i, (title, status, detail, ola) in enumerate(lifecycle):
+        col = cols[i % 3]
         icon = viz.STAGE_ICON.get(title, "⬜")
         label = f"{icon} {title}"
         if status == "current":
