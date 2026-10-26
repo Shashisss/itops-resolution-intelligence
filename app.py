@@ -317,8 +317,8 @@ def render_board():
 
 def _render_incident_detail(dom, ref, you_role):
     """The selected incident's details — rendered in the incident dialog."""
-    lens = st.radio("View", ["Resolution thread", "Guided journey"], horizontal=True,
-                    key="ws_mode_" + ref)
+    lens = st.radio("View", ["Resolution thread", "Guided walkthrough"], horizontal=True,
+                    key="ws_mode_" + ref, label_visibility="collapsed")
     if dom == "DataOps":
         data = DE.load()
         inc = next((i for i in data["incidents"] if i["id"] == ref), None)
