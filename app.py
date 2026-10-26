@@ -62,7 +62,8 @@ def _needs_seed():
 if _needs_seed():
     import seed  # noqa: F401
 
-st.set_page_config(page_title="Resolution Intelligence — POC", page_icon="🧭", layout="wide")
+st.set_page_config(page_title="Resolution Intelligence — POC", page_icon="assets/icon.png",
+                   layout="wide")
 viz.inject_css()
 st.title("Resolution Intelligence")
 st.caption("Operational intelligence across IT Ops and DataOps — one governed platform")
@@ -74,6 +75,15 @@ if flash:
 _sv, _ed, _it_inc, _ch, _me, _G = E.load()
 _dop_data = DE.load()
 _dop_inc = _dop_data["incidents"]
+
+# ---- deep link: ?inc=<ID> opens that incident directly (a thread you can paste into a bridge call)
+_deep_ref = str(st.query_params.get("inc") or "").strip()
+if _deep_ref and not st.session_state.get("open_incident"):
+    _deep_dom = "DataOps" if _deep_ref.upper().startswith("DOP") else "IT Ops"
+    _exists = any(i["id"] == _deep_ref for i in (_it_inc if _deep_dom == "IT Ops" else _dop_inc))
+    if _exists:
+        st.session_state["open_incident"] = {"domain": _deep_dom, "ref": _deep_ref}
+        st.session_state["nav"] = "Incidents"
 # ---- left sidebar navigation (five sections) ----
 nav, you_role = shell.sidebar("CSM")
 # ---- global controls ----
@@ -255,7 +265,7 @@ def render_board():
     linked_map = {r["inc"]["id"]: bool(journey.correlation_for(r["inc"]["id"])) for r in shown}
     if view == "Table":
         df = pd.DataFrame([{
-            "ID": r["inc"]["id"], "Cross-domain": "🔗" if linked_map[r["inc"]["id"]] else "—",
+            "ID": r["inc"]["id"], "Cross-domain": "Yes" if linked_map[r["inc"]["id"]] else "—",
             "Severity": f'{viz.SEV_LABEL.get(r["inc"].get("priority"), ("", "Minor"))[1]}',
             "Priority": r["inc"].get("priority"),
             "Domain": r["domain"], "Title": r["inc"]["title"],
@@ -263,11 +273,17 @@ def render_board():
             "Stage": journey.lifecycle_stage(r["inc"]), "Owner": r["inc"].get("owner_team"),
             "SLA": (_sla_txt(r["inc"]) if r["inc"].get("status") == "open" else "—"),
         } for r in shown])
-        st.dataframe(df, hide_index=True, width="stretch")
-        dom_of = {r["inc"]["id"]: r["domain"] for r in shown}
-        pick = st.selectbox("Open an incident", list(dom_of), key="board_pick")
-        st.button("Open incident details →", key="board_open_sel", type="primary",
-                  on_click=journey._goto, args=(dom_of[pick], None, pick))
+        ev = st.dataframe(df, hide_index=True, width="stretch", on_select="rerun",
+                          selection_mode="single-row", key="board_table")
+        st.caption("Click a row to open that incident.")
+        try:
+            _rows = list(ev.selection["rows"])
+        except Exception:
+            _rows = []
+        if _rows:
+            r = shown[_rows[0]]
+            journey.toggle_incident(r["domain"], r["inc"]["id"])
+            st.rerun()
         return
 
     _open_ref = (st.session_state.get("open_incident") or {}).get("ref")
@@ -286,7 +302,7 @@ def render_board():
     cross = [r for r in shown if linked_map[r["inc"]["id"]]]
     single = [r for r in shown if not linked_map[r["inc"]["id"]]]
     if cross:
-        st.markdown("#### 🔗 Cross-domain threads")
+        st.markdown("#### Cross-domain threads")
         st.caption("IT Ops and DataOps incidents resolved together as one governed thread.")
         _render_cards(cross)
     if single:
@@ -321,13 +337,17 @@ def _render_incident_detail(dom, ref, you_role):
             personas.incident_view(inc, ctx)
 
 
-@st.dialog("🧭 Incident details", width="medium",
+@st.dialog("Incident details", width="medium",
            on_dismiss=lambda: st.session_state.pop("open_incident", None))
 def _incident_dialog(dom, ref, you_role):
     """Modal incident workspace. The board behind it never moves; sections are collapsible.
     The hero already shows the ID/domain, so the header only carries the Close control."""
-    _, c2 = st.columns([6, 1])
-    if c2.button("✕ Close", key="dlg_close_" + ref):
+    _, c2, c3 = st.columns([5.0, 1.1, 0.8])
+    with c2:
+        with st.popover("Share", width="stretch"):
+            st.caption("Stable link to this thread — append to the app URL.")
+            st.code(f'?inc={ref}', language=None)
+    if c3.button("Close", key="dlg_close_" + ref, width="stretch"):
         st.session_state.pop("open_incident", None)
         st.rerun()
     _render_incident_detail(dom, ref, you_role)
@@ -335,91 +355,108 @@ def _incident_dialog(dom, ref, you_role):
 
 def render_incidents(you_role):
     """Incident-first page: short collapsible sections on the left, a compact rail on the right."""
-    main, rail = st.columns([3.4, 1])
+    main, rail = st.columns([3.15, 1.15])
     with main:
-        with st.expander("⚡ Needs attention", expanded=True):
+        with st.expander("Needs attention", expanded=True):
             _needs_attention_cards()
-        with st.expander("🔗 Cross-domain resolution threads", expanded=False):
+        with st.expander("Cross-domain resolution threads", expanded=False):
             _thread_cards("inc")
     with rail:
-        with st.expander("📡 Live events", expanded=False):
+        with st.expander("Live events", expanded=False):
             viz.feed(realtime.recent(8))
             st.caption("Simulated.")
-        with st.expander("🕒 Recent activity", expanded=False):
+        with st.expander("Recent activity", expanded=False):
             _recent_activity(n=8)
-    with st.expander("▤ Incidents & resolution threads", expanded=True):
+    with st.expander("Incidents & resolution threads", expanded=True):
         render_board()
     sel = st.session_state.get("open_incident")
     if sel:
+        st.query_params["inc"] = sel["ref"]
         _incident_dialog(sel["domain"], sel["ref"], you_role)
+    elif "inc" in st.query_params:
+        del st.query_params["inc"]
 
 
 # ================================================================= Analytics
 def render_analytics():
     st.subheader("Analytics — resolution performance")
-    st.caption("Where a figure is derived from the sample incidents it is labelled **live data**; where "
-               "it is a scenario estimate it is labelled **illustrative** — nothing is presented as a "
-               "measured result unless it is.")
+    st.caption("Every figure states its provenance: **live** numbers are computed from the sample "
+               "incidents on this system; **illustrative** numbers are scenario estimates. Nothing here "
+               "is presented as a measured result unless it is.")
+
     incidents = list(_it_inc) + list(_dop_inc)
     verdicts = [journey.display_verdict(i) for i in incidents]
-    n_open = sum(1 for i in incidents if i.get("status") == "open")
-    n_verified = sum(1 for v in verdicts if v == "Verified")
+    closed = [i for i in incidents if (i.get("status") or "").lower() != "open"]
+    n_open = len(incidents) - len(closed)
+    n_verified = sum(1 for i in closed if journey.display_verdict(i) == "Verified")
     at_risk = sum(1 for i in incidents if i.get("status") == "open" and _sla_risk(i))
+    cross = sum(1 for i in incidents if journey.thread_edges_for(i["id"]))
+    vcr = f'{n_verified}/{len(closed)}' if closed else "—"
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Incidents (total)", len(incidents))
-    c2.metric("Open", n_open)
-    c3.metric("Verified recoveries", n_verified)
-    c4.metric("SLA at risk", at_risk)
-    st.caption("**Live data** — from the current sample incidents and their authoritative verdicts.")
+    viz.kpi_row([
+        ("Incidents", len(incidents), f'{n_open} open · {len(closed)} closed', "#4f46e5"),
+        ("Verified closure", vcr, "closed only after independent verification", "#16a34a"),
+        ("Cross-domain threads", cross, f'of {len(incidents)} incidents', "#7c3aed"),
+        ("SLA at risk", at_risk, "open incidents inside 50% of target", "#dc2626"),
+    ])
+    viz.data_badge("live")
 
     left, right = st.columns(2)
     with left:
         st.markdown("#### Resolution outcomes")
         oc = ["Investigating", "Mitigated", "Verified", "Recovery failed"]
-        df = pd.DataFrame({"Outcome": oc, "Incidents": [verdicts.count(v) for v in oc]}).set_index("Outcome")
-        st.bar_chart(df)
-        st.dataframe(df.reset_index(), hide_index=True, width="stretch")
-        st.caption("**Live data** — authoritative verdict counts (zeros shown in the table).")
+        df = pd.DataFrame({"Outcome": oc, "Incidents": [verdicts.count(v) for v in oc]})
+        st.altair_chart(viz.chart_bars(df, "Outcome", "Incidents", height=230), width="stretch")
+        st.caption("Live — authoritative verdict counts. Zero-value outcomes stay on the axis.")
     with right:
         st.markdown("#### Incidents by domain")
-        dom = pd.DataFrame({
-            "Domain": ["IT Ops", "DataOps"],
-            "Open": [sum(1 for i in _it_inc if i.get("status") == "open"),
-                     sum(1 for i in _dop_inc if i.get("status") == "open")],
-            "Closed": [sum(1 for i in _it_inc if i.get("status") != "open"),
-                       sum(1 for i in _dop_inc if i.get("status") != "open")],
-        }).set_index("Domain")
-        st.bar_chart(dom)
-        st.caption("**Live data** — incident distribution across domains.")
+        dom = pd.DataFrame([
+            {"Domain": "IT Ops", "State": "Open", "n": sum(1 for i in _it_inc if i.get("status") == "open")},
+            {"Domain": "IT Ops", "State": "Closed", "n": sum(1 for i in _it_inc if i.get("status") != "open")},
+            {"Domain": "DataOps", "State": "Open", "n": sum(1 for i in _dop_inc if i.get("status") == "open")},
+            {"Domain": "DataOps", "State": "Closed", "n": sum(1 for i in _dop_inc if i.get("status") != "open")},
+        ])
+        dom["State"] = pd.Categorical(dom["State"], categories=["Closed", "Open"], ordered=True)
+        dom = dom.sort_values("State")
+        st.altair_chart(viz.chart_bars(dom, "Domain", "n", group="State", height=230), width="stretch")
+        st.caption("Live — incident distribution across the two operational domains.")
 
     st.markdown("#### MTTR — baseline vs with the platform")
-    mttr = pd.DataFrame({
-        "Month": ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
-        "Baseline MTTR (h)": [7.8, 7.6, 8.1, 7.9, 8.0, 7.7],
-        "With platform MTTR (h)": [7.6, 6.9, 5.8, 4.6, 3.2, 2.4],
-    }).set_index("Month")
-    st.line_chart(mttr)
-    st.caption("**Illustrative** simulated trend — MTTR falling as cross-domain correlation and "
-               "coordination kick in. Measure against a real baseline in a pilot.")
+    mttr = pd.DataFrame([
+        {"Month": m, "Series": "Baseline (h)", "Hours": b}
+        for m, b in zip(["Jan", "Feb", "Mar", "Apr", "May", "Jun"], [7.8, 7.6, 8.1, 7.9, 8.0, 7.7])
+    ] + [
+        {"Month": m, "Series": "With platform (h)", "Hours": b}
+        for m, b in zip(["Jan", "Feb", "Mar", "Apr", "May", "Jun"], [7.6, 6.9, 5.8, 4.6, 3.2, 2.4])
+    ])
+    mttr["Series"] = pd.Categorical(mttr["Series"], categories=["Baseline (h)", "With platform (h)"], ordered=True)
+    mttr = mttr.sort_values("Series")
+    st.altair_chart(viz.chart_lines(mttr, "Month", "Hours", "Series", height=250), width="stretch")
+    viz.data_badge("illus")
+    st.caption("MTTR falling as cross-domain correlation and coordination kick in — a scenario estimate, "
+               "to be measured against a real baseline in a pilot.")
 
     st.markdown("#### Where the time goes — baseline vs with the platform")
-    steps = pd.DataFrame({
-        "Step": ["Identify likely cause", "Assign next owner", "Verified recovery"],
-        "Baseline (min)": [45, 30, 240],
-        "With platform (min)": [10, 2, 60],
-    }).set_index("Step")
-    st.bar_chart(steps)
-    st.caption("**Illustrative** simulated values — the acceleration the platform targets.")
+    steps = pd.DataFrame([
+        {"Step": "Identify likely cause", "Series": "Baseline", "Minutes": 45},
+        {"Step": "Assign next owner", "Series": "Baseline", "Minutes": 30},
+        {"Step": "Verified recovery", "Series": "Baseline", "Minutes": 240},
+        {"Step": "Identify likely cause", "Series": "With platform", "Minutes": 10},
+        {"Step": "Assign next owner", "Series": "With platform", "Minutes": 2},
+        {"Step": "Verified recovery", "Series": "With platform", "Minutes": 60},
+    ])
+    steps["Series"] = pd.Categorical(steps["Series"], categories=["Baseline", "With platform"], ordered=True)
+    steps = steps.sort_values("Series")
+    st.altair_chart(viz.chart_bars(steps, "Step", "Minutes", group="Series", height=250), width="stretch")
+    viz.data_badge("illus")
+    st.caption("Minutes per step: the acceleration the platform targets. Scenario values, not measurements.")
 
     st.markdown("#### SLA / OLA breaches per month")
     br = pd.DataFrame({"Month": ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
-                       "Breaches": [6, 6, 5, 4, 3, 2]}).set_index("Month")
-    br.index = pd.CategoricalIndex(br.index, categories=["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
-                                   ordered=True)
-    st.bar_chart(br)
-    st.dataframe(br.reset_index(), hide_index=True, width="stretch")
-    st.caption("**Illustrative** simulated totals.")
+                       "Breaches": [6, 6, 5, 4, 3, 2]})
+    st.altair_chart(viz.chart_bars(br, "Month", "Breaches", height=230, muted=True), width="stretch")
+    viz.data_badge("illus")
+    st.caption("Monthly breach totals — illustrative, in chronological order.")
 
 
 # ================================================================= Activity & audit (page)
@@ -437,7 +474,7 @@ def render_activity():
                              "text": cm["text"]})
         rows.sort(key=lambda x: x["ts"], reverse=True)
         if rows:
-            st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+            st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch", height=min(640, max(160, 38 * len(rows) + 40)))
         else:
             st.caption("No comments.")
     with t2:
@@ -449,7 +486,7 @@ def render_activity():
                              "stage": d.get("stage") or "—", "ts": d["ts"]})
         rows.sort(key=lambda x: x["ts"], reverse=True)
         if rows:
-            st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+            st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch", height=min(640, max(160, 38 * len(rows) + 40)))
         else:
             st.caption("No handoffs.")
     with t3:
@@ -461,7 +498,7 @@ def render_activity():
                              "actor": rec.get("actor"), "closed_at": rec.get("closed_at") or "—",
                              "checks": len(rec.get("checks") or [])})
         if rows:
-            st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+            st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch", height=min(640, max(160, 38 * len(rows) + 40)))
         else:
             st.caption("No verification records yet — apply a remediation to create one.")
 
@@ -475,5 +512,5 @@ elif nav == "Activity & audit":
     render_activity()
 
 st.divider()
-st.caption("Sample data · simulated actions · build v75 — proof of concept, not production. "
+st.caption("Sample data · simulated actions · build v76 — proof of concept, not production. "
            "See PROTOTYPE_NOTES.md for persistence limits.")

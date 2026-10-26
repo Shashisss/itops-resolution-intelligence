@@ -70,7 +70,8 @@ def _stage_panel(inc, rec, stage):
     parts = []
     if ola is not None:
         ocol = "#16a34a" if obs <= ola else "#dc2626"
-        parts.append(f'OLA <b style="color:{ocol}">{ola}m {"✅" if obs <= ola else "🔴"}</b>')
+        parts.append(f'OLA <b style="color:{ocol}">{ola}m · {"within" if obs <= ola else "over"}'
+                     f'</b>')
     else:
         parts.append('OLA —')
     if base:
@@ -102,14 +103,14 @@ def _stage_panel(inc, rec, stage):
 def _rail(inc, rec, closed=False):
     """Right rail — owner/next actor + quick actions for open incidents; read-only when closed."""
     if closed:
-        st.markdown("#### 🏁 Closed — read-only")
+        st.markdown("#### Closed — read-only")
         st.caption("Historical record. Post-incident: link a problem or export the verification ledger.")
     else:
-        st.markdown("#### 👤 Owner & next actor")
+        st.markdown("#### Owner & next actor")
         st.markdown(f'- **{inc["owner_team"]}** — owner')
         for a in journey.actors(rec):
             st.markdown(f'- {a} — next actor')
-        st.markdown("#### ⚡ Quick actions")
+        st.markdown("#### Quick actions")
         if st.button("Notify CSM (simulated)", key="qa_csm_" + inc["id"]):
             collab.add_comment(inc["id"], "Recommendation engine", "System",
                                "[Demo] Logged a CSM notification locally — no external message was sent.",
@@ -122,7 +123,7 @@ def _rail(inc, rec, closed=False):
                                channel="App")
             st.session_state["flash"] = "Status update posted to the thread (simulated, local only)."
             st.rerun()
-    with st.expander("🕒 Recent activity", expanded=False):
+    with st.expander("Recent activity", expanded=False):
         cms = collab.comments(inc["id"])[-6:]
         if not cms:
             st.caption("No activity yet.")
@@ -215,9 +216,9 @@ def it_command(inc, ctx):
         priority=inc["priority"], inc_id=inc["id"], title=inc["title"],
         meta=(f'{services[inc["service_id"]]["name"]} · impact {bizname} · '
               f'owner {inc["owner_team"]} · stage {journey.lifecycle_stage(inc)}'),
-        sla_text=sla_txt, verdict=verdict,
-        sla_label=("Status" if closed else "SLA remaining"),
-        chips=(["IT Ops"] + (["🔗 Cross-Domain"] if corr else []) + ["ServiceNow · Jira"]))
+        sla_text=("Closed" if closed else sla_txt), verdict=verdict, sla_label=("Status" if closed else "SLA remaining"),
+        sla_tone=("neutral" if closed else ("bad" if sla_txt == "BREACHED" else "good")),
+        chips=(["IT Ops"] + (["Cross-domain"] if corr else []) + ["ServiceNow · Jira"]))
     lifecycle = _thread_spine(inc, deleg, confirmed, verdict)
     edges = journey.thread_edges_for(inc["id"])
 
@@ -234,7 +235,7 @@ def it_command(inc, ctx):
                                "incident onset", inc["created_at"].split("T")[-1][:5])
         st.caption(f'Affected service: {services[inc["service_id"]]["name"]} '
                    f'({services[inc["service_id"]]["type"].replace("_", " ")})')
-        with st.expander("📈 Impact & value (illustrative)", expanded=False):
+        with st.expander("Impact & value (illustrative)", expanded=False):
             viz.value_strip(IMPACT_ROWS)
 
     def investigation():
@@ -351,23 +352,26 @@ def dop_command(inc, data):
         priority=inc["priority"], inc_id=inc["id"], title=inc["title"],
         meta=(f'{data["datasets"][ds]["name"]} · pipeline {inc["pipeline_id"]} · '
               f'owner {inc["owner_team"]} · stage {journey.lifecycle_stage(inc)}'),
-        sla_text=("Closed" if closed else fresh_txt), verdict=verdict,
-        sla_label=("Status" if closed else "Freshness SLA"),
-        chips=(["DataOps"] + (["🔗 Cross-Domain"] if corr else []) + ["Pipeline failure", "Lineage + DQ"]))
+        sla_text=("Closed" if closed else f'{lag} min'), verdict=verdict,
+        sla_label=("Status" if closed else f"Freshness (SLA {sla} min)"),
+        sla_tone=("neutral" if closed else ("bad" if breach else "good")),
+        chips=(["DataOps"] + (["Cross-domain"] if corr else []) + ["Pipeline failure", "Lineage + DQ"]))
     lifecycle = _thread_spine(inc, deleg, confirmed, verdict)
     edges = journey.thread_edges_for(inc["id"])
 
     def overview():
         viz.kpi_row([
             ("Pipeline", inc["pipeline_id"], "producer", "#dc2626"),
-            ("Freshness", fresh_txt, "SLA breach" if breach else "within SLA", "#d97706"),
+            ("Freshness", f'{lag} min' if lag is not None else "n/a",
+             (f'SLA {sla} min · breach' if breach else f'SLA {sla} min · within') if sla else "",
+             "#dc2626" if breach else "#16a34a"),
             ("Consumers", str(len(cons)), "downstream", "#7c3aed"),
             ("Top hypothesis", (causes[0].get("label") or causes[0]["type"].title() if causes else "—"),
              (f'{causes[0]["confidence"]} confidence' if causes else ""), "#d97706"),
         ])
         st.info(inc["summary"])
         st.caption(f'Downstream datasets: {", ".join(data["datasets"][d]["name"] for d in downs) or "—"}')
-        with st.expander("📈 Impact & value (illustrative)", expanded=False):
+        with st.expander("Impact & value (illustrative)", expanded=False):
             viz.value_strip(IMPACT_ROWS)
 
     def investigation():
@@ -387,7 +391,7 @@ def dop_command(inc, data):
         if con:
             st.markdown(f'- **Data contract:** {con["name"]} {con["version"]} · owner {con["owner"]}')
         drows = [{"dataset": data["datasets"][d]["name"], "freshness": DV._fresh(data, d)[0],
-                  "verdict": "🔴 breach" if DV._fresh(data, d)[1] else "🟢 ok"}
+                  "verdict": "Breach" if DV._fresh(data, d)[1] else "OK"}
                  for d in [ds] + list(downs)]
         viz.card_rows(drows, "#0d9488")
         st.caption("The estate behind this incident — pipeline, contract, dataset freshness and lineage.")

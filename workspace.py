@@ -26,8 +26,7 @@ def _lifecycle_clickable(lifecycle, stage_key, stage_panel):
     sel_key = f"lc_stage_{stage_key}"
     for i, (title, status, detail, ola) in enumerate(lifecycle):
         col = cols[i % 3]
-        icon = viz.STAGE_ICON.get(title, "⬜")
-        label = f"{icon} {title}"
+        label = title
         if status == "current":
             label = f"▶ {label}"
         col.button(label, key=f"lcb_{stage_key}_{title}", width="stretch",
@@ -71,16 +70,16 @@ def render_workspace(hero_kwargs, lifecycle, edges, tabs, rail, thread_note=None
             viz.thread_spine(lifecycle)
 
     if next_step_banner:
-        with st.expander("👉 Recommended next step", expanded=True):
+        with st.expander("Recommended next step", expanded=True):
             next_step_banner()
 
     # The cross-domain resolution thread is the product's focal object: prominent (open) when the
     # incident is cross-domain; collapsed when it is a single-domain incident.
     if edges:
-        with st.expander("🔗 Cross-domain resolution thread", expanded=bool(corr)):
+        with st.expander("Cross-domain resolution thread", expanded=bool(corr)):
             viz.thread_edges(edges)
             if corr:
-                st.caption(f'🔗 Thread links **{corr["other_domain"]} {corr["other_id"]}** · shared cause '
+                st.caption(f'Thread links **{corr["other_domain"]} {corr["other_id"]}** · shared cause '
                            f'**{corr["shared_cause"]}**.')
             st.caption(thread_note or "**Observed** = a recorded signal/relationship. **Inferred** = a "
                                       "hypothesis to confirm. Multiple contributing causes are allowed.")

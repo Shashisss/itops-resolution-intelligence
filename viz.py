@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Visual layer — animated steppers, arrow flows, node graphs and status badges (HTML/CSS + Graphviz)."""
+import altair as alt
 import pandas as pd
 import streamlit as st
 
@@ -53,19 +54,21 @@ div[data-testid="stVerticalBlock"]{gap:0.5rem}
 .ri-kpi .v{overflow-wrap:break-word!important;word-break:normal!important;hyphens:none!important}
 .ri-kpi .s{overflow-wrap:break-word!important;word-break:normal!important;hyphens:none!important}
 /* All-incidents board: each incident is ONE clickable card (a full-width keyed button). */
-div[class*="st-key-boardcard-"] button{width:100%!important;text-align:left!important;
+div[class*="st-key-boardcard-"] button,div[class*="st-key-attn-"] button{width:100%!important;text-align:left!important;
   justify-content:flex-start!important;height:auto!important;white-space:normal!important;
   background:#fff!important;color:#0f172a!important;border:1px solid #e5e7eb!important;
   border-left:6px solid #94a3b8!important;border-radius:12px!important;padding:11px 14px!important;
   font-weight:600!important;font-size:13px!important;line-height:1.4!important;
   box-shadow:0 1px 2px rgba(0,0,0,.04)!important;margin:2px 0!important}
-div[class*="st-key-boardcard-"] button p{font-weight:600!important;font-size:13px!important;
-  line-height:1.4!important;margin:0!important;text-align:left!important;color:#0f172a!important}
-div[class*="st-key-boardcard-"] button:hover{background:#f8fafc!important}
-div[class*="st-key-boardcard-P1-"] button{border-left-color:#dc2626!important}
-div[class*="st-key-boardcard-P2-"] button{border-left-color:#d97706!important}
-div[class*="st-key-boardcard-P3-"] button{border-left-color:#0891b2!important}
-div[class*="st-key-boardcard-P4-"] button{border-left-color:#64748b!important}
+div[class*="st-key-boardcard-"] button p,div[class*="st-key-attn-"] button p{font-weight:600!important;font-size:13px!important;
+  line-height:1.4!important;margin:0!important;text-align:left!important;color:#0f172a!important;
+  white-space:normal!important;overflow:visible!important;text-overflow:clip!important;
+  width:100%!important;display:block!important}
+div[class*="st-key-boardcard-"] button,div[class*="st-key-attn-"] button:hover{background:#f8fafc!important}
+div[class*="st-key-boardcard-P1-"] button,div[class*="st-key-attn-P1-"] button{border-left-color:#dc2626!important}
+div[class*="st-key-boardcard-P2-"] button,div[class*="st-key-attn-P2-"] button{border-left-color:#d97706!important}
+div[class*="st-key-boardcard-P3-"] button,div[class*="st-key-attn-P3-"] button{border-left-color:#0891b2!important}
+div[class*="st-key-boardcard-P4-"] button,div[class*="st-key-attn-P4-"] button{border-left-color:#64748b!important}
 /* Clickable KPI cards (filters) */
 div[class*="st-key-kpi_"] button{height:auto!important;width:100%!important;text-align:left!important;
   justify-content:flex-start!important;white-space:normal!important;background:#fff!important;color:#0f172a!important;
@@ -106,11 +109,11 @@ div[class*="st-key-lcb_"][class*="_Close"] button p{color:#475569!important}
 .ri-amb{font-size:12.5px!important}
 .ri-hero .id{font-size:24px!important}
 .ri-hero .meta{font-size:13.5px!important}
-div[class*="st-key-boardcard-"] button p{font-size:13.5px!important}
+div[class*="st-key-boardcard-"] button p,div[class*="st-key-attn-"] button p{font-size:13.5px!important}
 div[class*="st-key-kpi_"] button p{font-size:16px!important}
-div[class*="st-key-boardcard-"] button{padding:8px 12px!important;border-radius:10px!important;
+div[class*="st-key-boardcard-"] button,div[class*="st-key-attn-"] button{padding:8px 12px!important;border-radius:10px!important;
   border-left-width:4px!important}
-div[class*="st-key-boardcard-"] button p{line-height:1.35!important}
+div[class*="st-key-boardcard-"] button p,div[class*="st-key-attn-"] button p{line-height:1.35!important}
 .ri-card{padding:12px 14px!important}
 .ri-kpi{padding:10px 12px!important}
 .ri-hero{padding:16px 20px!important}
@@ -137,6 +140,23 @@ div[class*="st-key-boardcard-"] button p{line-height:1.35!important}
 [data-testid="stHorizontalBlock"]{flex-wrap:wrap}
 [data-testid="column"]{min-width:0}
 @media (max-width:640px){.ri-hero{padding:14px 16px}.ri-hero .id{font-size:18px}.ri-flowbox{gap:6px}}
+/* ---- fact grid: never break a word across lines, never clip a fact (v76) ---- */
+.ri-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:8px;margin:4px 0 10px}
+.ri-facts .ri-kpi{height:auto;min-width:0}
+.ri-facts .ri-kpi .v{font-size:19px;line-height:1.2;white-space:normal;overflow-wrap:normal;
+  word-break:keep-all;hyphens:none;font-variant-numeric:tabular-nums}
+.ri-facts .ri-kpi .v.sm{font-size:15px;font-weight:750;letter-spacing:-.005em}
+.ri-facts .ri-kpi .v.xs{font-size:13.5px;font-weight:700}
+.ri-facts .ri-kpi .s{font-size:11.5px;line-height:1.35}
+/* provenance + chart chrome */
+.ri-prov{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;
+  letter-spacing:.03em;text-transform:uppercase;padding:2px 8px;border-radius:999px;margin:0 0 6px}
+.ri-prov.live{background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe}
+.ri-prov.illus{background:#f8fafc;color:#64748b;border:1px dashed #cbd5e1}
+.ri-prov .d{width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block}
+.ri-chartnote{font-size:11.5px;color:#64748b;margin:-2px 0 10px}
+/* section headings: no decorative emoji, tighter rhythm (v76) */
+.ri-sect{font-size:13px;font-weight:800;color:#0f172a;letter-spacing:.01em;margin:6px 0 6px}
 </style>
 """
 
@@ -186,8 +206,6 @@ def resolution_flow(current=None):
 
 CONF_PCT = {"high": 85, "medium": 55, "low": 30}
 CONF_COLOR = {"high": "#16a34a", "medium": "#d97706", "low": "#94a3b8"}
-TYPE_ICON = {"pipeline": "🛠️", "data quality": "🧪", "freshness": "⏱️", "upstream data": "🔗",
-             "change": "🔧", "metric": "📈"}
 
 
 def hypothesis_cards(hyps):
@@ -197,10 +215,12 @@ def hypothesis_cards(hyps):
         pct = CONF_PCT.get(conf, 30)
         col = CONF_COLOR.get(conf, "#94a3b8")
         confirmed = h.get("status") == "confirmed"
-        badge = "✅ CONFIRMED" if confirmed else "🔶 SUSPECTED"
+        badge = "CONFIRMED" if confirmed else "SUSPECTED"
         badgecol = "#16a34a" if confirmed else "#d97706"
         bg = "#f0fdf4" if confirmed else "#ffffff"
-        icon = TYPE_ICON.get(h.get("type", ""), "🔎")
+        _kind = (h.get("type") or "").title()
+        icon = (f'<span style="font-size:10.5px;font-weight:700;letter-spacing:.04em;color:#64748b;'
+                f'text-transform:uppercase">{_kind} · </span>') if _kind else ""
         top = ('<span style="background:#4f46e5;color:#fff;font-size:10px;font-weight:700;'
                'padding:2px 8px;border-radius:999px;margin-left:8px">MOST LIKELY</span>') if i == 0 else ""
         st.markdown(
@@ -216,7 +236,7 @@ def hypothesis_cards(hyps):
             f'overflow:hidden"><div style="height:8px;width:{pct}%;background:{col};border-radius:999px">'
             f'</div></div><div style="font-size:12px;color:#64748b;margin-top:4px">confidence: '
             f'<b>{conf}</b> ({pct}%)</div></div>'
-            f'<div style="font-size:12.5px;color:#475569">🔎 evidence: {h.get("evidence","")}</div>'
+            f'<div style="font-size:12.5px;color:#475569"><b>Evidence</b> · {h.get("evidence","")}</div>'
             f'</div>',
             unsafe_allow_html=True)
 
@@ -233,14 +253,13 @@ def timeline(rows):
     html = ['<div class="ri-tl">']
     for r in rows:
         col = TL_COLOR.get(r["kind"], "#94a3b8")
-        ic = TL_ICON.get(r["kind"], "•")
         ts = str(r.get("ts", ""))
         tshow = ts[11:16] if len(ts) >= 16 else ts
         html.append(
             f'<div class="ri-tl-item"><span class="ri-tl-dot" style="background:{col};'
             f'box-shadow:0 0 0 2px {col}"></span>'
             f'<div style="font-size:12px;color:#64748b">{tshow}</div>'
-            f'<div style="margin-top:3px"><span class="ri-tl-kind" style="background:{col}">{ic} {r["kind"]}</span>'
+            f'<div style="margin-top:3px"><span class="ri-tl-kind" style="background:{col}">{r["kind"].title()}</span>'
             f' <span style="color:#334155;font-size:13px">{r["detail"]}</span></div></div>')
     html.append("</div>")
     st.markdown("".join(html), unsafe_allow_html=True)
@@ -457,7 +476,9 @@ def next_step(action, owner, gate, why=None, target=None, blast=None, risk=None)
         + '</div>', unsafe_allow_html=True)
 
 
-def hero(priority, inc_id, title, meta, sla_text, verdict, chips, sla_label="SLA remaining"):
+def hero(priority, inc_id, title, meta, sla_text, verdict, chips, sla_label="SLA remaining",
+         sla_tone="bad"):
+    tone = {"bad": "#fca5a5", "good": "#86efac", "neutral": "#e2e8f0"}.get(sla_tone, "#fca5a5")
     chip_html = " ".join(f'<span class="ri-tag" style="background:#1e293b;border:1px solid #334155">{c}</span>'
                          for c in chips)
     vcol = {"Verified": "#16a34a", "Mitigated": "#d97706", "Recovery failed": "#dc2626"}.get(verdict, "#2563eb")
@@ -469,25 +490,37 @@ def hero(priority, inc_id, title, meta, sla_text, verdict, chips, sla_label="SLA
         f'<div class="meta">{meta}</div></div>'
         f'<div style="text-align:right;white-space:nowrap">'
         f'<div class="meta">{sla_label}</div>'
-        f'<div style="font-size:26px;font-weight:800;color:#fca5a5">{sla_text}</div>'
+        f'<div style="font-size:26px;font-weight:800;color:{tone}">{sla_text}</div>'
         f'<div style="margin-top:6px">{chip_html}</div></div></div></div>',
         unsafe_allow_html=True)
 
 
+def _vcls(value):
+    """Value typography bucket — keeps identifiers on one line instead of breaking mid-word."""
+    s = str(value)
+    if len(s) <= 10:
+        return ""
+    return " sm" if len(s) <= 18 else " xs"
+
+
 def kpi_row(items):
-    """items: list of (label, value, sub, color)."""
-    cols = st.columns(len(items))
-    for col, (label, value, sub, color) in zip(cols, items):
-        col.markdown(f'<div class="ri-kpi" style="border-left-color:{color}" title="{label}: {value}">'
-                     f'<div class="l">{label}</div><div class="v">{value}</div>'
-                     f'<div class="s">{sub}</div></div>', unsafe_allow_html=True)
+    """Fact tiles: list of (label, value, sub, color). Rendered as one responsive grid so a tile
+    can never squeeze into a mid-word break (the old st.columns version did exactly that)."""
+    cells = []
+    for label, value, sub, color in items:
+        sub_html = f'<div class="s">{sub}</div>' if sub else ""
+        cells.append(
+            f'<div class="ri-kpi" style="border-left-color:{color}">'
+            f'<div class="l">{label}</div>'
+            f'<div class="v{_vcls(value)}" title="{value}">{value}</div>{sub_html}</div>')
+    st.markdown(f'<div class="ri-facts">{"".join(cells)}</div>', unsafe_allow_html=True)
 
 
 def handshake(text):
     st.markdown(
         f'<div style="display:flex;align-items:center;gap:9px;background:#EEF2FF;border-left:4px solid '
         f'#4f46e5;padding:8px 12px;border-radius:8px;margin:2px 0 10px;font-size:13px">'
-        f'<span style="font-size:16px">🤝</span><span><b>Handshake</b> — {text}</span></div>',
+        f'<span><b>Handshake</b> — {text}</span></div>',
         unsafe_allow_html=True)
 
 
@@ -506,7 +539,7 @@ def rec_card(action, risk, mode, actors):
     chips = " ".join(f'<span class="ri-tag" style="background:#4f46e5">{a}</span>' for a in actors)
     st.markdown(
         f'<div class="ri-card" style="border-left:6px solid #4f46e5">'
-        f'<div style="font-weight:700;color:#0f172a;font-size:14px">🧭 Recommended action</div>'
+        f'<div style="font-weight:700;color:#0f172a;font-size:14px">Recommended action</div>'
         f'<div style="color:#334155;margin:6px 0 10px;font-size:13.5px">{action}</div>'
         f'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
         f'<span class="ri-tag" style="background:{riskcol}">risk: {risk}</span>'
@@ -551,27 +584,25 @@ def ambient_strip(events):
     st.markdown('<div class="ri-ambient">' + "".join(parts) + '</div>', unsafe_allow_html=True)
 
 
-SEV_LABEL = {"P1": ("🔴", "Critical"), "P2": ("🟠", "Major"), "P3": ("🔵", "Minor"),
-             "P4": ("⚪", "Low")}
-STAGE_ICON = {"Detect": "🟦", "Correlate": "🟪", "Coordinate": "🟨", "Act": "🟧",
-              "Verify": "🟩", "Close": "⬛"}
+SEV_LABEL = {"P1": ("", "Critical"), "P2": ("", "Major"), "P3": ("", "Minor"),
+             "P4": ("", "Low")}
 
 
 def board_card(inc, domain, verdict, on_click, args, stage=None, sla=None, open_=False, linked=False,
                prefix="boardcard"):
     """Compact incident row (Linear-style): line 1 = ID + title; line 2 = severity · status ·
     domain · owner · time. The whole row is clickable (keyed button styled as a card); the
-    per-priority left border and 🔗 marker carry severity and cross-domain at a glance."""
+    per-priority left border and the ⇄ marker carry severity and cross-domain at a glance."""
     pri = inc.get("priority", "P3")
     status = (inc.get("status") or "open").title()
     owner = inc.get("owner_team") or "—"
-    mark = "▾" if open_ else "▸"
-    link = "🔗 " if linked else ""
-    icon, sev = SEV_LABEL.get(pri, ("🔵", "Minor"))
+    mark = ""
+    link = "⇄ " if linked else ""
+    _, sev = SEV_LABEL.get(pri, ("", "Minor"))
     line1 = f'{mark}{link}**{inc["id"]}**  {inc["title"]}'
-    stage_txt = f'{STAGE_ICON.get(stage, "⬜")} {stage}' if stage else "—"
-    line2 = f'{icon} {sev} · {status} · {stage_txt}'
-    line3 = f'⏱ {sla or "—"} · {owner}'
+    stage_txt = stage or "—"
+    line2 = f'{sev} · {status} · {stage_txt}'
+    line3 = f'{sla} · {owner}' if sla else owner
     st.button(f'{line1}  \n{line2}  \n{line3}', key=f'{prefix}-{pri}-{inc["id"]}', width="stretch",
               on_click=on_click, args=args)
 
@@ -590,3 +621,71 @@ def chain(seq, labels, stale=(), highlight=(), arrows=True):
             html.append('<span class="ri-arrow2">➜</span>')
     html.append("</div>")
     st.markdown("".join(html), unsafe_allow_html=True)
+
+
+# ------------------------------------------------------------------ charts (v76)
+LIVE_C = "#4f46e5"
+BASE_C = "#94a3b8"
+SOFT_C = "#c7d2fe"
+
+
+def data_badge(kind="live"):
+    """Honest provenance chip — the reader should never have to guess if a number is measured."""
+    label, cls = ("Live data", "live") if kind == "live" else ("Illustrative", "illus")
+    st.markdown(f'<span class="ri-prov {cls}"><span class="d"></span>{label}</span>',
+                unsafe_allow_html=True)
+
+
+def _axis(kind="N", **kw):
+    cfg = dict(title=None, labelColor="#475569", titleColor="#64748b", labelFontSize=11,
+               labelLimit=200, grid=kw.pop("grid", True))
+    if kind == "N":
+        cfg["labelAngle"] = 0
+        cfg["grid"] = False
+    return alt.Axis(**{**cfg, **kw})
+
+
+def chart_style(chart, height=250):
+    return (chart.properties(height=height, background="transparent")
+            .configure_axis(labelColor="#475569", titleColor="#64748b", labelFontSize=11,
+                            titleFontSize=11, gridColor="#eef2f7", domainColor="#e2e8f0",
+                            tickColor="#e2e8f0", labelLimit=200)
+            .configure_legend(labelColor="#475569", titleColor="#64748b", labelFontSize=11,
+                              orient="top", direction="horizontal", symbolType="square",
+                              symbolSize=110, offset=6)
+            .configure_view(strokeWidth=0))
+
+
+def chart_bars(df, xf, yf, *, group=None, sort=None, height=250, fmt="d", muted=False, labels=True):
+    """Bar chart with value labels. Zero counts stay visible (label on the baseline) and the
+    categorical axis keeps every category in the given order — no silent gaps."""
+    base = dict(x=alt.X(f"{xf}:N", sort=sort, axis=_axis("N")),
+                y=alt.Y(f"{yf}:Q", title=None, axis=alt.Axis(tickMinStep=1, labelColor="#475569",
+                                                             gridColor="#eef2f7", domainColor="#e2e8f0")),
+                tooltip=[alt.Tooltip(f"{xf}:N"), alt.Tooltip(f"{yf}:Q")])
+    if group:
+        base["xOffset"] = alt.X(f"{group}:N", sort=None)
+        base["color"] = alt.Color(f"{group}:N", legend=alt.Legend(title=None),
+                                  scale=alt.Scale(range=[BASE_C, LIVE_C]))
+    else:
+        base["color"] = alt.value(SOFT_C if muted else LIVE_C)
+    bars = alt.Chart(df).mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3).encode(**base)
+    if not labels:
+        return chart_style(bars, height)
+    text = dict(x=base["x"], y=alt.Y(f"{yf}:Q", title=None, stack=None),
+                text=alt.Text(f"{yf}:Q", format=fmt))
+    if group:
+        text["xOffset"] = base["xOffset"]
+    marks = alt.Chart(df).mark_text(dy=-7, fontSize=10.5, color="#475569").encode(**text)
+    return chart_style(bars + marks, height)
+
+
+def chart_lines(df, xf, yf, cf, *, sort=None, height=250, colors=(BASE_C, LIVE_C), width=2.2):
+    chart = alt.Chart(df).mark_line(point=alt.OverlayMarkDef(size=55, filled=True),
+                                    strokeWidth=width).encode(
+        x=alt.X(f"{xf}:N", sort=sort, axis=_axis("N")),
+        y=alt.Y(f"{yf}:Q", title=None, axis=alt.Axis(labelColor="#475569", gridColor="#eef2f7",
+                                                     domainColor="#e2e8f0")),
+        color=alt.Color(f"{cf}:N", legend=alt.Legend(title=None), scale=alt.Scale(range=list(colors))),
+        tooltip=[alt.Tooltip(f"{xf}:N"), alt.Tooltip(f"{cf}:N"), alt.Tooltip(f"{yf}:Q")])
+    return chart_style(chart, height)

@@ -11,8 +11,6 @@ import viz
 
 DB = "data/ops.db"
 CONF_RANK = {"high": 3, "medium": 2, "low": 1}
-KIND_ICON = {"change": "🔧", "alert": "🚨", "incident": "📟", "ticket": "🎫", "impact": "📉",
-             "repair": "🛠", "verify": "✅", "detect": "🔎"}
 
 # ------------------------------------------------------------------ ONE shared lifecycle
 # The single progress model used across IT Ops and DataOps (see viz.thread_spine).
@@ -349,11 +347,11 @@ def engage_block(ref, action, actors_list):
     if auto and not delegs and actors_list:
         _engage(ref, action, tuple(actors_list), auto=True)   # autonomous coordination
         delegs = collab.delegations(ref)
-    st.markdown('<span class="ri-tag" style="background:#16a34a">🟢 Coordination — autonomous under '
+    st.markdown('<span class="ri-tag" style="background:#16a34a">Coordination — autonomous under '
                 'policy</span> <span style="color:#64748b;font-size:12px">(assign + notify carries no '
                 'production risk)</span>', unsafe_allow_html=True)
     if delegs:
-        st.markdown("**🤝 Collaboration status**")
+        st.markdown("**Collaboration status**")
         for d in delegs:
             col = _STATUS_COLOR.get(d["status"], "#64748b")
             st.markdown(f'<div class="ri-ev-chip" style="border-left-color:{col}"><b>{d["frm"]} → '
@@ -363,7 +361,7 @@ def engage_block(ref, action, actors_list):
         st.caption("🤖 Auto-coordinate is ON — the agent engaged the next actor automatically under policy. "
                    "The production change below still requires approval.")
     else:
-        st.button("🤝 Coordinate — delegate & notify", key="engage_" + ref,
+        st.button("Coordinate — delegate & notify", key="engage_" + ref,
                   type=("secondary" if delegs else "primary"),
                   on_click=_engage, args=(ref, action, tuple(actors_list)))
 
@@ -428,7 +426,7 @@ def render_correlation(inc_id):
     if not c:
         return
     st.markdown("**Cross-domain correlation**")
-    st.info(f'🔗 Shared root cause **{c["shared_cause"]}** links this to **{c["other_domain"]} '
+    st.info(f'Shared root cause **{c["shared_cause"]}** links this to **{c["other_domain"]} '
             f'{c["other_id"]}**. {c["note"]}')
     viz.chain([c["dop_id"], "biz", c["it_id"]],
               {c["dop_id"]: f'DataOps {c["dop_id"]}', "biz": "Business service · Payments",

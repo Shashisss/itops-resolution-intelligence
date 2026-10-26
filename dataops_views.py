@@ -7,6 +7,7 @@ import streamlit as st
 import dataops_engine as DE
 import engine as E
 import journey
+import shell
 import viz
 import collab
 
@@ -105,9 +106,15 @@ def hypotheses(inc, data):
     return hyps
 
 
+def _can_execute(role):
+    return shell.can_execute(role)
+
+
 def action_panel(inc, data):
-    st.markdown("#### Act — repair   ·   🧪 **SIMULATED**")
-    st.markdown('<span class="ri-tag" style="background:#dc2626">🔴 Execution — human approval</span> '
+    _role = st.session_state.get("you_role", "CSM")
+    _may = _can_execute(_role)
+    st.markdown("#### Act — repair   ·   **SIMULATED**")
+    st.markdown('<span class="ri-tag" style="background:#dc2626">Execution — human approval</span> '
                 '<span style="color:#64748b;font-size:12px">(this changes production, so it is risk-gated)</span>',
                 unsafe_allow_html=True)
     st.caption("The outcome depends on the action chosen; verification is independent. Approval is enforced for "
@@ -117,11 +124,14 @@ def action_panel(inc, data):
     opt = DE.DOP_REMEDIATION[labels.index(sel)]
     approved = True
     if opt["mode"] in ("Human approval", "Policy controlled"):
-        st.warning(f'🔴 **{opt["mode"]} required** — {opt["label"]}')
+        st.warning(f'**{opt["mode"]} required** — {opt["label"]}')
         approved = st.checkbox("I approve this action (required before execution)", key="dop_appr_" + inc["id"])
     else:
-        st.info(f'🟢 **{opt["mode"]}** — {opt["label"]}')
-    if st.button("Apply selected repair (simulated)", disabled=not approved,
+        st.info(f'**{opt["mode"]}** — {opt["label"]}')
+    if not _may:
+        st.caption(f'Read-only for **{_role}** — execution needs an Incident Manager or Data Owner. '
+                   f'Switch persona to act.')
+    if st.button("Apply selected repair (simulated)", disabled=(not approved) or (not _may),
                  type=("primary" if collab.delegations(inc["id"]) else "secondary"),
                  key="dop_apply_" + inc["id"]):
         rows = DE.verification(inc, data, opt, True)
@@ -176,15 +186,15 @@ def pipeline_view(inc, data):
     st.subheader("Pipeline intelligence — full walkthrough")
     context_header(inc, data)
     fresh_txt0, _, _, _ = _fresh(data, inc["dataset_id"])
-    viz.status_bar(f'🔎 {inc["id"]} · {inc["priority"]} · owner {inc["owner_team"]} · '
+    viz.status_bar(f'{inc["id"]} · {inc["priority"]} · owner {inc["owner_team"]} · '
                    f'freshness {fresh_txt0} · {journey.current_verdict(inc)}')
 
     def detect():
-        with st.expander("🔎 Detection", expanded=True):
+        with st.expander("Detection", expanded=True):
             journey.render_detection(inc["id"], "Data observability")
-        with st.expander("🕒 Operational timeline", expanded=False):
+        with st.expander("Operational timeline", expanded=False):
             journey.render_timeline(inc["id"], limit=6)
-        with st.expander("🔗 The pipeline story (lineage)", expanded=False):
+        with st.expander("The pipeline story (lineage)", expanded=False):
             labels = {d: data["datasets"][d]["name"] for d in data["datasets"]}
             stale = tuple(d for d in data["datasets"] if _fresh(data, d)[1])
             viz.chain(DE.lineage_paths(inc["dataset_id"], data["G"])[0], labels,
@@ -200,13 +210,13 @@ def pipeline_view(inc, data):
             hypotheses(inc, data)
 
     def decide():
-        with st.expander("🧭 Recommended repair (policy-governed)", expanded=True):
+        with st.expander("Recommended repair (policy-governed)", expanded=True):
             rec = DE.recommend(inc, DE.causes(inc, data), data)
             viz.rec_card(rec["action"], rec["risk"], rec["mode"], journey.actors(rec))
             journey.engage_block(inc["id"], rec["action"], journey.actors(rec))
 
     def close():
-        with st.expander("🏁 Closure record", expanded=True):
+        with st.expander("Closure record", expanded=True):
             rec = journey.resolution_record(inc["id"])
             applied_any = bool(rec and rec.get("checks")) or bool(
                 st.session_state.get(f'dop_opt_applied_{inc["id"]}'))
@@ -247,10 +257,10 @@ def data_owner_view(inc, data):
     ds = inc["dataset_id"]
     fresh_txt, breach, lag, sla = _fresh(data, ds)
     rows.append({"dataset": data["datasets"][ds]["name"], "freshness": fresh_txt,
-                 "status": "🔴 breach" if breach else "🟢 ok"})
+                 "status": "Breach" if breach else "OK"})
     for d in downs:
         ft, br, _, _ = _fresh(data, d)
-        rows.append({"dataset": data["datasets"][d]["name"], "freshness": ft, "status": "🔴 breach" if br else "🟢 ok"})
+        rows.append({"dataset": data["datasets"][d]["name"], "freshness": ft, "status": "Breach" if br else "OK"})
     viz.card_rows(rows, "#0d9488")
     if st.session_state.get(f'dop_opt_applied_{inc["id"]}') or journey.applied_action(inc["id"]):
         journey.render_recovery_by_verdict(

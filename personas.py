@@ -12,6 +12,7 @@ import developer
 import journey
 import viz
 import collab
+import shell
 
 SLA_HOURS = {"P1": 4, "P2": 8, "P3": 24, "P4": 72}
 STAGES = ["Detected", "Triaged", "Diagnosed", "Change raised", "Fix in progress", "Fix applied", "Verified", "Closed"]
@@ -166,8 +167,10 @@ def _verification(inc, ctx, applied):
 
 
 def action_panel(inc, ctx):
-    st.markdown("#### Act — remediation   ·   🧪 **SIMULATED**")
-    st.markdown('<span class="ri-tag" style="background:#dc2626">🔴 Execution — human approval</span> '
+    _role = st.session_state.get("you_role", "CSM")
+    _may = shell.can_execute(_role)
+    st.markdown("#### Act — remediation   ·   **SIMULATED**")
+    st.markdown('<span class="ri-tag" style="background:#dc2626">Execution — human approval</span> '
                 '<span style="color:#64748b;font-size:12px">(this changes production, so it is risk-gated)</span>',
                 unsafe_allow_html=True)
     st.caption("The outcome depends on the action chosen; verification is independent. Approval is enforced for "
@@ -177,12 +180,15 @@ def action_panel(inc, ctx):
     opt = E.IT_REMEDIATION[labels.index(sel)]
     approved = True
     if opt["mode"] in ("Human approval", "Policy controlled"):
-        st.warning(f'🔴 **{opt["mode"]} required** — {opt["label"]}')
+        st.warning(f'**{opt["mode"]} required** — {opt["label"]}')
         approved = st.checkbox("I approve this action (required before execution)", key="it_appr_" + inc["id"])
     else:
-        st.info(f'🟢 **{opt["mode"]}** — {opt["label"]}')
+        st.info(f'**{opt["mode"]}** — {opt["label"]}')
     _has_deleg = bool(collab.delegations(inc["id"]))
-    if st.button("Apply selected action (simulated)", disabled=not approved,
+    if not _may:
+        st.caption(f'Read-only for **{_role}** — execution needs an Incident Manager or Data Owner. '
+                   f'Switch persona to act.')
+    if st.button("Apply selected action (simulated)", disabled=(not approved) or (not _may),
                  type=("primary" if _has_deleg else "secondary"), key="it_apply_" + inc["id"]):
         rows = E.it_verification(inc, ctx, opt, True)
         v = journey.verdict(rows, True)
@@ -229,15 +235,15 @@ def incident_view(inc, ctx):
                                                  ctx["incidents"], ctx["G"])
     st.subheader("Incident intelligence — full walkthrough")
     context_header(inc, ctx)
-    viz.status_bar(f'🔎 {inc["id"]} · {inc["priority"]} · owner {inc["owner_team"]} · '
+    viz.status_bar(f'{inc["id"]} · {inc["priority"]} · owner {inc["owner_team"]} · '
                    f'SLA {_sla_detail(inc)[0]} · {journey.current_verdict(inc)}')
 
     def detect():
-        with st.expander("🔎 Detection", expanded=True):
+        with st.expander("Detection", expanded=True):
             journey.render_detection(inc["id"], "Monitoring / SRE")
-        with st.expander("🕒 Operational timeline", expanded=False):
+        with st.expander("Operational timeline", expanded=False):
             journey.render_timeline(inc["id"], limit=6)
-        with st.expander("🔗 The operational story", expanded=False):
+        with st.expander("The operational story", expanded=False):
             st.write(" → ".join(services[n]["name"] for n in E.dependency_paths(G, inc["service_id"])[0]))
             st.info(inc["summary"])
         with st.expander("📉 Business impact", expanded=False):
@@ -261,13 +267,13 @@ def incident_view(inc, ctx):
                 st.caption("No recent change in the impacted subgraph.")
 
     def decide():
-        with st.expander("🧭 Recommended action (policy-governed)", expanded=True):
+        with st.expander("Recommended action (policy-governed)", expanded=True):
             rec = E.recommend(inc, E.causes(inc, G, changes, metrics, services))
             viz.rec_card(rec["action"], rec["risk"], rec["mode"], journey.actors(rec))
             journey.engage_block(inc["id"], rec["action"], journey.actors(rec))
 
     def close():
-        with st.expander("🏁 Closure record", expanded=True):
+        with st.expander("Closure record", expanded=True):
             rec = journey.resolution_record(inc["id"])
             applied_any = bool(rec and rec.get("checks")) or bool(
                 st.session_state.get(f'it_opt_applied_{inc["id"]}'))
@@ -324,9 +330,9 @@ def l1_view(inc, ctx):
     causes = E.causes(inc, G, changes, metrics, services)
     rec = E.recommend(inc, causes)
     if rec["mode"] in ("Autonomous", "Auto"):
-        st.success(f'🟢 **Do this now (allowed):** {rec["action"]}')
+        st.success(f'**Allowed now:** {rec["action"]}')
     else:
-        st.error(f'🔴 **Escalate — requires {rec["mode"]}:** {rec["action"]}')
+        st.error(f'**Escalate — requires {rec["mode"]}:** {rec["action"]}')
     st.markdown("**Triage checklist**")
     st.write(f'- Affected service: **{services[inc["service_id"]]["name"]}**')
     st.write(f'- Business impact: {"customer-impacting — see CSM narrative" if biz else "service-level only"}')
@@ -422,9 +428,9 @@ def im_view(inc, ctx):
         st.write(f'- Change owner: **{ch["owner"]}** ({ch["id"]}, deployed {ch["deployed_at"]})')
     st.markdown("**Escalation signal**")
     if inc["status"] == "open" and rem is not None and rem < target * 0.5:
-        st.error(f'🔴 Escalate — {sla_txt}; customer-impacting.')
+        st.error(f'Escalate — {sla_txt}; customer-impacting.')
     else:
-        st.success("🟢 On track — no escalation required.")
+        st.success("On track — no escalation required.")
 
     st.markdown("#### Hand off a specific action")
     target_who = st.radio("Hand off to", ["L2 / L3 Engineer", "Developer (via ticket)"],

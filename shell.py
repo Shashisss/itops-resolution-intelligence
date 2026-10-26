@@ -19,6 +19,59 @@ ROLES_UNION = ["CIO", "CSM", "Incident Manager", "Service Desk", "L1 Engineer",
                "L2 / L3 Engineer", "Developer", "Data Engineer", "Data Owner",
                "Platform Engineer", "Data Consumer"]
 
+# Personas are a lens, not decoration: each one sets the view it opens on and states whether it may
+# execute a production change. Execution stays human-approved for every role; this only scopes it.
+PERSONA_MATRIX = {
+    "CIO": dict(scope="Portfolio — every domain, every team", board=dict(board_dom="All", board_status="All"),
+                exec=True, note="Approves policy and high-risk execution"),
+    "CSM": dict(scope="Customer impact — open incidents touching a business service",
+                board=dict(board_dom="All", board_status="Open"), exec=True,
+                note="Owns customer comms, not remediation"),
+    "Incident Manager": dict(scope="Major incidents — coordination and approval",
+                             board=dict(board_dom="All", board_status="Open"), exec=True,
+                             note="Approves execution, owns the bridge"),
+    "Service Desk": dict(scope="Queue — everything open, by priority",
+                         board=dict(board_dom="All", board_status="Open", board_pri="All"), exec=False,
+                         note="Triage and routing only"),
+    "L1 Engineer": dict(scope="Your queue — open incidents in either domain",
+                        board=dict(board_dom="All", board_status="Open"), exec=False,
+                        note="Diagnose and escalate; execution needs approval"),
+    "L2 / L3 Engineer": dict(scope="Deep investigation — open incidents",
+                             board=dict(board_dom="All", board_status="Open"), exec=True,
+                             note="Executes approved remediation"),
+    "Developer": dict(scope="Change-driven incidents — IT Ops",
+                      board=dict(board_dom="IT Ops", board_status="All"), exec=True,
+                      note="Owns the deploy that caused it"),
+    "Data Engineer": dict(scope="Pipelines and freshness — DataOps",
+                          board=dict(board_dom="DataOps", board_status="All"), exec=True,
+                          note="Repairs pipelines, replays batches"),
+    "Data Owner": dict(scope="Data products and contracts — DataOps",
+                       board=dict(board_dom="DataOps", board_status="All"), exec=True,
+                       note="Approves schema/contract changes"),
+    "Platform Engineer": dict(scope="Shared platform and services — IT Ops",
+                              board=dict(board_dom="IT Ops", board_status="All"), exec=True,
+                              note="Owns service reliability"),
+    "Data Consumer": dict(scope="Downstream impact — what is stale right now",
+                          board=dict(board_dom="DataOps", board_status="All"), exec=False,
+                          note="Read-only: sees freshness and impact, cannot act"),
+}
+
+
+def persona(role):
+    return PERSONA_MATRIX.get(role, dict(scope="All incidents", board={}, exec=False,
+                                         note="Read-only"))
+
+
+def can_execute(role):
+    return bool(persona(role)["exec"])
+
+
+def _apply_persona():
+    """Switching persona applies that persona's default board view immediately."""
+    spec = persona(st.session_state.get("you_role"))
+    for k, v in spec["board"].items():
+        st.session_state[k] = v
+
 
 def _set_nav(value):
     st.session_state["nav"] = value
@@ -90,57 +143,76 @@ def sidebar(default_role="CSM"):
         if nav == label:
             st.sidebar.caption(desc)
     st.sidebar.divider()
-    role = st.sidebar.selectbox("👤 Demo persona", ROLES_UNION, key="you_role")
+    role = st.sidebar.selectbox("Demo persona", ROLES_UNION, key="you_role",
+                                on_change=_apply_persona)
+    _p = persona(role)
+    st.sidebar.caption(f'**{_p["scope"]}** · {_p["note"]}'
+                       + ("" if _p["exec"] else " · read-only"))
     with st.sidebar:
         _demo_menu()
     return nav, role
 
 
 def topbar(it_inc, dop_inc, services, datasets, pipelines, role):
-    """Global controls: search (navigates to incidents) + notifications."""
+    """Global controls: one search that drives the board, plus notifications."""
     c1, c2 = st.columns([4.6, 1])
     with c1:
         gs = st.text_input("Search", key="global_search", label_visibility="collapsed",
-                           placeholder="🔎 Search incidents, services, datasets, pipelines, owners…")
+                           placeholder="Search incidents, services, datasets, pipelines, owners — press Enter")
     with c2:
         unread = collab.unread_count(role)
-        box = st.popover(f"🔔 {unread}") if hasattr(st, "popover") else st.expander(f"🔔 {unread}")
+        box = st.popover(f"Notifications · {unread}") if hasattr(st, "popover") else st.expander(f"Notifications · {unread}")
         with box:
             _notif_list(role)
 
-    if gs:
-        import journey
-        lo = gs.lower()
+    if not gs:
+        # A cleared search releases the board; it must never leave it filtered invisibly.
+        if st.session_state.get("board_q"):
+            st.session_state["board_q"] = ""
+        return
 
-        def hit(blob):
-            return lo in blob.lower()
+    lo = gs.strip().lower()
+    # One behaviour: typing in the global search IS the board filter.
+    st.session_state["board_q"] = gs.strip()
 
-        groups = {}
-        for i in it_inc:
-            if hit(i["id"] + " " + i["title"] + " " + i["owner_team"]):
-                groups.setdefault("Incidents", []).append(
-                    (f'IT Ops · {i["id"]} · {i["title"]}', ("IT Ops", i["id"])))
-        for i in dop_inc:
-            if hit(i["id"] + " " + i["title"] + " " + i["owner_team"]):
-                groups.setdefault("Incidents", []).append(
-                    (f'DataOps · {i["id"]} · {i["title"]}', ("DataOps", i["id"])))
-        for sid, s in services.items():
-            if hit(sid + " " + s["name"] + " " + s.get("owner", "")):
-                groups.setdefault("Services", []).append((f'{s["name"]} · {s["type"]} · {s["owner"]}', None))
-        for did, d in datasets.items():
-            if hit(did + " " + d["name"] + " " + d.get("owner_team", "") + " " + d.get("layer", "")):
-                groups.setdefault("Datasets", []).append(
-                    (f'{d["name"]} · {d["layer"]} · {d.get("owner_team","")}', None))
-        for pid, p in pipelines.items():
-            if hit(pid + " " + p["name"] + " " + p.get("owner_team", "")):
-                groups.setdefault("Pipelines", []).append((f'{p["name"]} · {p.get("owner_team","")}', None))
+    def hit(blob):
+        return lo in blob.lower()
+
+    groups = {}
+    for i in it_inc:
+        if hit(i["id"] + " " + i["title"] + " " + i["owner_team"]):
+            groups.setdefault("Incidents", []).append((f'IT Ops · {i["id"]} · {i["title"]}', ("IT Ops", i["id"])))
+    for i in dop_inc:
+        if hit(i["id"] + " " + i["title"] + " " + i["owner_team"]):
+            groups.setdefault("Incidents", []).append((f'DataOps · {i["id"]} · {i["title"]}', ("DataOps", i["id"])))
+    for sid, s in services.items():
+        if hit(sid + " " + s["name"] + " " + s.get("owner", "")):
+            groups.setdefault("Services", []).append((f'{s["name"]} · {s["type"]} · {s["owner"]}', None))
+    for did, d in datasets.items():
+        if hit(did + " " + d["name"] + " " + d.get("owner_team", "") + " " + d.get("layer", "")):
+            groups.setdefault("Datasets", []).append((f'{d["name"]} · {d["layer"]} · {d.get("owner_team", "")}', None))
+    for pid, p in pipelines.items():
+        if hit(pid + " " + p["name"] + " " + p.get("owner_team", "")):
+            groups.setdefault("Pipelines", []).append((f'{p["name"]} · {p.get("owner_team", "")}', None))
+
+    total = sum(len(v) for v in groups.values())
+    with st.container(border=True):
         if not groups:
-            st.caption("No matches.")
+            st.markdown(f'**No match for “{gs}”** — nothing in incidents, services, datasets or pipelines.')
+            st.caption("Check the id prefix (INC- for IT Ops, DOP- for DataOps) or search an owner team.")
+            return
+        st.markdown(f'**{total} match{"es" if total != 1 else ""} for “{gs}”** · the incident board below is '
+                    f'filtered to the same query')
         for group, items in groups.items():
             st.caption(f'**{group}** · {len(items)}')
-            for label, target in items[:5]:
+            for label, target in items[:6]:
                 if target:
                     st.button(label, key=f'gs_{group}_{abs(hash(label)) % 10**8}',
-                              on_click=journey._goto, args=(target[0], None, target[1]))
+                              on_click=_goto_incident, args=(target[0], target[1]))
                 else:
                     st.markdown(f'- {label}')
+
+
+def _goto_incident(domain, ref):
+    import journey
+    journey._goto(domain, None, ref)
