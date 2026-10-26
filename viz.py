@@ -430,7 +430,7 @@ def next_step(action, owner, gate, why=None, target=None, blast=None, risk=None)
         f"risk: {risk}" if risk else "",
     ) if x)
     st.markdown(
-        f'<div class="ri-card" style="border-left:5px solid #4f46e5;background:#eef2ff;padding:9px 12px">'
+        f'<div class="ri-card" style="padding:9px 12px">'
         f'<div style="font-weight:700;color:#0f172a;font-size:13.5px">{action}</div>'
         f'<div style="font-size:11.5px;color:#334155;margin-top:2px">owner: <b>{owner}</b> · '
         f'gate: <b>{gate}</b></div>'

@@ -50,8 +50,17 @@ STAGE_METRIC = {
 }
 
 
+CH_COLOR = {"Teams": "#6264A7", "Email": "#2A66BE", "Jira": "#2563EB", "App": "#64748b"}
+
+
+def _ch(channel):
+    """Coloured channel chip (Teams / Email / Jira / App)."""
+    c = CH_COLOR.get(channel, "#64748b")
+    return f'<span class="ri-tag" style="background:{c}">{channel}</span>'
+
+
 def _stage_panel(inc, rec, stage):
-    """Short, scannable stage card: OLA, metric delta, evidence, collaboration, MTTR."""
+    """Short stage card: OLA + metric (colour-coded), evidence, collaboration (channel chips), MTTR."""
     olas = {o["stage"]: o["target_min"] for o in E.load_stage_olas()}
     label, base, obs = STAGE_METRIC.get(stage, (stage, None, None))
     total_base = sum(v[1] for v in STAGE_METRIC.values())
@@ -59,13 +68,18 @@ def _stage_panel(inc, rec, stage):
     ola = olas.get(stage)
 
     parts = []
-    parts.append(f'OLA {ola}m {"✅" if obs <= ola else "🔴"}' if ola is not None else 'OLA —')
+    if ola is not None:
+        ocol = "#16a34a" if obs <= ola else "#dc2626"
+        parts.append(f'OLA <b style="color:{ocol}">{ola}m {"✅" if obs <= ola else "🔴"}</b>')
+    else:
+        parts.append('OLA —')
     if base:
         saved = base - obs
         dirn = (f'▲{saved}m faster' if saved > 0 else f'▼{abs(saved)}m slower' if saved < 0 else '±0')
-        parts.append(f'{label} {obs}m {dirn}')
-        parts.append(f'{int(100 * obs / total_obs)}% MTTR')
-    st.markdown(" · ".join(parts))
+        dcol = "#16a34a" if saved > 0 else ("#dc2626" if saved < 0 else "#64748b")
+        parts.append(f'{label} <b>{obs}m</b> <span style="color:{dcol}">{dirn}</span>')
+        parts.append(f'<b>{int(100 * obs / total_obs)}%</b> MTTR')
+    st.markdown(" · ".join(parts), unsafe_allow_html=True)
 
     kinds = STAGE_KINDS.get(stage, set())
     evs = [e for e in journey.timeline(inc["id"]) if e["kind"] in kinds] or journey.timeline(inc["id"])[-2:]
@@ -76,11 +90,12 @@ def _stage_panel(inc, rec, stage):
 
     stats = journey.collab_stats(inc, stage=stage)
     details = stats.get("participants_detail", [])
-    names = " · ".join(f'{p["who"].split(" (")[0]} ({p["channel"]})' for p in details[:3]) or "—"
+    chips = [f'{p["who"].split(" (")[0]} {_ch(p.get("channel") or "App")}' for p in details[:3]]
     ds = [d for d in collab.delegations(inc["id"]) if (d.get("stage") or "") == stage]
-    handoff = f' · handoff via {ds[0].get("channel", "Teams")} → {ds[0]["to_"]}' if ds else ""
-    st.caption(f'Collab: {names}{handoff} · {stats.get("handoffs", 0)} handoff(s), '
-               f'{stats.get("handoffs_done", 0)} done')
+    handoff = f' · handoff {_ch(ds[0].get("channel", "Teams"))} → {ds[0]["to_"]}' if ds else ""
+    st.markdown("Collab: " + (" · ".join(chips) or "—") + handoff +
+                f' · {stats.get("handoffs", 0)} handoff(s), {stats.get("handoffs_done", 0)} done',
+                unsafe_allow_html=True)
     st.caption(f'MTTR {total_base}→{total_obs}m · stage {obs}m')
 
 
