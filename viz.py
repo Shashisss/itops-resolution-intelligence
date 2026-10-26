@@ -71,6 +71,22 @@ div[class*="st-key-kpi_"] button{height:auto!important;width:100%!important;text
 div[class*="st-key-kpi_"] button p{font-weight:700!important;font-size:15px!important;text-align:left!important;
   color:#0f172a!important;margin:0!important}
 div[class*="st-key-kpi_"] button:hover{background:#f8fafc!important}
+/* lifecycle stage buttons: each stage in its own colour (no default blue primary) */
+div[class*="st-key-lcb_"] button{background:#fff!important;border:1px solid #e5e7eb!important;
+  border-left:4px solid #94a3b8!important;border-radius:10px!important}
+div[class*="st-key-lcb_"] button p{font-weight:700!important;font-size:12.5px!important}
+div[class*="st-key-lcb_"][class*="_Detect"] button{border-left-color:#2A66BE!important}
+div[class*="st-key-lcb_"][class*="_Detect"] button p{color:#2A66BE!important}
+div[class*="st-key-lcb_"][class*="_Correlate"] button{border-left-color:#7A4FBF!important}
+div[class*="st-key-lcb_"][class*="_Correlate"] button p{color:#7A4FBF!important}
+div[class*="st-key-lcb_"][class*="_Coordinate"] button{border-left-color:#D98B2B!important}
+div[class*="st-key-lcb_"][class*="_Coordinate"] button p{color:#B45309!important}
+div[class*="st-key-lcb_"][class*="_Act"] button{border-left-color:#C2410C!important}
+div[class*="st-key-lcb_"][class*="_Act"] button p{color:#C2410C!important}
+div[class*="st-key-lcb_"][class*="_Verify"] button{border-left-color:#2E8B62!important}
+div[class*="st-key-lcb_"][class*="_Verify"] button p{color:#2E8B62!important}
+div[class*="st-key-lcb_"][class*="_Close"] button{border-left-color:#475569!important}
+div[class*="st-key-lcb_"][class*="_Close"] button p{color:#475569!important}
 /* Ambient live strip — global, always-visible (one compact line) */
 .ri-ambient{display:flex;gap:9px;flex-wrap:wrap;align-items:center;background:#f8fafc;
   border:1px solid #e5e7eb;border-radius:10px;padding:6px 11px;margin:0 0 10px}

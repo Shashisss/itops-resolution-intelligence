@@ -26,11 +26,13 @@ def _lifecycle_clickable(lifecycle, stage_key, stage_panel):
     sel_key = f"lc_stage_{stage_key}"
     for col, (title, status, detail, ola) in zip(cols, lifecycle):
         icon = viz.STAGE_ICON.get(title, "⬜")
-        col.button(f"{icon} {title}", key=f"lcb_{stage_key}_{title}", width="stretch",
-                   type=("primary" if status == "current" else "secondary"),
+        label = f"{icon} {title}"
+        if status == "current":
+            label = f"▶ {label}"
+        col.button(label, key=f"lcb_{stage_key}_{title}", width="stretch",
                    on_click=_toggle_stage, args=(sel_key, title))
-    st.caption("Each stage has its own colour; the **active** stage is highlighted. Click a stage to see "
-               "what happened, who collaborated, and the acceleration at that stage.")
+    st.caption("Each stage has its own colour; **▶ marks the active stage**. Click a stage to see what "
+               "happened, who collaborated, and the acceleration at that stage.")
 
     sel = st.session_state.get(sel_key)
     if sel:

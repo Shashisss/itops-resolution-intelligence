@@ -230,25 +230,25 @@ def incident_view(inc, ctx):
                    f'SLA {_sla_detail(inc)[0]} · {journey.current_verdict(inc)}')
 
     def detect():
-        st.subheader("Detection")
-        journey.render_detection(inc["id"], "Monitoring / SRE")
-        st.subheader("Operational timeline")
-        journey.render_timeline(inc["id"])
-        st.subheader("The operational story")
-        st.write(" → ".join(services[n]["name"] for n in E.dependency_paths(G, inc["service_id"])[0]))
-        st.info(inc["summary"])
-        st.subheader("Business impact")
-        df = _kpi_df()
-        st.line_chart(df[df.scenario == "current"].set_index("ts")["value"], height=150)
+        with st.expander("🔎 Detection", expanded=True):
+            journey.render_detection(inc["id"], "Monitoring / SRE")
+        with st.expander("🕒 Operational timeline", expanded=False):
+            journey.render_timeline(inc["id"])
+        with st.expander("🔗 The operational story", expanded=False):
+            st.write(" → ".join(services[n]["name"] for n in E.dependency_paths(G, inc["service_id"])[0]))
+            st.info(inc["summary"])
+        with st.expander("📉 Business impact", expanded=False):
+            df = _kpi_df()
+            st.line_chart(df[df.scenario == "current"].set_index("ts")["value"], height=150)
 
     def diagnose():
-        st.subheader("Root cause — hypotheses with evidence")
-        hypotheses(inc, ctx)
-        with st.expander("Related incidents"):
+        with st.expander("🎯 Root cause — hypotheses with evidence", expanded=True):
+            hypotheses(inc, ctx)
+        with st.expander("🔁 Related incidents", expanded=False):
             sim = E.similar(incidents, inc)
             for s in (sim or [f'None above the relevance threshold ({E.SIMILARITY_THRESHOLD}).']):
                 st.write(f'- {s}')
-        with st.expander("Change risk"):
+        with st.expander("🔧 Change risk", expanded=False):
             ch = _latest_change(inc, ctx)
             if ch:
                 cr = E.change_risk(ch, G, services, incidents)
@@ -258,10 +258,10 @@ def incident_view(inc, ctx):
                 st.caption("No recent change in the impacted subgraph.")
 
     def decide():
-        st.subheader("Recommended action (policy-governed)")
-        rec = E.recommend(inc, E.causes(inc, G, changes, metrics, services))
-        viz.rec_card(rec["action"], rec["risk"], rec["mode"], journey.actors(rec))
-        journey.engage_block(inc["id"], rec["action"], journey.actors(rec))
+        with st.expander("🧭 Recommended action (policy-governed)", expanded=True):
+            rec = E.recommend(inc, E.causes(inc, G, changes, metrics, services))
+            viz.rec_card(rec["action"], rec["risk"], rec["mode"], journey.actors(rec))
+            journey.engage_block(inc["id"], rec["action"], journey.actors(rec))
 
     journey.wizard("it_step_" + inc["id"], viz.RESOLUTION_FLOW,
                    {"Detect": detect, "Diagnose": diagnose, "Decide": decide,

@@ -176,30 +176,30 @@ def pipeline_view(inc, data):
                    f'freshness {fresh_txt0} · {journey.current_verdict(inc)}')
 
     def detect():
-        st.subheader("Detection")
-        journey.render_detection(inc["id"], "Data observability")
-        st.subheader("Operational timeline")
-        journey.render_timeline(inc["id"])
-        st.subheader("The pipeline story (lineage)")
-        labels = {d: data["datasets"][d]["name"] for d in data["datasets"]}
-        stale = tuple(d for d in data["datasets"] if _fresh(data, d)[1])
-        viz.chain(DE.lineage_paths(inc["dataset_id"], data["G"])[0], labels,
-                  stale=stale, highlight=(inc["dataset_id"],))
-        st.info(inc["summary"])
-        st.subheader("Failure impact")
-        downs, cons = DE.impact(inc["dataset_id"], data)
-        st.write("**Downstream datasets:** " + (", ".join(data["datasets"][d]["name"] for d in downs) or "—"))
-        st.write("**Consumers impacted:** " + (", ".join(cons) or "—"))
+        with st.expander("🔎 Detection", expanded=True):
+            journey.render_detection(inc["id"], "Data observability")
+        with st.expander("🕒 Operational timeline", expanded=False):
+            journey.render_timeline(inc["id"])
+        with st.expander("🔗 The pipeline story (lineage)", expanded=False):
+            labels = {d: data["datasets"][d]["name"] for d in data["datasets"]}
+            stale = tuple(d for d in data["datasets"] if _fresh(data, d)[1])
+            viz.chain(DE.lineage_paths(inc["dataset_id"], data["G"])[0], labels,
+                      stale=stale, highlight=(inc["dataset_id"],))
+            st.info(inc["summary"])
+        with st.expander("📉 Failure impact", expanded=False):
+            downs, cons = DE.impact(inc["dataset_id"], data)
+            st.write("**Downstream datasets:** " + (", ".join(data["datasets"][d]["name"] for d in downs) or "—"))
+            st.write("**Consumers impacted:** " + (", ".join(cons) or "—"))
 
     def diagnose():
-        st.subheader("Pipeline RCA — hypotheses")
-        hypotheses(inc, data)
+        with st.expander("🎯 Pipeline RCA — hypotheses", expanded=True):
+            hypotheses(inc, data)
 
     def decide():
-        st.subheader("Recommended repair (policy-governed)")
-        rec = DE.recommend(inc, DE.causes(inc, data), data)
-        viz.rec_card(rec["action"], rec["risk"], rec["mode"], journey.actors(rec))
-        journey.engage_block(inc["id"], rec["action"], journey.actors(rec))
+        with st.expander("🧭 Recommended repair (policy-governed)", expanded=True):
+            rec = DE.recommend(inc, DE.causes(inc, data), data)
+            viz.rec_card(rec["action"], rec["risk"], rec["mode"], journey.actors(rec))
+            journey.engage_block(inc["id"], rec["action"], journey.actors(rec))
 
     journey.wizard("dop_step_" + inc["id"], viz.RESOLUTION_FLOW,
                    {"Detect": detect, "Diagnose": diagnose, "Decide": decide,
