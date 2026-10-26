@@ -9,9 +9,7 @@ import viz
 import collab
 
 NAV_ITEMS = [
-    ("Overview", "◫", "What needs attention across IT Ops and DataOps?"),
     ("Incidents", "▤", "Unified list, filters, severity, ownership, lifecycle."),
-    ("Resolution threads", "⇄", "Cross-domain dependencies and coordinated resolution."),
     ("Analytics", "↗", "MTTR, recurrence, verification outcomes, operational trends."),
     ("Activity & audit", "◷", "Actions, approvals, handoffs, verification records."),
 ]
@@ -81,7 +79,10 @@ def sidebar(default_role="CSM"):
     st.sidebar.markdown(
         '<div class="ri-sidebrand">Resolution Intelligence<br>'
         '<span>Unified IT Ops + DataOps</span></div>', unsafe_allow_html=True)
-    nav = st.session_state.get("nav", "Overview")
+    nav = st.session_state.get("nav", "Incidents")
+    if nav not in NAV:
+        nav = "Incidents"
+    st.session_state["nav"] = nav
     for label, icon, desc in NAV_ITEMS:
         st.sidebar.button(f"{icon}  {label}", key=f"nav_{label}", width="stretch",
                           type=("primary" if nav == label else "secondary"),

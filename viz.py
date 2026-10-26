@@ -537,7 +537,8 @@ SEV_LABEL = {"P1": ("🔴", "Critical"), "P2": ("🟠", "Major"), "P3": ("🔵",
              "P4": ("⚪", "Low")}
 
 
-def board_card(inc, domain, verdict, on_click, args, stage=None, sla=None, open_=False, linked=False):
+def board_card(inc, domain, verdict, on_click, args, stage=None, sla=None, open_=False, linked=False,
+               prefix="boardcard"):
     """Compact incident row (Linear-style): line 1 = ID + title; line 2 = severity · status ·
     domain · owner · time. The whole row is clickable (keyed button styled as a card); the
     per-priority left border and 🔗 marker carry severity and cross-domain at a glance."""
@@ -548,8 +549,9 @@ def board_card(inc, domain, verdict, on_click, args, stage=None, sla=None, open_
     link = "🔗 " if linked else ""
     icon, sev = SEV_LABEL.get(pri, ("🔵", "Minor"))
     line1 = f'{mark}{link}**{inc["id"]}**  {inc["title"]}'
-    line2 = f'{icon} {sev} · {status} · {domain} · {owner}' + (f' · ⏱ {sla}' if sla else '')
-    st.button(f'{line1}  \n{line2}', key=f'boardcard-{pri}-{inc["id"]}', width="stretch",
+    line2 = (f'{icon} {sev} · {status} · {domain} · {stage or "—"} · '
+             f'⏱ {sla or "—"} · {owner}')
+    st.button(f'{line1}  \n{line2}', key=f'{prefix}-{pri}-{inc["id"]}', width="stretch",
               on_click=on_click, args=args)
 
 

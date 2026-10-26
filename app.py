@@ -115,62 +115,61 @@ def _sla_txt(i):
     return "BREACHED" if rem <= 0 else f"{int(rem)}h {int((rem % 1) * 60)}m left"
 
 
-# ================================================================= Overview (collapsible, on the incident page)
-def _overview_panel():
+# ================================================================= Collapsible sections (Incidents page)
+def _needs_attention_cards(limit=4):
+    """Trello-style cards for the most urgent open incidents — stage + time left at a glance."""
     dop = DE.load()
-    it_open = [i for i in _it_inc if i["status"] == "open"]
-    dop_open = [i for i in dop["incidents"] if i["status"] == "open"]
-    at_risk = sum(1 for i in it_open + dop_open if _sla_risk(i))
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("IT Ops incidents (open)", len(it_open))
-    m2.metric("DataOps incidents (open)", len(dop_open))
-    m3.metric("SLA at risk", at_risk)
-    m4.metric("Cross-domain threads", 1)
+    incidents = list(_it_inc) + list(dop["incidents"])
+    order = {"P1": 0, "P2": 1, "P3": 2, "P4": 3}
+    attention = sorted([i for i in incidents if i["status"] == "open"],
+                       key=lambda i: (not _sla_risk(i), order.get(i["priority"], 9), i["id"]))[:limit]
+    if not attention:
+        st.caption("No open incidents.")
+        return
+    cols = st.columns(2)
+    for idx, inc in enumerate(attention):
+        dom = "IT Ops" if inc["id"].startswith("INC") else "DataOps"
+        with cols[idx % 2]:
+            viz.board_card(inc, dom, journey.display_verdict(inc), on_click=journey._goto,
+                           args=(dom, None, inc["id"]), stage=journey.lifecycle_stage(inc),
+                           sla=(_sla_txt(inc) if inc["status"] == "open" else None),
+                           linked=bool(journey.correlation_for(inc["id"])), prefix="attn")
 
-    st.markdown("**Cross-domain resolution thread — live example**")
-    viz.causal([("Schema mismatch", "DataOps"), ("Pipeline failure", "DataOps"),
-                ("Stale payments data", "DataOps"), ("Payment API impact", "IT Ops")])
-    corr = journey.correlation_for("INC-8841")
-    st.caption(f'🔗 **INC-8841** (IT Ops) ↔ **DOP-1001** (DataOps) · shared cause '
-               f'**{corr["shared_cause"] if corr else "—"}**')
-    c1, c2 = st.columns(2)
-    with c1:
-        st.button("Open INC-8841 (IT Ops)", key="ov_it", width="stretch",
-                  on_click=journey._goto, args=("IT Ops", None, "INC-8841"))
-    with c2:
-        st.button("Open DOP-1001 (DataOps)", key="ov_dop", width="stretch",
-                  on_click=journey._goto, args=("DataOps", None, "DOP-1001"))
 
-    st.markdown("**Live event feed — all domains**")
-    f1, f2 = st.columns([1, 1])
-    domf = f1.selectbox("Domain", ["All", "IT Ops", "DataOps"], key="feed_dom")
-    sevf = f2.selectbox("Severity", ["All", "critical", "warning", "info"], key="feed_sev")
+def _thread_cards(prefix):
+    """One short card per cross-domain thread (all of them, not a single example)."""
+    pairs = []
+    for inc in _it_inc:
+        c = journey.correlation_for(inc["id"])
+        if c:
+            pairs.append((inc, c))
+    if not pairs:
+        st.caption("No cross-domain threads in the current data.")
+        return
+    for inc, c in pairs:
+        edges = journey.thread_edges_for(inc["id"])
+        obs = sum(1 for e in edges if e["kind"] == "observed")
+        inf = sum(1 for e in edges if e["kind"] == "inferred")
+        with st.container(border=True):
+            st.markdown(f'**{inc["id"]}** ↔ **{c["other_id"]}** · {inc["title"][:70]}')
+            st.caption(f'shared cause: {c["shared_cause"]} · {obs} observed / {inf} inferred · '
+                       f'verdict: {journey.display_verdict(inc)}')
+            b1, b2 = st.columns(2)
+            b1.button("Open IT Ops →", key=f"{prefix}_th_it_{inc['id']}", width="stretch",
+                      on_click=journey._goto, args=("IT Ops", None, inc["id"]))
+            b2.button("Open DataOps →", key=f"{prefix}_th_dop_{inc['id']}", width="stretch",
+                      on_click=journey._goto, args=("DataOps", None, c["other_id"]))
 
-    def _dom(e):
-        return "DataOps" if e.get("domain") == "dataops" else "IT Ops"
 
-    events = [e for e in realtime.recent(40)
-              if (domf == "All" or _dom(e) == domf) and (sevf == "All" or e.get("severity") == sevf)]
-    if not events:
-        st.caption("No events match the filter.")
-    for e in events[:12]:
-        hhmm = str(e.get("ts", "")).split("T")[-1][:5]
-        label = f'{hhmm} · {_dom(e)} · {e.get("severity","")} · {e.get("source","")} — {e.get("message","")}'
-        if e.get("ref_id"):
-            st.button(label, key=f'feed_ev_{e.get("id")}', on_click=journey._goto,
-                      args=(_dom(e), None, e["ref_id"]))
-        else:
-            st.markdown(f'`{hhmm}` · {_dom(e)} · {e.get("severity","")} — {e.get("message","")}')
-    st.caption("Click an event to open the related incident.")
-
-    st.markdown("**Recent activity — across all incidents**")
+def _recent_activity(n=6):
+    dop = DE.load()
     rows = []
     for ref in [i["id"] for i in _it_inc] + [i["id"] for i in dop["incidents"]]:
         for cm in collab.comments(ref):
-            rows.append((cm["ts"], ref, cm["author"], cm["text"]))
+            rows.append((cm["ts"], ref, cm["author"], cm.get("channel", ""), cm["text"]))
     rows.sort(reverse=True)
-    for ts, ref, author, text in rows[:6]:
-        st.markdown(f'`{ts[11:16]}` · **{ref}** · {author}  \n{text}')
+    for ts, ref, author, ch, text in rows[:n]:
+        st.markdown(f'`{ts[11:16]}` · **{ref}** · {author} · {ch or "—"} — {text[:80]}')
     if not rows:
         st.caption("No activity yet.")
 
@@ -335,14 +334,18 @@ def _incident_dialog(dom, ref, you_role):
 
 
 def render_incidents(you_role):
-    """Default page. The board is the main block and never shifts; clicking a card opens the
-    incident's details in a modal dialog (with collapsible sections)."""
-    with st.expander("📊 Overview — at a glance", expanded=False):
-        _overview_panel()
+    """Incident-first page: short collapsible sections; drill down from there."""
+    with st.expander("⚡ Needs attention", expanded=True):
+        _needs_attention_cards()
+    with st.expander("🔗 Cross-domain resolution threads", expanded=False):
+        _thread_cards("inc")
+    with st.expander("🕒 Recent activity", expanded=False):
+        _recent_activity()
+    with st.expander("▤ Incidents & resolution threads", expanded=True):
+        render_board()
     sel = st.session_state.get("open_incident")
     if sel:
         _incident_dialog(sel["domain"], sel["ref"], you_role)
-    render_board()
 
 
 # ================================================================= Analytics
@@ -409,112 +412,6 @@ def render_analytics():
     st.caption("**Illustrative** simulated totals.")
 
 
-# ================================================================= Overview (page)
-def _live_feed_panel():
-    f1, f2 = st.columns([1, 1])
-    domf = f1.selectbox("Domain", ["All", "IT Ops", "DataOps"], key="ov_feed_dom")
-    sevf = f2.selectbox("Severity", ["All", "critical", "warning", "info"], key="ov_feed_sev")
-
-    def _dom(e):
-        return "DataOps" if e.get("domain") == "dataops" else "IT Ops"
-
-    events = [e for e in realtime.recent(40)
-              if (domf == "All" or _dom(e) == domf) and (sevf == "All" or e.get("severity") == sevf)]
-    if not events:
-        st.caption("No events match the filter.")
-    for e in events[:10]:
-        hhmm = str(e.get("ts", "")).split("T")[-1][:5]
-        label = f'{hhmm} · {_dom(e)} · {e.get("severity","")} · {e.get("source","")} — {e.get("message","")}'
-        if e.get("ref_id"):
-            st.button(label, key=f'ov_ev_{e.get("id")}', on_click=journey._goto,
-                      args=(_dom(e), None, e["ref_id"]))
-        else:
-            st.markdown(f'`{hhmm}` · {_dom(e)} · {e.get("severity","")} — {e.get("message","")}')
-    st.caption("Click an event to open the related incident.")
-
-
-def render_overview_page():
-    dop = DE.load()
-    incidents = list(_it_inc) + list(dop["incidents"])
-    it_open = [i for i in _it_inc if i["status"] == "open"]
-    dop_open = [i for i in dop["incidents"] if i["status"] == "open"]
-    at_risk = sum(1 for i in it_open + dop_open if _sla_risk(i))
-    threads = len([i for i in _it_inc if journey.correlation_for(i["id"])])
-    verified = sum(1 for i in incidents if journey.display_verdict(i) == "Verified")
-
-    st.subheader("Overview — what needs attention")
-    st.caption("Live counts from the current incidents. Click a card to open it.")
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Open incidents", len(it_open) + len(dop_open))
-    m2.metric("SLA at risk", at_risk)
-    m3.metric("Cross-domain threads", threads)
-    m4.metric("Verified recoveries", verified)
-
-    st.markdown("#### Needs attention")
-    order = {"P1": 0, "P2": 1, "P3": 2, "P4": 3}
-    attention = sorted([i for i in incidents if i["status"] == "open"],
-                       key=lambda i: (not _sla_risk(i), order.get(i["priority"], 9), i["id"]))[:4]
-    cols = st.columns(2)
-    for idx, inc in enumerate(attention):
-        dom = "IT Ops" if inc["id"].startswith("INC") else "DataOps"
-        with cols[idx % 2]:
-            viz.board_card(inc, dom, journey.display_verdict(inc), on_click=journey._goto,
-                           args=(dom, None, inc["id"]), stage=journey.lifecycle_stage(inc),
-                           sla=(_sla_txt(inc) if inc["status"] == "open" else None),
-                           linked=bool(journey.correlation_for(inc["id"])))
-
-    st.markdown("#### Cross-domain resolution thread")
-    viz.causal([("Schema mismatch", "DataOps"), ("Pipeline failure", "DataOps"),
-                ("Stale payments data", "DataOps"), ("Payment API impact", "IT Ops")])
-    corr = journey.correlation_for("INC-8841")
-    if corr:
-        st.caption(f'🔗 **INC-8841** (IT Ops) ↔ **DOP-1001** (DataOps) · shared cause '
-                   f'**{corr["shared_cause"]}**')
-
-    with st.expander("📡 Live event feed — all domains", expanded=False):
-        _live_feed_panel()
-
-    st.markdown("#### Recent activity")
-    rows = []
-    for ref in [i["id"] for i in _it_inc] + [i["id"] for i in dop["incidents"]]:
-        for cm in collab.comments(ref):
-            rows.append((cm["ts"], ref, cm["author"], cm.get("channel", ""), cm["text"]))
-    rows.sort(reverse=True)
-    for ts, ref, author, ch, text in rows[:6]:
-        st.markdown(f'`{ts[11:16]}` · **{ref}** · {author}' + (f' · {ch}' if ch else '') + f'  \n{text}')
-    if not rows:
-        st.caption("No activity yet.")
-
-
-# ================================================================= Resolution threads (page)
-def render_threads(you_role):
-    st.subheader("Resolution threads — cross-domain")
-    st.caption("IT Ops and DataOps resolved as one thread. Observed facts and inferred relationships "
-               "are labelled.")
-    pairs = [(inc, journey.correlation_for(inc["id"])) for inc in _it_inc]
-    pairs = [(inc, c) for inc, c in pairs if c]
-    if not pairs:
-        st.info("No cross-domain threads in the current data.")
-        return
-    for inc, c in pairs:
-        other = _find_dop(c["other_id"])
-        edges = journey.thread_edges_for(inc["id"])
-        obs = sum(1 for e in edges if e["kind"] == "observed")
-        inf = sum(1 for e in edges if e["kind"] == "inferred")
-        with st.container(border=True):
-            st.markdown(f'**{inc["id"]}** — {inc["title"]}  \n'
-                        f'↔ **{c["other_domain"]} {c["other_id"]}** — {other["title"] if other else "—"}')
-            st.caption(f'shared cause: **{c["shared_cause"]}** · evidence: **{obs} observed**, '
-                       f'**{inf} inferred** · verdict: **{journey.display_verdict(inc)}**')
-            b1, b2 = st.columns(2)
-            b1.button(f'Open {inc["id"]} →', key=f'th_it_{inc["id"]}', width="stretch",
-                      on_click=journey._goto, args=("IT Ops", None, inc["id"]))
-            b2.button(f'Open {c["other_id"]} →', key=f'th_dop_{inc["id"]}', width="stretch",
-                      on_click=journey._goto, args=("DataOps", None, c["other_id"]))
-            with st.expander("Thread edges — observed vs inferred", expanded=False):
-                viz.thread_edges(edges)
-
-
 # ================================================================= Activity & audit (page)
 def render_activity():
     st.subheader("Activity & audit — actions, handoffs, verification")
@@ -560,17 +457,13 @@ def render_activity():
 
 
 # ================================================================= dispatch
-if nav == "Overview":
-    render_overview_page()
-elif nav == journey.WORKSPACE_NAV:
+if nav == journey.WORKSPACE_NAV:
     render_incidents(you_role)
-elif nav == "Resolution threads":
-    render_threads(you_role)
 elif nav == "Analytics":
     render_analytics()
 elif nav == "Activity & audit":
     render_activity()
 
 st.divider()
-st.caption("Sample data · simulated actions · build v67 — proof of concept, not production. "
+st.caption("Sample data · simulated actions · build v68 — proof of concept, not production. "
            "See PROTOTYPE_NOTES.md for persistence limits.")
