@@ -181,6 +181,20 @@ div[class*="st-key-boardcard-"] button p,div[class*="st-key-attn-"] button p{lin
 .ri-ask .who{font-weight:700;color:#0f172a;font-size:12.5px}
 .ri-ask .what{font-size:12.5px;color:#334155}
 .ri-ask .meta{font-size:11px;color:#64748b;margin-top:2px}
+/* list rows: a real clickable row, not a dataframe cell */
+div[class*="st-key-listrow-"] button{width:100%!important;text-align:left!important;justify-content:flex-start!important;
+  height:auto!important;background:transparent!important;border:1px solid transparent!important;
+  border-bottom:1px solid #eef2f7!important;border-radius:8px!important;padding:8px 10px!important;
+  box-shadow:none!important}
+div[class*="st-key-listrow-"] button:hover{background:#f8fafc!important;border-color:#e5e7eb!important}
+div[class*="st-key-listrow-"] button>div{width:100%!important;justify-content:flex-start!important}
+div[class*="st-key-listrow-"] button .stMarkdownEllipsis p{width:100%!important;text-align:left!important}
+div[class*="st-key-listrow-"] button .stMarkdownEllipsis{width:100%!important;text-align:left!important;
+  overflow:visible!important;text-overflow:clip!important;white-space:normal!important}
+div[class*="st-key-listrow-"] button p,div[class*="st-key-listrow-"] button .stMarkdownEllipsis{
+  width:100%!important;text-align:left!important;white-space:normal!important;overflow:visible!important}
+.ri-lr .body{font-weight:600;font-size:13.5px;color:#0f172a}
+
 div[class*="st-key-nav_"] button{justify-content:flex-start!important;font-weight:600!important}
 .ri-sidecounts{display:flex;gap:10px;flex-wrap:wrap;font-size:11.5px;color:#64748b;margin:-2px 0 10px}
 .ri-sidecounts b{color:#0f172a;font-weight:800}
@@ -641,6 +655,25 @@ def board_card(inc, domain, verdict, on_click, args, stage=None, sla=None, open_
     line3 = f'{sla} · {owner}' if sla else owner
     st.button(f'{line1}  \n{line2}  \n{line3}', key=f'{prefix}-{pri}-{inc["id"]}', width="stretch",
               on_click=on_click, args=args)
+
+
+def list_row(inc, domain, verdict, on_click, args, stage=None, sla=None, waiting=None, linked=False):
+    """One clickable incident row — dense like a table, but the whole row is the button, so a click
+    anywhere opens the workspace (a dataframe only opens on its checkbox, which nobody finds)."""
+    pri = inc.get("priority", "P3")
+    dot = {"P1": "🔴", "P2": "🟠", "P3": "🔵", "P4": "⚪"}.get(pri, "⚪")
+    status = (inc.get("status") or "open").title()
+    meta = " · ".join([b for b in (domain, stage, inc.get("owner_team"), status) if b])
+    tail = []
+    if waiting:
+        tail.append(f'waiting **{waiting}**')
+    if sla and status.lower() != "closed":
+        tail.append(sla)
+    if tail:
+        meta += "  ·  " + "  ·  ".join(tail)
+    mark = "⇄ " if linked else ""
+    label = f'{dot} **{mark}{inc["id"]}**  {inc["title"]}  \n{meta}'
+    st.button(label, key=f'listrow-{inc["id"]}', width="stretch", on_click=on_click, args=args)
 
 
 def chain(seq, labels, stale=(), highlight=(), arrows=True):

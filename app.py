@@ -79,7 +79,10 @@ _dop_inc = _dop_data["incidents"]
 
 # ---- deep link: ?inc=<ID> opens that incident directly (a thread you can paste into a bridge call)
 _deep_ref = str(st.query_params.get("inc") or "").strip()
-if _deep_ref and not st.session_state.get("open_incident"):
+if _deep_ref and not st.session_state.get("_deep_done") and not st.session_state.get("open_incident"):
+    # Consume the deep link once per session. Without the flag, closing the workspace would be
+    # undone on the next rerun because the ?inc= parameter is still in the address bar.
+    st.session_state["_deep_done"] = True
     _deep_dom = "DataOps" if _deep_ref.upper().startswith("DOP") else "IT Ops"
     _exists = any(i["id"] == _deep_ref for i in (_it_inc if _deep_dom == "IT Ops" else _dop_inc))
     if _exists:
@@ -348,7 +351,14 @@ def _open(dom, ref):
 
 
 def _close_workspace():
+    """Leave the workspace for the list — and drop the deep link, or it would reopen on the rerun."""
     st.session_state.pop("open_incident", None)
+    st.session_state["_deep_done"] = True
+    try:
+        if "inc" in st.query_params:
+            del st.query_params["inc"]
+    except Exception:
+        pass
 
 
 def _all_refs():
@@ -572,36 +582,12 @@ def render_incidents(you_role):
                     mins = 0
                 age = f"{mins}m" if mins < 90 else f"{mins // 60}h {mins % 60:02d}m"
                 asks[r["inc"]["id"]] = f'{oldest["to_"]} · {age}'
-        df = pd.DataFrame([{
-            "": {"P1": "🔴", "P2": "🟠", "P3": "🔵", "P4": "⚪"}.get(r["inc"].get("priority"), "⚪"),
-            "ID": r["inc"]["id"],
-            "Incident": r["inc"]["title"],
-            "Where": f'{r["domain"]} · {journey.lifecycle_stage(r["inc"])}',
-            "Owner": r["inc"].get("owner_team"),
-            "Waiting on": asks.get(r["inc"]["id"], ""),
-            "Time": (_sla_txt(r["inc"]) if r["inc"].get("status") == "open" else "closed"),
-        } for r in shown])
-        ev = st.dataframe(
-            df, hide_index=True, width="stretch", on_select="rerun", selection_mode="single-row",
-            key="board_table", height=35 * len(df) + 40,
-            column_config={
-                "": st.column_config.TextColumn(width=24, help="Severity"),
-                "ID": st.column_config.TextColumn(width=88),
-                "Incident": st.column_config.TextColumn(width=300),
-                "Where": st.column_config.TextColumn(width=118),
-                "Owner": st.column_config.TextColumn(width=128),
-                "Waiting on": st.column_config.TextColumn(width=168, help="Open collaboration request"),
-                "Time": st.column_config.TextColumn(width=86),
-            })
-        st.caption("Select a row to open the incident — the checkbox on the left, then Enter, or click it.")
-        try:
-            picked = list(ev.selection["rows"])
-        except Exception:
-            picked = []
-        if picked:
-            r = shown[picked[0]]
-            _open(r["domain"], r["inc"]["id"])
-            st.rerun()
+        for r in shown:
+            viz.list_row(r["inc"], r["domain"], r["verdict"], on_click=_open,
+                         args=(r["domain"], r["inc"]["id"]), stage=journey.lifecycle_stage(r["inc"]),
+                         sla=(_sla_txt(r["inc"]) if r["inc"].get("status") == "open" else "closed"),
+                         waiting=asks.get(r["inc"]["id"]),
+                         linked=bool(journey.correlation_for(r["inc"]["id"])))
     else:
         cross = [r for r in shown if journey.correlation_for(r["inc"]["id"])]
         single = [r for r in shown if not journey.correlation_for(r["inc"]["id"])]
