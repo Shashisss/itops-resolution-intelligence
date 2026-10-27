@@ -262,18 +262,28 @@ def _collab_bar(dom, ref, you_role):
             st.caption("Stable link to this thread.")
             st.code(f'?inc={ref}', language=None)
 
+    def _age_min(d):
+        try:
+            return int((dt.datetime.now() - dt.datetime.fromisoformat(d["ts"])).total_seconds() / 60)
+        except Exception:
+            return 0
+
     if asks:
-        with st.expander(f"Open requests · {len(asks)}", expanded=False):
+        with st.expander(f"Open requests · {len(asks)}"
+                         + (" · overdue" if any(_age_min(d) > 30 for d in asks) else ""),
+                         expanded=False):
             for d in sorted(asks, key=lambda d: d["ts"] or "", reverse=True):
-                try:
-                    age = int((dt.datetime.now() - dt.datetime.fromisoformat(d["ts"])).total_seconds() / 60)
-                except Exception:
-                    age = 0
+                age = _age_min(d)
+                late = age > 30                      # default response expectation until per-request SLAs land
+                state = {"assigned": "sent", "accepted": "acknowledged"}.get(d["status"], d["status"])
+                tone = "#b91c1c" if late else ("#166534" if d["status"] == "accepted" else "#92400e")
                 cols = st.columns([5.6, 1, 1], vertical_alignment="center")
-                cols[0].markdown(f'**{d["to_"]}** · {d["action"]}  \n'
-                                 f'<span style="color:#64748b;font-size:11.5px">asked by {d["frm"]} · '
-                                 f'{age} min ago · {d.get("channel") or "App"} · {d["status"]}</span>',
-                                 unsafe_allow_html=True)
+                cols[0].markdown(
+                    f'**{d["to_"]}** · {d["action"]}  \n'
+                    f'<span style="color:{tone};font-size:11.5px;font-weight:650">'
+                    f'{"OVERDUE · " if late else ""}{state}</span>'
+                    f'<span style="color:#64748b;font-size:11.5px"> · asked by {d["frm"]} · {age} min ago · '
+                    f'{d.get("channel") or "App"}</span>', unsafe_allow_html=True)
                 if cols[1].button("Done", key=f"ask_done_{d['id']}", width="stretch"):
                     collab.set_delegation_status(d["id"], "done")
                     collab.add_comment(ref, d["to_"], "Person", f'Done: {d["action"]}')
@@ -283,6 +293,18 @@ def _collab_bar(dom, ref, you_role):
                     collab.add_comment(ref, you_role, "Person", f'Chased {d["to_"]} for: {d["action"]}')
                     st.session_state["flash"] = f'Reminder logged to {d["to_"]}.'
                     st.rerun()
+            done = [d for d in collab.delegations(ref) if d["status"] == "done"][:4]
+            if done:
+                st.caption("Completed")
+                for d in done:
+                    c = st.columns([6, 1], vertical_alignment="center")
+                    c[0].markdown(f'~~{d["to_"]} · {d["action"]}~~', unsafe_allow_html=True)
+                    if c[1].button("Reopen", key=f"ask_reopen_{d['id']}", width="stretch"):
+                        collab.set_delegation_status(d["id"], "assigned")
+                        st.session_state["flash"] = f'Reopened the request to {d["to_"]}.'
+                        st.rerun()
+    else:
+        st.caption("No open requests on this incident — use **Collaborate** to ask someone, with a deadline.")
 
 
 _STAGE_ACTION = {

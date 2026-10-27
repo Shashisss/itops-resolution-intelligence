@@ -45,7 +45,9 @@ Teaches: cross-domain correlation, collaboration with a clock, evidence vs. infe
 
 1. **Incidents → click row INC-8841** (`Payment API failures — serving stale risk data`).
 2. Point at the participant strip and the amber chip `Waiting 28 min · Platform Engineering`.
-3. Click **Open requests · 1** → show the request and the **Done / Chase** controls, collapse it.
+3. Click **Open requests · 2 · overdue** → two requests: one *acknowledged* (Platform Engineering,
+   26 min) and one **OVERDUE** (Data Platform, 55 min, sent but never acknowledged). Show **Done**
+   (moves it to Completed with **Reopen**) and **Chase**, then collapse.
 4. Click **Collaborate**:
    - Who: `Platform Engineering` (pre-selected)
    - What: `Confirm contract v4 is deployed`

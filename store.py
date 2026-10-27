@@ -30,12 +30,26 @@ def _janitor():
             pass
 
 
+def _base_ready():
+    """True only when the seeded database exists and is complete (a half-built file is not)."""
+    if not os.path.exists(BASE):
+        return False
+    import sqlite3
+    try:
+        con = sqlite3.connect(BASE)
+        ok = con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='delegations'").fetchone()
+        con.close()
+        return bool(ok)
+    except Exception:
+        return False
+
+
 def db():
     """The database this session should use."""
     override = os.environ.get("RI_DB")
     if override:
         return override
-    if DEMO_OFF or not os.path.exists(BASE):
+    if DEMO_OFF or not _base_ready():
         return BASE
     try:
         import streamlit as st

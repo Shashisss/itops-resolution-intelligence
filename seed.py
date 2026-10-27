@@ -12,14 +12,15 @@ import duckdb
 
 os.makedirs("data", exist_ok=True)
 DB = "data/ops.db"
+TMP = "data/ops.db.building"      # built aside, then swapped in atomically
 HIST = "data/history.duckdb"
-for f in (DB, HIST):
+for f in (DB, TMP, HIST):
     if os.path.exists(f):
         os.remove(f)
 now = dt.datetime.now().replace(second=0, microsecond=0)
 M = lambda mins: (now - dt.timedelta(minutes=mins)).isoformat(timespec="minutes")
 
-con = sqlite3.connect(DB)
+con = sqlite3.connect(TMP)
 c = con.cursor()
 c.executescript("""
 CREATE TABLE services(id TEXT PRIMARY KEY, name TEXT, type TEXT, owner TEXT);
@@ -311,6 +312,8 @@ c.executemany("INSERT INTO comments(ref_id,author,role,text,ts,channel,stage) VA
 c.executemany("INSERT INTO delegations(ref_id,frm,to_,action,status,ts,channel,stage) VALUES(?,?,?,?,?,?,?,?)", [
     ("INC-8841", "Incident Manager", "Platform Engineering",
      "Approve pipeline replay + service restart", "accepted", M(9), "Teams", "Coordinate"),
+    ("INC-8841", "CIO", "Data Platform",
+     "Confirm contract v4 is deployed to payments", "assigned", M(38), "Teams", "Coordinate"),
     ("DOP-1001", "Data Owner", "Data Engineer",
      "Reconcile schema (contract v4) + replay", "assigned", M(14), "Jira", "Coordinate"),
     ("INC-8850", "Orders Team", "Ravi (Developer)",
@@ -346,4 +349,10 @@ for i in range(37):
     rows.append((t, "checkout_success_pct", 98.5, "fixed"))
 d.executemany("INSERT INTO kpi VALUES(?,?,?,?)", rows)
 d.close()
+# Swap the finished database in: a half-written file must never be visible to a session copying it.
+try:
+    con.close()
+except Exception:
+    pass
+os.replace(TMP, DB)
 print("Seeded one connected scenario (source schema change → pipeline failure → stale data → business incident).")
