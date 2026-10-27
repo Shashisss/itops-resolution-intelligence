@@ -17,15 +17,23 @@ import uuid
 BASE = os.environ.get("RI_BASE_DB", "data/ops.db")
 DEMO_OFF = os.environ.get("RI_DEMO_MODE", "1") == "0"
 MAX_AGE_MIN = 120
+MAX_FILES = 25
 
 
 def _janitor():
-    """Remove session databases left behind by closed tabs."""
+    """Remove session databases left behind by closed tabs — by age, then by count."""
     cutoff = time.time() - MAX_AGE_MIN * 60
-    for path in glob.glob("data/session_*.db"):
+    files = sorted(glob.glob("data/session_*.db"), key=os.path.getmtime)
+    for path in files:
         try:
             if os.path.getmtime(path) < cutoff:
                 os.remove(path)
+        except OSError:
+            pass
+    files = sorted(glob.glob("data/session_*.db"), key=os.path.getmtime)
+    for path in files[:-MAX_FILES]:
+        try:
+            os.remove(path)
         except OSError:
             pass
 
