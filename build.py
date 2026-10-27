@@ -26,7 +26,8 @@ def info():
     commit_time = os.environ.get("RI_BUILD_TIME") or _git("show", "-s", "--format=%cI", "HEAD") or ""
     count = _git("rev-list", "--count", "HEAD")
     dirty = bool(_git("status", "--porcelain"))
-    build = f'v{count}' if count else "dev"
+    described = _git("describe", "--tags", "--always", "--dirty")
+    build = described if described and described.startswith("v") else (f"v{count}" if count else "dev")
     try:
         when = dt.datetime.fromisoformat(commit_time).astimezone().strftime("%d %b %H:%M") if commit_time else ""
     except Exception:
