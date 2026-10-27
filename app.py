@@ -239,24 +239,31 @@ def _collab_bar(dom, ref, you_role):
         with st.popover("Collaborate", type="primary", width="stretch"):
             st.markdown("**Bring someone in**")
             st.caption("Creates a request on this thread with a deadline — not another side chat.")
-            who = st.selectbox("Who", _ask_targets(dom, inc), key=f"ask_who_{ref}")
-            what = st.text_input("What do you need", key=f"ask_what_{ref}",
-                                 placeholder="e.g. confirm contract v4 is deployed")
-            mins = st.select_slider("Expected back in", [15, 30, 60, 120], value=30,
-                                    format_func=lambda m: f"{m} min", key=f"ask_when_{ref}")
-            channel = st.radio("Channel", ["Teams", "Slack", "Email", "App"], horizontal=True,
-                               key=f"ask_ch_{ref}")
-            if st.button("Send request", type="primary", key=f"ask_send_{ref}", width="stretch",
-                         disabled=not what.strip()):
-                act = f'{what.strip()} · expected in {mins} min'
-                collab.add_delegation(ref, you_role, who, act, channel=channel,
-                                      stage=journey.lifecycle_stage(inc))
-                collab.add_comment(ref, you_role, "Person", f'Asked **{who}**: {act}',
-                                   channel=channel, stage=journey.lifecycle_stage(inc))
-                collab.add_notification(collab.ACTOR_TO_ROLE.get(who, "Incident Manager"), ref,
-                                        f'{you_role} asked you: {what.strip()}')
-                st.session_state["flash"] = f"Request sent to {who} — it is on the thread with a {mins} min clock."
-                st.rerun()
+            # A form, not loose widgets: typing does not rerun the page, so the popover stays open and
+            # the presenter can type and then press Send without losing what they wrote.
+            with st.form(key=f"ask_form_{ref}", clear_on_submit=True, border=False):
+                who = st.selectbox("Who", _ask_targets(dom, inc), key=f"ask_who_{ref}")
+                what = st.text_input("What do you need", key=f"ask_what_{ref}",
+                                     placeholder="e.g. confirm contract v4 is deployed")
+                mins = st.select_slider("Expected back in", [15, 30, 60, 120], value=30,
+                                        format_func=lambda m: f"{m} min", key=f"ask_when_{ref}")
+                channel = st.radio("Channel", ["Teams", "Slack", "Email", "App"], horizontal=True,
+                                   key=f"ask_ch_{ref}")
+                sent = st.form_submit_button("Send request", type="primary", width="stretch")
+            if sent:
+                if not what.strip():
+                    st.warning("Say what you need before sending.")
+                else:
+                    act = f'{what.strip()} · expected in {mins} min'
+                    collab.add_delegation(ref, you_role, who, act, channel=channel,
+                                          stage=journey.lifecycle_stage(inc))
+                    collab.add_comment(ref, you_role, "Person", f'Asked **{who}**: {act}',
+                                       channel=channel, stage=journey.lifecycle_stage(inc))
+                    collab.add_notification(collab.ACTOR_TO_ROLE.get(who, "Incident Manager"), ref,
+                                            f'{you_role} asked you: {what.strip()}')
+                    st.session_state["flash"] = (f"Request sent to {who} — it is on the thread with a "
+                                                 f"{mins} min clock.")
+                    st.rerun()
     with c3:
         with st.popover("Share", width="stretch"):
             st.caption("Stable link to this thread.")

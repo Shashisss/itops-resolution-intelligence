@@ -95,6 +95,7 @@ def hypotheses(inc, data):
         c1, c2 = st.columns([1, 1])
         if c1.button("Confirm top hypothesis as root cause", key="dop_confirm_" + inc["id"], type="primary"):
             DE.confirm_cause(inc["id"], top["key"])
+            journey.add_event(inc["id"], "dataops", "verify", f'root cause confirmed: {top["text"]}')
             st.session_state["flash"] = "Root cause CONFIRMED and recorded against the pipeline incident."
             st.rerun()
         if c2.button("Reject hypothesis", key="dop_reject_" + inc["id"]):

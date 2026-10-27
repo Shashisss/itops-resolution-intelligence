@@ -27,7 +27,7 @@ CREATE TABLE services(id TEXT PRIMARY KEY, name TEXT, type TEXT, owner TEXT);
 CREATE TABLE edges(src TEXT, rel TEXT, dst TEXT);
 CREATE TABLE incidents(id TEXT PRIMARY KEY, title TEXT, service_id TEXT, priority TEXT, status TEXT,
                        created_at TEXT, summary TEXT, stage TEXT, owner_team TEXT, blocker TEXT,
-                       confirmed_cause TEXT);
+                       confirmed_cause TEXT, confirmed_at TEXT);
 CREATE TABLE changes(id TEXT PRIMARY KEY, service_id TEXT, description TEXT, deployed_at TEXT, owner TEXT);
 CREATE TABLE metrics(id TEXT PRIMARY KEY, service_id TEXT, metric TEXT, value REAL, threshold REAL, ts TEXT);
 CREATE TABLE tickets(id TEXT PRIMARY KEY, incident_id TEXT, service_id TEXT, title TEXT, status TEXT,
@@ -50,7 +50,7 @@ CREATE TABLE dop_contracts(id TEXT PRIMARY KEY, dataset_id TEXT, name TEXT, vers
 CREATE TABLE dop_consumers(dataset_id TEXT, consumer TEXT);
 CREATE TABLE dop_incidents(id TEXT PRIMARY KEY, title TEXT, pipeline_id TEXT, dataset_id TEXT,
                            priority TEXT, status TEXT, created_at TEXT, stage TEXT, owner_team TEXT,
-                           blocker TEXT, confirmed_cause TEXT, summary TEXT);
+                           blocker TEXT, confirmed_cause TEXT, summary TEXT, confirmed_at TEXT);
 
 -- shared
 CREATE TABLE timeline(id TEXT PRIMARY KEY, ref_id TEXT, domain TEXT, ts TEXT, kind TEXT, detail TEXT);

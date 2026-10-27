@@ -44,8 +44,14 @@ def set_stage(inc_id, stage):
 
 
 def confirm_cause(inc_id, key):
+    import datetime as _dt
     con = sqlite3.connect(DB)
-    con.execute("UPDATE dop_incidents SET confirmed_cause=? WHERE id=?", (key, inc_id))
+    stamp = _dt.datetime.now().replace(microsecond=0).isoformat(timespec="seconds")
+    try:
+        con.execute("ALTER TABLE dop_incidents ADD COLUMN confirmed_at TEXT")
+    except Exception:
+        pass
+    con.execute("UPDATE dop_incidents SET confirmed_cause=?, confirmed_at=? WHERE id=?", (key, stamp, inc_id))
     con.commit()
     con.close()
 

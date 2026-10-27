@@ -153,3 +153,30 @@ def test_next_action_says_verify_after_a_partial_result(db):
     con.close()
     journey.set_resolution("INC-8850", "Mitigated", action_id="B", checks=MIXED)
     assert journey.next_action(inc)["label"] == "Verify now"
+
+
+def _set_confirmed(db, ref, offset_seconds):
+    import datetime as _dt
+    stamp = (_dt.datetime.now() + _dt.timedelta(seconds=offset_seconds)).replace(
+        microsecond=0).isoformat(timespec="seconds")
+    con = sqlite3.connect(db)
+    try:
+        con.execute("ALTER TABLE incidents ADD COLUMN confirmed_at TEXT")
+    except Exception:
+        pass
+    con.execute("UPDATE incidents SET confirmed_cause='schema drift', confirmed_at=? WHERE id=?", (stamp, ref))
+    con.commit()
+    con.close()
+
+
+def test_handoff_made_before_the_cause_was_confirmed_does_not_count(db):
+    """A request raised before the root cause was confirmed was about a different question."""
+    collab.add_delegation("INC-8841", "Incident Manager", "Platform Engineering", "early ask")
+    _set_confirmed(db, "INC-8841", +30)          # confirmation happens after the early ask
+    assert journey.next_action(_row(db, "INC-8841"))["label"] == "Bring in owner"
+
+
+def test_handoff_made_after_confirmation_counts_as_coordination(db):
+    _set_confirmed(db, "INC-8841", -30)          # confirmed half a minute ago
+    collab.add_delegation("INC-8841", "CIO", "Data Platform", "confirm contract v4")
+    assert journey.next_action(_row(db, "INC-8841"))["label"] == "Execute fix"

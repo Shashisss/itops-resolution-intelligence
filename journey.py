@@ -505,6 +505,41 @@ def close_incident(inc_id, actor="Incident Manager"):
 
 
 # ---------------------------------------------------------------- next action (v83)
+def _ensure_confirmed_at():
+    """Both incident tables carry confirmed_at; add it lazily for databases seeded before v85."""
+    con = sqlite3.connect(DB)
+    for table in ("incidents", "dop_incidents"):
+        try:
+            con.execute(f"ALTER TABLE {table} ADD COLUMN confirmed_at TEXT")
+        except Exception:
+            pass
+    con.commit()
+    con.close()
+
+
+def confirmed_at(inc_id):
+    """When the root cause was confirmed, or None. Prefers the recorded column, then the evidence trail."""
+    _ensure_confirmed_at()
+    con = sqlite3.connect(DB)
+    con.row_factory = sqlite3.Row
+    for table in ("incidents", "dop_incidents"):
+        r = con.execute(f"SELECT confirmed_at FROM {table} WHERE id=?", (inc_id,)).fetchone()
+        if r and r["confirmed_at"]:
+            con.close()
+            try:
+                return dt.datetime.fromisoformat(r["confirmed_at"])
+            except Exception:
+                return None
+    con.close()
+    for ev in reversed(timeline(inc_id)):
+        if "root cause confirmed" in (ev.get("detail") or "").lower():
+            try:
+                return dt.datetime.fromisoformat(ev["ts"])
+            except Exception:
+                return None
+    return None
+
+
 def next_action(inc, stage=None):
     """The single next thing to do, derived from EVIDENCE rather than the recorded stage name.
 
@@ -517,7 +552,19 @@ def next_action(inc, stage=None):
     applied = applied_action(inc["id"])
     closed = (inc.get("status") or "").lower() == "closed"
     confirmed = bool(inc.get("confirmed_cause"))
-    deleg = any(d["status"] != "done" for d in collab.delegations(inc["id"]))
+    confirmed_ts = confirmed_at(inc["id"])
+    open_asks = [d for d in collab.delegations(inc["id"]) if d["status"] != "done"]
+    # A handoff raised before the cause was confirmed was for a different question; it does not mean
+    # this cause has an owner behind it. Coordination counts only from a request made after confirmation.
+    def _after_confirmation(d):
+        if not confirmed_ts:
+            return True
+        try:
+            return dt.datetime.fromisoformat(d["ts"]) > confirmed_ts
+        except Exception:
+            return False
+
+    deleg = any(_after_confirmation(d) for d in open_asks)
     stage = stage or lifecycle_stage(inc)
 
     if closed:
