@@ -119,7 +119,8 @@ incidents = [
     ("INC-8655", "Payment service deployment rollback", "its_payment_api", "P1", "closed", M(21 * 24 * 60),
      "Bad deployment caused payment failures; rolled back.", "Closed", "Platform Engineering", "", ""),
 ]
-c.executemany("INSERT INTO incidents VALUES(?,?,?,?,?,?,?,?,?,?,?)", incidents)
+c.executemany("INSERT INTO incidents(id,title,service_id,priority,status,created_at,summary,stage,"
+              "owner_team,blocker,confirmed_cause) VALUES(?,?,?,?,?,?,?,?,?,?,?)", incidents)
 
 # competing signals: the real cause (stale data) ranks above a mild DB signal (red herring)
 metrics = [
@@ -219,7 +220,8 @@ c.executemany("INSERT INTO dop_consumers VALUES(?,?)", [
     ("ds_orders_bz", "Orders service (orders-api)"),
 ])
 
-c.executemany("INSERT INTO dop_incidents VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", [
+c.executemany("INSERT INTO dop_incidents(id,title,pipeline_id,dataset_id,priority,status,created_at,"
+              "stage,owner_team,blocker,confirmed_cause,summary) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", [
     ("DOP-1001", "payments_bronze_ingest failed — source schema drift", "P-PAY-ING", "ds_pay_bz",
      "P1", "open", M(35), "Diagnosed", "Data Platform",
      "core_ledger added column 'region_code' not reconciled in the contract", "",
