@@ -45,9 +45,23 @@ def add_delegation(ref_id, frm, to, action, status="assigned", channel="Teams", 
     con.close()
 
 
+def _ensure_done_at(con):
+    """Completion stamp column. Added lazily (v92) because older databases do not have it; nothing
+    is backfilled, so a request completed before this column existed keeps no duration rather than
+    a guessed one."""
+    try:
+        con.execute("ALTER TABLE delegations ADD COLUMN done_at TEXT")
+    except sqlite3.OperationalError:
+        pass  # already there
+
+
 def set_delegation_status(did, status):
     con = sqlite3.connect(DB)
-    con.execute("UPDATE delegations SET status=? WHERE id=?", (status, did))
+    if str(status).lower() == "done":
+        _ensure_done_at(con)
+        con.execute("UPDATE delegations SET status=?, done_at=? WHERE id=?", (status, _now(), did))
+    else:
+        con.execute("UPDATE delegations SET status=? WHERE id=?", (status, did))
     con.commit()
     con.close()
 

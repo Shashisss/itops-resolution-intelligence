@@ -21,8 +21,9 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 # `seed` is deliberately excluded: importing it reseeds the demo database (it is a script).
-MODULES = ["build", "clock", "collab", "command_center", "dataops_engine", "dataops_views", "engine",
-           "journey", "personas", "realtime", "shell", "viz", "workspace"]
+MODULES = ["analytics", "build", "clock", "collab", "command_center", "dataops_engine",
+           "dataops_views", "engine", "journey", "personas", "realtime", "shell", "viz",
+           "workspace"]
 
 
 def fail(msg):
@@ -78,6 +79,14 @@ def main():
     if at.query_params.get("inc") not in (None, [], ""):
         fail("back-to-list left a stale ?inc= parameter")
     print("ok    back to list clears state and URL")
+
+    at.session_state["nav"] = "Analytics"
+    at.run()
+    if at.exception:
+        fail(f"analytics raised: {at.exception}")
+    if not any("Analytics" in (m.value or "") for m in at.markdown):
+        fail("analytics page did not render its header")
+    print("ok    analytics page renders")
 
     print("\nSMOKE PASSED")
 

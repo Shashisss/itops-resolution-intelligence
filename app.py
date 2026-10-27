@@ -16,6 +16,7 @@ import command_center
 import viz
 import journey
 import collab
+import analytics
 import shell
 import workspace
 import realtime
@@ -29,7 +30,7 @@ def _refresh_modules():
     e.g. board_card(linked=…)) on newly added code. importlib.reload mutates the module object in
     place, so every importer sees the refreshed definitions. Doing this every run is cheap (the
     modules only define functions) and removes the whole class of stale-module failures."""
-    for _m in (viz, journey, collab, E, DE, personas, DV, workspace, command_center, shell):
+    for _m in (viz, journey, collab, analytics, E, DE, personas, DV, workspace, command_center, shell):
         try:
             importlib.reload(_m)
         except Exception:
@@ -71,7 +72,7 @@ clock.align()
 # Every browser session gets its own copy of the demo database: actions, verifications and closures
 # are real inside the session and gone after a refresh. Set RI_DEMO_MODE=0 to persist.
 _DB_PATH = store.db()
-for _mod in (E, DE, journey, collab, realtime):
+for _mod in (E, DE, journey, collab, analytics, realtime):
     _mod.DB = _DB_PATH
 _DEMO_SESSION = store.is_demo()
 
@@ -567,86 +568,194 @@ def render_incidents(you_role):
         viz.feed(realtime.recent(8))
 
 
-# ================================================================= Analytics
-def render_analytics():
-    st.subheader("Analytics — resolution performance")
-    st.caption("Every figure states its provenance: **live** numbers are computed from the sample "
-               "incidents on this system; **illustrative** numbers are scenario estimates. Nothing here "
-               "is presented as a measured result unless it is.")
+# ================================================================= Analytics (v92)
+def _n(n, unit="incidents", extra=""):
+    """Sample-size caption. Below five samples the panel says so instead of implying significance."""
+    txt = f'n={n} {unit}'
+    if extra:
+        txt += f' · {extra}'
+    if n < analytics.MIN_SIGNIFICANT:
+        txt += ' · indicative, not significant'
+    return txt
 
-    incidents = list(_it_inc) + list(_dop_inc)
-    verdicts = [journey.display_verdict(i) for i in incidents]
-    closed = [i for i in incidents if (i.get("status") or "").lower() != "open"]
-    n_open = len(incidents) - len(closed)
-    n_verified = sum(1 for i in closed if journey.display_verdict(i) == "Verified")
-    at_risk = sum(1 for i in incidents if i.get("status") == "open" and _sla_risk(i))
-    cross = sum(1 for i in incidents if journey.thread_edges_for(i["id"]))
-    vcr = f'{n_verified}/{len(closed)}' if closed else "—"
+
+def _illustrative_fallback(title, note, df=None, xf=None, yf=None, group=None):
+    """The only place a scenario figure may appear: no measured data at all, and labelled twice —
+    once by the badge, once in the caption. Never framed as a result or a return."""
+    with st.expander(f"Illustrative — {title} (scenario estimate, not measured)", expanded=False):
+        viz.data_badge("illus")
+        if df is not None:
+            st.altair_chart(viz.chart_bars(df, xf, yf, group=group, height=220, muted=True),
+                            width="stretch")
+        st.caption(f"Illustrative — {note} Not a measurement and not a benefit claim.")
+
+
+def render_analytics():
+    viz.page_head("Analytics — resolution performance",
+                  "Every figure is measured from stored lifecycle timestamps; each panel states its "
+                  "provenance and its sample size.")
+    m = analytics.mttr()
+    st_d = analytics.stage_durations()
+    ola = analytics.ola_vs_actual()
+    oc = analytics.outcomes()
+    hd = analytics.handoff_delay()
+    sl = analytics.sla_load()
 
     viz.kpi_row([
-        ("Incidents", len(incidents), f'{n_open} open · {len(closed)} closed', "#4f46e5"),
-        ("Verified closure", vcr, "closed only after independent verification", "#16a34a"),
-        ("Cross-domain threads", cross, f'of {len(incidents)} incidents', "#7c3aed"),
-        ("SLA at risk", at_risk, "open incidents inside 50% of target", "#dc2626"),
+        ("MTTR · median", f'{m["median_min"]:g} min' if m["median_min"] is not None else "—",
+         f'verified closures · n={m["n"]}', "#4f46e5"),
+        ("MTTR · p90", f'{m["p90_min"]:g} min' if m["p90_min"] is not None else "—",
+         "90th percentile of the same closures", "#6366f1"),
+        ("Verified closure", f'{int(round(oc["verified_rate"] * 100))}%' if oc["verified_rate"] is not None else "—",
+         f'{oc["counts"]["Verified"]} of {oc["n_records"]} resolution records', "#16a34a"),
+        ("Handoff delay", f'{hd["median_min"]:g} min' if hd["median_min"] is not None else "—",
+         f'request → done · n={hd["n_done"]}', "#7c3aed"),
+        ("Open requests > 30 min", f'{hd["open_over_30"]}/{hd["n_open"]}',
+         "coordination still waiting", "#dc2626"),
     ])
     viz.data_badge("live")
+    st.caption("Computed on this system's database at page load. A dash means the data does not "
+               "support the number — it is never filled with an estimate.")
 
+    # ---------------- MTTR
+    viz.section("MTTR — verified closures only",
+                "raise → recorded closure, from the authoritative verification record")
+    if m["closures"]:
+        df = pd.DataFrame([{"Incident": c["ref"], "Minutes": c["minutes"]} for c in m["closures"]])
+        st.altair_chart(viz.chart_bars(df, "Incident", "Minutes", height=220, fmt=".0f"),
+                        width="stretch")
+        viz.data_badge("live")
+        st.caption(f'Median {m["median_min"]:g} min · p90 {m["p90_min"]:g} min · '
+                   + _n(m["n"], "closures", f'{m["excluded_no_record"]} incidents with no resolution '
+                                           f'record excluded, not counted as zero'))
+    else:
+        viz.data_badge("live")
+        st.caption("No verified closure with a recorded closure time yet — MTTR is not computed. "
+                   + _n(0, "closures"))
+
+    # ---------------- stage durations + OLA
     left, right = st.columns(2)
     with left:
-        st.markdown("#### Resolution outcomes")
-        oc = ["Investigating", "Mitigated", "Verified", "Recovery failed"]
-        df = pd.DataFrame({"Outcome": oc, "Incidents": [verdicts.count(v) for v in oc]})
-        st.altair_chart(viz.chart_bars(df, "Outcome", "Incidents", height=230), width="stretch")
-        st.caption("Live — authoritative verdict counts. Zero-value outcomes stay on the axis.")
+        viz.section("Where the time goes", "median minutes per lifecycle stage")
+        rows = [r for r in st_d["rows"] if r["median_min"] is not None]
+        if rows:
+            df = pd.DataFrame([{"Stage": r["stage"], "Minutes": r["median_min"]} for r in rows])
+            st.altair_chart(viz.chart_bars(df, "Stage", "Minutes", height=240, fmt=".0f"),
+                            width="stretch")
+            viz.data_badge("live")
+            missing = [r["stage"] for r in st_d["rows"] if r["median_min"] is None]
+            st.caption(f'{_n(st_d["n_incidents"], "incidents", "measured from " + st_d["basis"])}'
+                       + (f' · no measurement yet: {", ".join(missing)}' if missing else ""))
+        else:
+            viz.data_badge("live")
+            st.caption("No stage can be measured yet — a stage needs a recorded start and a recorded "
+                       "next stage. " + _n(0, "incidents"))
     with right:
-        st.markdown("#### Incidents by domain")
-        dom = pd.DataFrame([
-            {"Domain": "IT Ops", "State": "Open", "n": sum(1 for i in _it_inc if i.get("status") == "open")},
-            {"Domain": "IT Ops", "State": "Closed", "n": sum(1 for i in _it_inc if i.get("status") != "open")},
-            {"Domain": "DataOps", "State": "Open", "n": sum(1 for i in _dop_inc if i.get("status") == "open")},
-            {"Domain": "DataOps", "State": "Closed", "n": sum(1 for i in _dop_inc if i.get("status") != "open")},
-        ])
-        dom["State"] = pd.Categorical(dom["State"], categories=["Closed", "Open"], ordered=True)
-        dom = dom.sort_values("State")
-        st.altair_chart(viz.chart_bars(dom, "Domain", "n", group="State", height=230), width="stretch")
-        st.caption("Live — incident distribution across the two operational domains.")
+        viz.section("OLA vs actual", "stage target against the measured median")
+        rows = [r for r in ola["rows"] if r["actual_min"] is not None and r["target_min"] is not None]
+        if rows:
+            df = pd.DataFrame([{"Stage": r["stage"], "Series": "OLA target", "Minutes": r["target_min"]}
+                               for r in rows]
+                              + [{"Stage": r["stage"], "Series": "Stage median", "Minutes": r["actual_min"]}
+                                 for r in rows])
+            df["Series"] = pd.Categorical(df["Series"], categories=["OLA target", "Stage median"],
+                                          ordered=True)
+            df = df.sort_values("Series")
+            st.altair_chart(viz.chart_bars(df, "Stage", "Minutes", group="Series", height=240, fmt=".0f"),
+                            width="stretch")
+            viz.data_badge("live")
+            over = [r for r in rows if r["delta_min"] is not None and r["delta_min"] > 0]
+            delta_txt = " · ".join(f'{r["stage"]} {r["delta_min"]:+g} min' for r in ola["rows"]
+                                   if r["delta_min"] is not None)
+            thin = min(r["n"] for r in rows)
+            st.caption(f'{_n(thin, "incidents in the thinnest stage", delta_txt)}'
+                       + (f' · over target: {", ".join(r["stage"] for r in over)}' if over else ""))
+        else:
+            viz.data_badge("live")
+            st.caption("No stage measured against its target yet. " + _n(0, "stages"))
 
-    st.markdown("#### MTTR — baseline vs with the platform")
-    mttr = pd.DataFrame([
-        {"Month": m, "Series": "Baseline (h)", "Hours": b}
-        for m, b in zip(["Jan", "Feb", "Mar", "Apr", "May", "Jun"], [7.8, 7.6, 8.1, 7.9, 8.0, 7.7])
-    ] + [
-        {"Month": m, "Series": "With platform (h)", "Hours": b}
-        for m, b in zip(["Jan", "Feb", "Mar", "Apr", "May", "Jun"], [7.6, 6.9, 5.8, 4.6, 3.2, 2.4])
-    ])
-    mttr["Series"] = pd.Categorical(mttr["Series"], categories=["Baseline (h)", "With platform (h)"], ordered=True)
-    mttr = mttr.sort_values("Series")
-    st.altair_chart(viz.chart_lines(mttr, "Month", "Hours", "Series", height=250), width="stretch")
-    viz.data_badge("illus")
-    st.caption("MTTR falling as cross-domain correlation and coordination kick in — a scenario estimate, "
-               "to be measured against a real baseline in a pilot.")
+    # ---------------- outcomes
+    viz.section("Outcomes", "authoritative verdicts from the verification records")
+    cats = ["Verified", "Mitigated", "Recovery failed", "Inconclusive"]
+    df = pd.DataFrame({"Outcome": cats, "Incidents": [oc["counts"][c] for c in cats]})
+    st.altair_chart(viz.chart_bars(df, "Outcome", "Incidents", height=220), width="stretch")
+    viz.data_badge("live")
+    st.caption(f'{_n(oc["n_records"], "resolution records", f'{oc["no_record"]} incidents without a '
+                                                  f'record are uncounted, not "unresolved"')} · '
+               f'verified-closure rate {int(round((oc["verified_rate"] or 0) * 100))}% of records.')
 
-    st.markdown("#### Where the time goes — baseline vs with the platform")
-    steps = pd.DataFrame([
-        {"Step": "Identify likely cause", "Series": "Baseline", "Minutes": 45},
-        {"Step": "Assign next owner", "Series": "Baseline", "Minutes": 30},
-        {"Step": "Verified recovery", "Series": "Baseline", "Minutes": 240},
-        {"Step": "Identify likely cause", "Series": "With platform", "Minutes": 10},
-        {"Step": "Assign next owner", "Series": "With platform", "Minutes": 2},
-        {"Step": "Verified recovery", "Series": "With platform", "Minutes": 60},
-    ])
-    steps["Series"] = pd.Categorical(steps["Series"], categories=["Baseline", "With platform"], ordered=True)
-    steps = steps.sort_values("Series")
-    st.altair_chart(viz.chart_bars(steps, "Step", "Minutes", group="Series", height=250), width="stretch")
-    viz.data_badge("illus")
-    st.caption("Minutes per step: the acceleration the platform targets. Scenario values, not measurements.")
+    # ---------------- handoff
+    viz.section("Handoff delay", "request → completion, and what is still outstanding")
+    if hd["completed"]:
+        df = pd.DataFrame([{"Request": f'{c["ref_id"]} · {str(c["action"])[:22]}',
+                            "Minutes": c["minutes"]} for c in hd["completed"]])
+        st.altair_chart(viz.chart_bars(df, "Request", "Minutes", height=220, fmt=".0f"),
+                        width="stretch")
+        viz.data_badge("live")
+        st.caption(f'Median {hd["median_min"]:g} min · ' + _n(hd["n_done"], "completed requests",
+                                                              f'{hd["n_open"]} still open, '
+                                                              f'{hd["open_over_30"]} of them over 30 min'))
+    elif hd["open"]:
+        df = pd.DataFrame([{"Request": f'{r["ref_id"]} → {str(r["to_"])[:18]}',
+                            "Minutes": r["age_min"] or 0} for r in hd["open"]])
+        st.altair_chart(viz.chart_bars(df, "Request", "Minutes", height=220, fmt=".0f", muted=True),
+                        width="stretch")
+        viz.data_badge("live")
+        st.caption(f'No request has been completed with a completion stamp yet, so there is no delay '
+                   f'to report — the bars are how long each open request has been waiting, not a '
+                   f'delay. {hd["open_over_30"]} of {hd["n_open"]} are older than 30 min. '
+                   + _n(0, "completed requests"))
+    else:
+        viz.data_badge("live")
+        st.caption("No collaboration request exists yet, so there is nothing to measure. "
+                   + _n(0, "requests"))
+        _illustrative_fallback(
+            "handoff delay", "how long a request typically waits for the owning team in the "
+            "scenario; the platform has no completed handoff to measure here.")
 
-    st.markdown("#### SLA / OLA breaches per month")
-    br = pd.DataFrame({"Month": ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
-                       "Breaches": [6, 6, 5, 4, 3, 2]})
-    st.altair_chart(viz.chart_bars(br, "Month", "Breaches", height=230, muted=True), width="stretch")
-    viz.data_badge("illus")
-    st.caption("Monthly breach totals — illustrative, in chronological order.")
+    # ---------------- SLA load
+    viz.section("SLA load", "incidents per priority, split by whether the target was breached")
+    hours = analytics.sla_hours()
+    if sl["n"]:
+        df = pd.DataFrame([{"Priority": r["priority"], "State": "Breached", "Incidents": r["breaches"]}
+                           for r in sl["rows"]]
+                          + [{"Priority": r["priority"], "State": "Within SLA",
+                              "Incidents": r["total"] - r["breaches"]} for r in sl["rows"]])
+        df["State"] = pd.Categorical(df["State"], categories=["Within SLA", "Breached"], ordered=True)
+        df = df.sort_values("State")
+        st.altair_chart(viz.chart_bars(df, "Priority", "Incidents", group="State", height=220),
+                        width="stretch")
+        viz.data_badge("live")
+        per_pri = " · ".join(f'{r["priority"]} {r["breaches"]}/{r["total"]}' for r in sl["rows"])
+        st.caption(f'{sl["breaches"]} breaches across {_n(sl["n"], "incidents")} · by priority {per_pri} · '
+                   f'targets P1 {hours.get("P1")}h · P2 {hours.get("P2")}h · '
+                   f'P3 {hours.get("P3")}h · P4 {hours.get("P4")}h · measured from the raise time to '
+                   f'the recorded closure, or to now while open.')
+    else:
+        viz.data_badge("live")
+        st.caption("No incidents on this database, so there is no SLA load to measure. "
+                   + _n(0, "incidents"))
+        _illustrative_fallback(
+            "monthly breaches", "monthly breach totals in the scenario, in chronological order.",
+            pd.DataFrame({"Month": ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+                          "Breaches": [6, 6, 5, 4, 3, 2]}), "Month", "Breaches")
+
+    with st.expander("How these numbers are derived", expanded=False):
+        st.markdown(
+            "- **MTTR** — `resolution_state.closed_at − incidents.created_at`, verdict **Verified** "
+            "only. An incident without a resolution record is excluded, never treated as zero.\n"
+            "- **Stage durations** — consecutive lifecycle anchors per incident: timeline events "
+            "mapped by kind, stage-tagged comments, the first handoff, and the recorded closure. A "
+            "stage's duration runs to the next stage's first anchor.\n"
+            "- **OLA vs actual** — `stage_olas.target_min` against the measured median; delta is "
+            "actual − target, so a positive number is time over the target.\n"
+            "- **Outcomes** — verdict counts from the verification records; the rate's denominator is "
+            "records, so an incident without one cannot inflate it.\n"
+            "- **Handoff delay** — `done_at − ts` for completed requests. Requests completed before "
+            "v92 have no completion stamp and are not counted as instant.\n"
+            "- **SLA load** — raise → recorded closure (or now) against `personas.SLA_HOURS`.")
+        st.caption("Anything the data cannot support is shown as a dash with n=0. No figure on this "
+                   "page is a benefit claim.")
 
 
 # ================================================================= Activity & audit (page)
