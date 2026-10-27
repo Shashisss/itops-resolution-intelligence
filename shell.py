@@ -162,7 +162,10 @@ def sidebar(default_role="CSM", stats=None, build=None):
 
 
 def topbar(it_inc, dop_inc, services, datasets, pipelines, role):
-    """Global controls: one search that drives the board, plus notifications."""
+    """Global controls: one search that drives the board, plus notifications.
+
+    Every result is actionable. An incident opens its workspace; a service, dataset or pipeline scopes
+    the board to that object (the incidents that touch it) and says so with a chip you can clear."""
     c1, c2 = st.columns([4.6, 1], vertical_alignment="bottom")
     with c1:
         gs = st.text_input("Search everything", key="global_search",
@@ -176,14 +179,16 @@ def topbar(it_inc, dop_inc, services, datasets, pipelines, role):
             _notif_list(role)
 
     if not gs:
-        # A cleared search releases the board; it must never leave it filtered invisibly.
-        if st.session_state.get("board_q"):
-            st.session_state["board_q"] = ""
+        # Only release a filter this search put there — a deliberate scope must survive.
+        if st.session_state.pop("_gs_drives_board", False):
+            for k in ("board_q", "keep_board_q"):
+                st.session_state[k] = ""
         return
 
     lo = gs.strip().lower()
-    # One behaviour: typing in the global search IS the board filter.
     st.session_state["board_q"] = gs.strip()
+    st.session_state["keep_board_q"] = gs.strip()
+    st.session_state["_gs_drives_board"] = True
 
     def hit(blob):
         return lo in blob.lower()
@@ -191,36 +196,61 @@ def topbar(it_inc, dop_inc, services, datasets, pipelines, role):
     groups = {}
     for i in it_inc:
         if hit(i["id"] + " " + i["title"] + " " + i["owner_team"]):
-            groups.setdefault("Incidents", []).append((f'IT Ops · {i["id"]} · {i["title"]}', ("IT Ops", i["id"])))
+            groups.setdefault("Incidents", []).append(
+                (f'IT Ops · {i["id"]} · {i["title"]}', ("incident", "IT Ops", i["id"])))
     for i in dop_inc:
         if hit(i["id"] + " " + i["title"] + " " + i["owner_team"]):
-            groups.setdefault("Incidents", []).append((f'DataOps · {i["id"]} · {i["title"]}', ("DataOps", i["id"])))
-    for sid, s in services.items():
-        if hit(sid + " " + s["name"] + " " + s.get("owner", "")):
-            groups.setdefault("Services", []).append((f'{s["name"]} · {s["type"]} · {s["owner"]}', None))
+            groups.setdefault("Incidents", []).append(
+                (f'DataOps · {i["id"]} · {i["title"]}', ("incident", "DataOps", i["id"])))
+    for sid, sv in services.items():
+        if hit(sid + " " + sv["name"] + " " + sv.get("owner", "")):
+            groups.setdefault("Services", []).append(
+                (f'{sv["name"]} · {sv["type"]} · {sv.get("owner", "")}', ("service", sv["name"], sid)))
     for did, d in datasets.items():
         if hit(did + " " + d["name"] + " " + d.get("owner_team", "") + " " + d.get("layer", "")):
-            groups.setdefault("Datasets", []).append((f'{d["name"]} · {d["layer"]} · {d.get("owner_team", "")}', None))
+            groups.setdefault("Datasets", []).append(
+                (f'{d["name"]} · {d["layer"]} · {d.get("owner_team", "")}', ("dataset", d["name"], did)))
     for pid, p in pipelines.items():
         if hit(pid + " " + p["name"] + " " + p.get("owner_team", "")):
-            groups.setdefault("Pipelines", []).append((f'{p["name"]} · {p.get("owner_team", "")}', None))
+            groups.setdefault("Pipelines", []).append(
+                (f'{p["name"]} · {p.get("owner_team", "")}', ("pipeline", p["name"], pid)))
 
     total = sum(len(v) for v in groups.values())
     with st.container(border=True):
         if not groups:
-            st.markdown(f'**No match for “{gs}”** — nothing in incidents, services, datasets or pipelines.')
-            st.caption("Check the id prefix (INC- for IT Ops, DOP- for DataOps) or search an owner team.")
+            st.markdown(f'**Nothing matches “{gs}”**')
+            st.caption("Searched incidents, services, datasets and pipelines. Try an id "
+                       "(INC- for IT Ops, DOP- for DataOps), a title fragment, or an owner team.")
+            st.button("Clear search", key="gs_clear_empty", on_click=_reset_global_search)
             return
-        st.markdown(f'**{total} match{"es" if total != 1 else ""} for “{gs}”** · the incident board below is '
-                    f'filtered to the same query')
+        st.markdown(f'**{total} match{"es" if total != 1 else ""} for “{gs}”**')
         for group, items in groups.items():
             st.caption(f'**{group}** · {len(items)}')
             for label, target in items[:6]:
-                if target:
-                    st.button(label, key=f'gs_{group}_{abs(hash(label)) % 10**8}',
-                              on_click=_goto_incident, args=(target[0], target[1]))
+                kind, name, ident = target
+                key = f'gs_{kind}_{"".join(c if c.isalnum() else "_" for c in ident)[:28]}'
+                if kind == "incident":
+                    st.button(label, key=key, on_click=_goto_incident, args=(name, ident))
                 else:
-                    st.markdown(f'- {label}')
+                    st.button(label, key=key, on_click=_scope_to, args=(kind, name))
+
+
+def _reset_global_search():
+    st.session_state["global_search"] = ""
+    st.session_state["board_q"] = ""
+    st.session_state["keep_board_q"] = ""
+    st.session_state["_gs_drives_board"] = False
+    st.session_state.pop("scope_note", None)
+
+
+def _scope_to(kind, name):
+    """A service/dataset/pipeline result: show the incidents that touch it, and say which object."""
+    st.session_state["global_search"] = ""
+    st.session_state["board_q"] = name
+    st.session_state["keep_board_q"] = name
+    st.session_state["_gs_drives_board"] = False
+    st.session_state["scope_note"] = f'{kind.title()}: {name}'
+    st.session_state["nav"] = "Incidents"
 
 
 def _goto_incident(domain, ref):

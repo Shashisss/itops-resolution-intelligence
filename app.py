@@ -403,6 +403,8 @@ def render_incidents(you_role):
                      ("board_verdict", "All"), ("board_pri", "All"), ("board_risk", False)):
             st.session_state[k] = v
             st.session_state[f"keep_{k}"] = v
+        st.session_state.pop("scope_note", None)
+        st.session_state["_gs_drives_board"] = False
 
     def _match(r):
         inc = r["inc"]
@@ -419,8 +421,11 @@ def render_incidents(you_role):
                    key=lambda r: (r["inc"].get("status") != "open",
                                   order.get(r["inc"].get("priority"), 9), r["inc"]["id"]))
 
+    scope = st.session_state.get("scope_note")
     active = []
-    if q:
+    if scope:
+        active.append(scope)
+    if q and not (scope and q.lower() in scope.lower()):
         active.append(f"search: {q}")
     if domf != "All":
         active.append(domf)
@@ -435,7 +440,14 @@ def render_incidents(you_role):
     c1, c2 = st.columns([5.4, 1.2], vertical_alignment="center")
     with c1:
         if active:
-            st.markdown(" ".join(f'<span class="ri-tag">{a}</span>' for a in active), unsafe_allow_html=True)
+            chips = []
+            if scope:
+                chips.append(f'<span class="ri-scope">{scope}</span>')
+            for a in active:
+                if scope and a == scope:
+                    continue
+                chips.append(f'<span class="ri-filterchip">{a}</span>')
+            st.markdown(" ".join(chips), unsafe_allow_html=True)
         else:
             st.caption(f"Showing {len(shown)} incidents · open first, then priority")
     with c2:
@@ -443,8 +455,12 @@ def render_incidents(you_role):
             st.button("Reset filters", key="board_reset", on_click=_reset_filters, width="stretch")
 
     if not shown:
-        st.info("No incidents match these filters.")
-        st.button("Clear filters", key="board_clear", on_click=_reset_filters)
+        what = " · ".join(active) if active else "no filters"
+        st.info(f"No incidents match **{what}**. The filter is applied to open and closed incidents "
+                f"in both domains.")
+        c1, c2 = st.columns([1, 5])
+        c1.button("Clear filters", key="board_clear", on_click=_reset_filters)
+        c2.caption("Open an incident from the list, or clear the scope to see everything again.")
         return
 
     view = st.segmented_control("View", ["List", "Board"], default="List", key="board_view",

@@ -98,3 +98,25 @@ def test_deep_link_opens_the_right_incident_and_only_once():
     assert at.session_state["open_incident"]["ref"] == "DOP-1001"
     find_button(at, "All incidents").click().run()
     assert not at.session_state.get("open_incident"), "deep link reopened the workspace after closing"
+
+
+def test_entity_result_scopes_the_board_and_reset_clears_it():
+    at = start()
+    at.text_input(key="global_search").set_value("Payments").run()
+    hits = [b for b in at.button if "business_service" in (b.label or "")]
+    assert hits, "a service result should be offered for 'Payments'"
+    hits[0].click().run()
+    assert at.session_state.get("scope_note", "").startswith("Service:"), at.session_state.get("scope_note")
+    assert at.session_state.get("board_q"), "the board should be scoped to the object"
+    assert at.session_state.get("nav") == "Incidents"
+    at.button(key="board_reset").click().run()
+    assert not at.session_state.get("scope_note"), "reset should release the scope"
+
+
+def test_empty_search_says_so_and_can_be_cleared():
+    at = start()
+    at.text_input(key="global_search").set_value("zzzz-no-such-thing").run()
+    text = " ".join(str(c.value) for c in at.caption) + " ".join(str(m.value) for m in at.markdown)
+    assert "Nothing matches" in text or "No match" in text
+    at.button(key="gs_clear_empty").click().run()
+    assert not at.session_state.get("global_search")

@@ -174,6 +174,12 @@ div[class*="st-key-boardcard-"] button p,div[class*="st-key-attn-"] button p{lin
   border:1px solid #fde68a;background:#fffbeb;color:#92400e;margin:2px 0 8px}
 .ri-gate.ok{background:#f0fdf4;border-color:#bbf7d0;color:#166534}
 .ri-gate b{font-weight:750}
+.ri-filterchip{display:inline-block;background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe;
+  font-size:11.5px;font-weight:650;padding:3px 9px;border-radius:999px;margin:0 6px 4px 0}
+.ri-scope{display:inline-block;background:#4f46e5;color:#fff;font-size:11.5px;font-weight:700;
+  padding:3px 10px;border-radius:999px;margin:0 6px 4px 0}
+input:focus-visible,textarea:focus-visible,button:focus-visible,[role=button]:focus-visible{
+  outline:2px solid #4f46e5!important;outline-offset:2px!important}
 /* The identity bar must stay visible while the thread scrolls. Streamlit wraps each st.container in a
    layout div of equal height, which caps position:sticky — so that wrapper is taken out of flow. */
 div:has(> [class*="st-key-ws_head_"]){display:contents!important}
