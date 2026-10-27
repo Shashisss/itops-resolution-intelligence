@@ -8,6 +8,7 @@ then to "unknown" — never to a hardcoded string that can silently lie.
 import datetime as dt
 import functools
 import os
+import pathlib
 import subprocess
 
 
@@ -26,8 +27,11 @@ def info():
     commit_time = os.environ.get("RI_BUILD_TIME") or _git("show", "-s", "--format=%cI", "HEAD") or ""
     count = _git("rev-list", "--count", "HEAD")
     dirty = bool(_git("status", "--porcelain"))
-    described = _git("describe", "--tags", "--always", "--dirty")
-    build = described if described and described.startswith("v") else (f"v{count}" if count else "dev")
+    try:
+        build = (pathlib.Path(__file__).with_name("VERSION").read_text().strip()
+                 or (f"v{count}" if count else "dev"))
+    except Exception:
+        build = f"v{count}" if count else "dev"
     try:
         when = dt.datetime.fromisoformat(commit_time).astimezone().strftime("%d %b %H:%M") if commit_time else ""
     except Exception:
