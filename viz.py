@@ -184,7 +184,8 @@ input:focus-visible,textarea:focus-visible,button:focus-visible,[role=button]:fo
    layout div of equal height, which caps position:sticky — so that wrapper is taken out of flow. */
 div:has(> [class*="st-key-ws_head_"]){display:contents!important}
 div[class*="st-key-ws_head_"]{position:sticky;top:0;z-index:98;background:#fff;
-  padding:6px 0 6px;border-bottom:1px solid #eef2f7;margin-bottom:2px}
+  padding:4px 0 6px;border-bottom:1px solid #eef2f7;margin-bottom:2px;min-height:52px}
+div[class*="st-key-ws_head_"] [data-testid="stHorizontalBlock"]{align-items:center}
 .ri-wsid{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .ri-wsid .id{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:800;font-size:19px;color:#0f172a}
 .ri-wsid .chip{font-size:11.5px;font-weight:750;padding:2px 9px;border-radius:999px}
@@ -832,8 +833,12 @@ def section(title, hint=None, right=None):
 
 
 # ------------------------------------------------------------------ closure gate (v78)
-def closure_gate(state, on_close, actor="Incident Manager", expanded=False):
-    """One place that says whether an incident may be closed, and why not."""
+def closure_gate(state, on_close, actor="Incident Manager", expanded=False, asks=None,
+                 on_done=None, prefix="gate"):
+    """One place that says whether an incident may be closed — and what to do about it.
+
+    Blocked items are actionable: an open request can be completed from here, and a missing or failed
+    verification points at the step that fixes it. A gate that only refuses is a dead end."""
     if state["closed"]:
         st.markdown('<div class="ri-gate ok"><b>Closed</b> · kept read-only on the verified record</div>',
                     unsafe_allow_html=True)
@@ -842,7 +847,7 @@ def closure_gate(state, on_close, actor="Incident Manager", expanded=False):
         c1, c2 = st.columns([5, 1.4], vertical_alignment="center")
         c1.markdown('<div class="ri-gate ok"><b>Closure eligible</b> · independent verification passed '
                     'and no open requests</div>', unsafe_allow_html=True)
-        if c2.button("Close incident", type="primary", width="stretch", key="close_incident_btn"):
+        if c2.button("Close incident", type="primary", width="stretch", key=f"{prefix}_close"):
             ok, msg = on_close()
             st.session_state["flash"] = msg
             st.rerun()
@@ -850,5 +855,13 @@ def closure_gate(state, on_close, actor="Incident Manager", expanded=False):
     with st.expander(f'Closure blocked · {len(state["reasons"])} requirement(s) open', expanded=expanded):
         for r in state["reasons"]:
             st.markdown(f'- {r}')
+        if asks:
+            st.caption("Open requests are the last blocker — close them here:")
+            for d in asks:
+                c = st.columns([5.4, 1], vertical_alignment="center")
+                c[0].markdown(f'**{d["to_"]}** · {d["action"]}')
+                if c[1].button("Mark done", key=f"{prefix}_done_{d['id']}", width="stretch",
+                               on_click=on_done, args=(d,)):
+                    pass
         st.caption("Closure is gated on the authoritative verification record — a fix applied is not a "
                    "closure. Execution and independent verification live in **Act & verify (guided)**.")

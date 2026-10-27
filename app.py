@@ -358,8 +358,8 @@ def render_workspace_page(dom, ref, you_role):
     if not action_label:
         action_stage = "Close"
 
+    viz.crumb("All incidents", _close_workspace)
     with st.container(key=f"ws_head_{ref}"):
-        viz.crumb("All incidents", _close_workspace)
         c1, c2 = st.columns([6.4, 1.5], vertical_alignment="center")
         with c1:
             st.markdown(
@@ -397,9 +397,18 @@ def render_workspace_page(dom, ref, you_role):
     _collab_bar(dom, ref, you_role)
     st.query_params["inc"] = ref
     _render_incident_detail(dom, ref, you_role)
-    st.divider()
-    viz.closure_gate(gate, on_close=lambda: journey.close_incident(ref, you_role), actor=you_role,
-                     expanded=st.session_state.pop("ws_show_gate", False))
+    # The guided view puts the gate inside its own Close step; rendering it twice reads as a bug.
+    if st.session_state.get(f"ws_mode_{ref}") != "Act & verify (guided)":
+        st.divider()
+        _asks = [d for d in collab.delegations(ref) if d["status"] != "done"]
+
+        def _finish(d):
+            collab.set_delegation_status(d["id"], "done")
+            st.session_state["flash"] = f'Marked done — {d["to_"]} replied on the thread.'
+
+        viz.closure_gate(journey.closure_state(inc), on_close=lambda: journey.close_incident(ref, you_role),
+                         actor=you_role, expanded=st.session_state.pop("ws_show_gate", False),
+                         asks=_asks, on_done=_finish, prefix=f"page_{ref}")
 
 
 def _incident_rows():

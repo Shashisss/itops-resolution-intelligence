@@ -236,7 +236,16 @@ def pipeline_view(inc, data):
             journey.engage_block(inc["id"], rec["action"], journey.actors(rec))
 
     def close():
-        with st.expander("Closure record", expanded=True):
+        _gate = journey.closure_state(inc)
+        _asks = [d for d in collab.delegations(inc["id"]) if d["status"] != "done"]
+
+        def _finish(d):
+            collab.set_delegation_status(d["id"], "done")
+            st.session_state["flash"] = f'Marked done — {d["to_"]} replied on the thread.'
+
+        viz.closure_gate(_gate, on_close=lambda: journey.close_incident(inc["id"], "Incident Manager"),
+                         asks=_asks, on_done=_finish, prefix="dop_close_step")
+        with st.expander("Closure record", expanded=False):
             rec = journey.resolution_record(inc["id"])
             applied_any = bool(rec and rec.get("checks")) or bool(
                 st.session_state.get(f'dop_opt_applied_{inc["id"]}'))
