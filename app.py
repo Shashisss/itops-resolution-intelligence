@@ -65,6 +65,7 @@ if _needs_seed():
 import clock  # noqa: E402
 import build  # noqa: E402
 import store  # noqa: E402
+build.info.cache_clear()   # a hot reload swaps app.py without restarting the process
 clock.align()
 
 # Every browser session gets its own copy of the demo database: actions, verifications and closures
