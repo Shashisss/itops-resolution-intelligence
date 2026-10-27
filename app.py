@@ -135,8 +135,10 @@ def _sla_txt(i):
 # ================================================================= Collapsible sections (Incidents page)
 def _render_incident_detail(dom, ref, you_role):
     """The selected incident's details — rendered in the incident dialog."""
-    lens = st.radio("View", ["Resolution thread", "Guided walkthrough"], horizontal=True,
-                    key="ws_mode_" + ref, label_visibility="collapsed")
+    lens = st.radio("View", ["Resolution thread", "Act & verify (guided)"], horizontal=True,
+                    key="ws_mode_" + ref, label_visibility="collapsed",
+                    help="The thread explains what happened; the guided view is where you execute, "
+                         "verify and close.")
     if dom == "DataOps":
         data = DE.load()
         inc = next((i for i in data["incidents"] if i["id"] == ref), None)

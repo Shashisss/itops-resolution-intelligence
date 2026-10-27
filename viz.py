@@ -834,4 +834,5 @@ def closure_gate(state, on_close, actor="Incident Manager"):
     with st.expander(f'Closure blocked · {len(state["reasons"])} requirement(s) open', expanded=False):
         for r in state["reasons"]:
             st.markdown(f'- {r}')
-        st.caption("Closure is gated on the authoritative verification record — a fix applied is not a closure.")
+        st.caption("Closure is gated on the authoritative verification record — a fix applied is not a "
+                   "closure. Execution and independent verification live in **Act & verify (guided)**.")
