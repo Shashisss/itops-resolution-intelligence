@@ -346,9 +346,10 @@ def render_workspace_page(dom, ref, you_role):
     sla = _sla_txt(inc) if not closed else "closed"
     tone = {"Verified": "#16a34a", "Mitigated": "#d97706", "Recovery failed": "#dc2626",
             "Inconclusive": "#7c3aed"}.get(verdict, "#475569")
-    action_label, action_stage, action_why = _STAGE_ACTION.get(stage, ("Review", "Correlate", ""))
-    if closed:
-        action_label = None
+    nxt = journey.next_action(inc, stage)
+    action_label, action_stage, action_why = nxt["label"], nxt["stage"], nxt["why"]
+    if not action_label:
+        action_stage = "Close"
 
     with st.container(key=f"ws_head_{ref}"):
         viz.crumb("All incidents", _close_workspace)
@@ -357,15 +358,18 @@ def render_workspace_page(dom, ref, you_role):
             st.markdown(
                 f'<div class="ri-wsid"><span class="id">{inc["id"]}</span>'
                 f'<span class="chip" style="background:{tone}1a;color:{tone}">{verdict}</span>'
-                f'<span class="meta">{sev} · {stage} · <b>{sla}</b></span></div>',
+                f'<span class="meta">{sev} · <b>{nxt["stage"]}</b> · <b>{sla}</b></span></div>',
                 unsafe_allow_html=True)
         if action_label:
             if action_stage == "Close" and gate["eligible"]:
-                c2.button("Close incident", type="primary", width="stretch", key="ws_primary",
+                c2.button(action_label, type="primary", width="stretch", key="ws_primary",
                           on_click=_close_now, args=(ref, you_role))
             elif action_stage == "Close":
                 c2.button("See blockers", width="stretch", key="ws_primary",
                           on_click=lambda: st.session_state.update({"ws_show_gate": True}))
+            elif action_stage == "Coordinate":
+                c2.button(action_label, type="primary", width="stretch", key="ws_primary",
+                          on_click=_go_stage, args=(dom, ref, "Coordinate"), help=action_why)
             else:
                 c2.button(action_label, type="primary", width="stretch", key="ws_primary",
                           on_click=_go_stage, args=(dom, ref, action_stage), help=action_why)

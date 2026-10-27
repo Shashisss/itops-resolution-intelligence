@@ -316,8 +316,8 @@ c.executemany("INSERT INTO delegations(ref_id,frm,to_,action,status,ts,channel,s
      "Confirm contract v4 is deployed to payments", "assigned", M(38), "Teams", "Coordinate"),
     ("DOP-1001", "Data Owner", "Data Engineer",
      "Reconcile schema (contract v4) + replay", "assigned", M(14), "Jira", "Coordinate"),
-    ("INC-8850", "Orders Team", "Ravi (Developer)",
-     "Fix retry/backoff (JIRA-5530)", "assigned", M(35), "Jira", "Coordinate"),
+    # INC-8850 deliberately has no handoff yet: it is the incident used to demonstrate the full
+    # progression confirm cause → bring in owner → execute → verify → close.
     ("DOP-1002", "Data Owner", "Data Engineer",
      "Reconcile order_channel schema", "assigned", M(15), "Teams", "Coordinate"),
 ])

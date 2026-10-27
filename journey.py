@@ -502,3 +502,43 @@ def close_incident(inc_id, actor="Incident Manager"):
     collab.add_comment(inc_id, actor, "Person",
                        "[Simulated] Closed on the authoritative verification record.", channel="App")
     return True, "Incident closed on the verified record."
+
+
+# ---------------------------------------------------------------- next action (v83)
+def next_action(inc, stage=None):
+    """The single next thing to do, derived from EVIDENCE rather than the recorded stage name.
+
+    Confirming the cause must move the product on: the primary action becomes "bring in the owner",
+    then "execute the fix", then "verify", then "close". A stage label that lags behind the evidence
+    must never leave the button stuck on a step the user has already done."""
+    import collab
+    rec = resolution_record(inc["id"])
+    verdict = (rec or {}).get("verdict") or current_verdict(inc)
+    applied = applied_action(inc["id"])
+    closed = (inc.get("status") or "").lower() == "closed"
+    confirmed = bool(inc.get("confirmed_cause"))
+    deleg = any(d["status"] != "done" for d in collab.delegations(inc["id"]))
+    stage = stage or lifecycle_stage(inc)
+
+    if closed:
+        return {"label": None, "stage": "Close", "why": "Closed on the verified record.", "state": "closed"}
+    if applied and verdict == "Verified":
+        return {"label": "Close incident", "stage": "Close",
+                "why": "Verification passed — closure is now allowed.", "state": "verified"}
+    if applied:
+        return {"label": "Verify now", "stage": "Verify",
+                "why": f"Execution recorded; the verdict is {verdict}. Verification decides the rest.",
+                "state": "applied"}
+    if not confirmed:
+        return {"label": "Confirm cause", "stage": "Correlate",
+                "why": "Weigh the observed evidence against the inferred links before acting.",
+                "state": "unconfirmed"}
+    if deleg:
+        return {"label": "Execute fix", "stage": "Act",
+                "why": "Cause confirmed and an owner is engaged — execute the approved remediation.",
+                "state": "delegated"}
+    if confirmed:
+        return {"label": "Bring in owner", "stage": "Coordinate",
+                "why": "Root cause confirmed. Get the owner and the approval on the thread with a deadline.",
+                "state": "confirmed"}
+    return {"label": "Review evidence", "stage": "Correlate", "why": "", "state": "unknown"}

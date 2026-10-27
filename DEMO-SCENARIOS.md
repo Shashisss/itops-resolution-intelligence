@@ -39,6 +39,22 @@ a new attempt is a new recorded execution, not an edit of history.
 
 ---
 
+## Scenario 0 — the button that always knows the next step (INC-8850, 40 s)
+
+The primary action is derived from evidence, so it advances as you do the work:
+
+1. **Incidents → INC-8850** → the button reads **Confirm cause**.
+2. Primary action → guided view at Correlate → **Confirm top hypothesis as root cause**.
+3. The button is now **Bring in owner** (stage chip moves to *Coordinate*). Say: *"it doesn't leave me
+   on a step I already finished."*
+4. **Bring in owner** → guided Coordinate → **Collaborate** → pick a team, write the ask, 30 min →
+   **Send request**. The button becomes **Execute fix** and `Open requests · 1` appears.
+5. **Execute fix** → choose **A**, approve, **Apply selected action** → verdict **Verified**.
+6. The button now reads **See blockers** — because the request is still open. Open **Open requests →
+   Done** and it becomes **Close incident**. Click it: closed on the verified record.
+
+Refresh → back to the start.
+
 ## Scenario 2 — "two teams, one thread" (INC-8841 + DOP-1001, 90 s)
 
 Teaches: cross-domain correlation, collaboration with a clock, evidence vs. inference.

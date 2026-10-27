@@ -111,3 +111,45 @@ def test_execution_is_recorded_once_and_reused_as_the_action_of_record(db):
     # re-running verification must not invent a second execution
     journey.set_resolution("INC-8850", "Verified", action_id="ACT-42", checks=PASSING)
     assert journey.applied_action("INC-8850") == "ACT-42"
+
+
+def _row(db, ref):
+    con = sqlite3.connect(db)
+    con.row_factory = sqlite3.Row
+    r = con.execute("SELECT * FROM incidents WHERE id=?", (ref,)).fetchone()
+    con.close()
+    return dict(r)
+
+
+def test_next_action_advances_with_the_evidence(db):
+    inc = _row(db, "INC-8850")
+    assert journey.next_action(inc)["label"] == "Confirm cause"
+
+    con = sqlite3.connect(db)
+    con.execute("UPDATE incidents SET confirmed_cause='schema drift' WHERE id='INC-8850'")
+    con.commit()
+    con.close()
+    inc = _row(db, "INC-8850")
+    assert journey.next_action(inc)["label"] == "Bring in owner", "confirming the cause must move the action on"
+
+    collab.add_delegation("INC-8850", "Incident Manager", "Orders Team", "approve backoff fix")
+    assert journey.next_action(inc)["label"] == "Execute fix"
+
+    for d in collab.delegations("INC-8850"):
+        collab.set_delegation_status(d["id"], "done")
+    journey.set_resolution("INC-8850", "Verified", action_id="A", checks=PASSING)
+    assert journey.next_action(inc)["label"] == "Close incident"
+
+    ok, _ = journey.close_incident("INC-8850")
+    assert ok
+    assert journey.next_action(_row(db, "INC-8850"))["label"] is None
+
+
+def test_next_action_says_verify_after_a_partial_result(db):
+    inc = _row(db, "INC-8850")
+    con = sqlite3.connect(db)
+    con.execute("UPDATE incidents SET confirmed_cause='schema drift' WHERE id='INC-8850'")
+    con.commit()
+    con.close()
+    journey.set_resolution("INC-8850", "Mitigated", action_id="B", checks=MIXED)
+    assert journey.next_action(inc)["label"] == "Verify now"
