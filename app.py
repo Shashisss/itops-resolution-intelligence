@@ -64,7 +64,15 @@ if _needs_seed():
 
 import clock  # noqa: E402
 import build  # noqa: E402
+import store  # noqa: E402
 clock.align()
+
+# Every browser session gets its own copy of the demo database: actions, verifications and closures
+# are real inside the session and gone after a refresh. Set RI_DEMO_MODE=0 to persist.
+_DB_PATH = store.db()
+for _mod in (E, DE, journey, collab, realtime):
+    _mod.DB = _DB_PATH
+_DEMO_SESSION = store.is_demo()
 
 st.set_page_config(page_title="Resolution Intelligence — POC", page_icon="assets/icon.png",
                    layout="wide")
@@ -94,7 +102,7 @@ _open_n = sum(1 for i in list(_it_inc) + list(_dop_inc) if i.get("status") == "o
 _cross_n = sum(1 for i in _it_inc if journey.correlation_for(i["id"]))
 nav, you_role = shell.sidebar("CSM", stats={"open": _open_n, "cross": _cross_n,
                                            "total": len(_it_inc) + len(_dop_inc)},
-                              build=build.label())
+                              build=build.label(), demo=_DEMO_SESSION)
 # ---- global controls ----
 shell.topbar(_it_inc, _dop_inc, _sv, _dop_data["datasets"], _dop_data["pipelines"], you_role)
 

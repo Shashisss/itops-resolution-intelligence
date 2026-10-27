@@ -137,8 +137,9 @@ def action_panel(inc, data):
         st.info(f'Execution recorded · **{_executed}** · authoritative verdict '
                 f'**{(_rec or {}).get("verdict", "—")}**. The same repair cannot run twice; re-run the '
                 f'independent verification instead.')
-    if st.button("Apply selected repair (simulated)",
-                 disabled=(not approved) or (not _may) or bool(_executed),
+    _same = _executed == opt["id"]
+    if st.button("Execute as a new attempt" if (_executed and not _same) else "Apply selected repair (simulated)",
+                 disabled=(not approved) or (not _may) or bool(_executed and _same),
                  type=("primary" if collab.delegations(inc["id"]) else "secondary"),
                  key="dop_apply_" + inc["id"]):
         rows = DE.verification(inc, data, opt, True)
@@ -149,11 +150,14 @@ def action_panel(inc, data):
                                  "Recovery failed": "Diagnosed"}.get(v, "Fix applied"))
         journey.set_resolution(inc["id"], v, action_id=opt["id"], checks=rows,
                                actor="Data-quality verification service")
-        journey.add_event(inc["id"], "dataops", "repair", f'{opt["label"]} — independent verification: {v}')
+        _attempt = " (attempt 2)" if _executed and not _same else ""
+        journey.add_event(inc["id"], "dataops", "repair",
+                          f'{opt["label"]}{_attempt} — independent verification: {v}')
         st.session_state["flash"] = f'Repair applied (simulated). Independent verification → **{v}**.'
         st.rerun()
     if _executed and st.button("Re-run independent verification", key="dop_reverify_" + inc["id"]):
-        rows = DE.verification(inc, data, opt, True)
+        _rec_opt = next((o for o in DE.DOP_REMEDIATION if o["id"] == _executed), opt)
+        rows = DE.verification(inc, data, _rec_opt, True)
         v = journey.verdict(rows, True)
         journey.set_resolution(inc["id"], v, action_id=_executed, checks=rows,
                                actor="Data-quality verification service")

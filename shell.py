@@ -128,7 +128,7 @@ def _demo_menu():
         _reset_control()
 
 
-def sidebar(default_role="CSM", stats=None, build=None):
+def sidebar(default_role="CSM", stats=None, build=None, demo=False):
     """Left sidebar: brand, live counts, sections, persona, demo menu."""
     st.sidebar.markdown(
         '<div class="ri-sidebrand">Resolution Intelligence<br>'
@@ -150,6 +150,8 @@ def sidebar(default_role="CSM", stats=None, build=None):
             st.sidebar.caption(desc)
     if build:
         st.sidebar.caption(f'`{build}`')
+    if demo:
+        st.sidebar.caption("Demo session · anything you click is discarded on refresh")
     st.sidebar.divider()
     role = st.sidebar.selectbox("Demo persona", ROLES_UNION, key="you_role",
                                 on_change=_apply_persona)

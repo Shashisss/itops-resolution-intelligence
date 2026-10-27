@@ -194,8 +194,9 @@ def action_panel(inc, ctx):
         st.info(f'Execution recorded · **{_executed}** · authoritative verdict '
                 f'**{( _rec or {}).get("verdict", "—")}**. The same action cannot run twice; re-run the '
                 f'independent verification instead.')
-    if st.button("Apply selected action (simulated)",
-                 disabled=(not approved) or (not _may) or bool(_executed),
+    _same = _executed == opt["id"]
+    if st.button("Execute as a new attempt" if (_executed and not _same) else "Apply selected action (simulated)",
+                 disabled=(not approved) or (not _may) or bool(_executed and _same),
                  type=("primary" if _has_deleg else "secondary"), key="it_apply_" + inc["id"]):
         rows = E.it_verification(inc, ctx, opt, True)
         v = journey.verdict(rows, True)
@@ -204,11 +205,15 @@ def action_panel(inc, ctx):
         E.set_stage(inc["id"], {"Verified": "Verified", "Mitigated": "Fix applied",
                                 "Recovery failed": "Fix in progress"}.get(v, "Fix applied"))
         journey.set_resolution(inc["id"], v, action_id=opt["id"], checks=rows, actor="SRE verification service")
-        journey.add_event(inc["id"], "itops", "repair", f'{opt["label"]} — independent verification: {v}')
+        _attempt = " (attempt 2)" if _executed and not _same else ""
+        journey.add_event(inc["id"], "itops", "repair",
+                          f'{opt["label"]}{_attempt} — independent verification: {v}')
         st.session_state["flash"] = f'Action applied (simulated). Independent verification → **{v}**.'
         st.rerun()
     if _executed and st.button("Re-run independent verification", key="it_reverify_" + inc["id"]):
-        rows = E.it_verification(inc, ctx, opt, True)
+        # verify the action of record — never the radio selection, or a partial fix could be "re-verified"
+        _rec_opt = next((o for o in E.IT_REMEDIATION if o["id"] == _executed), opt)
+        rows = E.it_verification(inc, ctx, _rec_opt, True)
         v = journey.verdict(rows, True)
         journey.set_resolution(inc["id"], v, action_id=_executed, checks=rows,
                                actor="SRE verification service")
