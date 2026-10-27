@@ -183,7 +183,7 @@ input:focus-visible,textarea:focus-visible,button:focus-visible,[role=button]:fo
 /* The identity bar must stay visible while the thread scrolls. Streamlit wraps each st.container in a
    layout div of equal height, which caps position:sticky — so that wrapper is taken out of flow. */
 div:has(> [class*="st-key-ws_head_"]){display:contents!important}
-div[class*="st-key-ws_head_"]{position:sticky;top:0;z-index:98;background:#fff;
+div[class*="st-key-ws_head_"]{position:-webkit-sticky;position:sticky;top:0;z-index:98;background:#fff;
   padding:4px 0 6px;border-bottom:1px solid #eef2f7;margin-bottom:2px;min-height:52px}
 div[class*="st-key-ws_head_"] [data-testid="stHorizontalBlock"]{align-items:center}
 .ri-wsid{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
