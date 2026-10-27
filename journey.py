@@ -333,7 +333,8 @@ def render_resolution(inc_id, applied, sla_txt, owner, verdict="", extra=""):
         st.info(f'Incident **{inc_id}** — status: {verdict or "investigating"} (not closed).')
 
 
-_STATUS_COLOR = {"assigned": "#d97706", "accepted": "#0891b2", "done": "#16a34a"}
+_STATUS_COLOR = {"assigned": "#d97706", "accepted": "#0891b2", "reopened": "#b91c1c",
+                 "done": "#16a34a"}
 
 
 def actors(rec):

@@ -6,6 +6,7 @@ Deterministic graph + rule-based reasoning. SAMPLE DATA · SIMULATED ACTIONS."""
 import os
 import datetime as dt
 import importlib
+import pathlib
 import pandas as pd
 import streamlit as st
 import engine as E
@@ -22,6 +23,10 @@ import workspace
 import realtime
 
 
+_RELOAD_TARGETS = (viz, journey, collab, analytics, E, DE, personas, DV, workspace,
+                   command_center, shell, realtime)
+
+
 def _refresh_modules():
     """Reload our own modules so the running app always matches app.py.
 
@@ -29,20 +34,38 @@ def _refresh_modules():
     older build — which caused AttributeError (missing helpers) and TypeError (missing params,
     e.g. board_card(linked=…)) on newly added code. importlib.reload mutates the module object in
     place, so every importer sees the refreshed definitions. Doing this every run is cheap (the
-    modules only define functions) and removes the whole class of stale-module failures."""
-    for _m in (viz, journey, collab, analytics, E, DE, personas, DV, workspace, command_center, shell):
+    modules only define functions) and removes the whole class of stale-module failures.
+
+    A failed reload is returned rather than swallowed: silently keeping the old definition is how
+    a deploy looks healthy while running last release's code. The caller surfaces it in the UI."""
+    failures = []
+    for _m in _RELOAD_TARGETS:
         try:
             importlib.reload(_m)
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001 — one bad module must not take the app down
+            failures.append({"module": getattr(_m, "__name__", str(_m)),
+                             "error": f"{type(exc).__name__}: {exc}"})
+    return failures
 
 
-_refresh_modules()
+_RELOAD_FAILURES = _refresh_modules()
 
 VERDICT_OPTIONS = ["Investigating", "Mitigated", "Verified", "Recovery failed", "Inconclusive"]
 
 
+def _current_version():
+    """The version this checkout is running, from the same file build.label() uses."""
+    try:
+        return pathlib.Path(__file__).with_name("VERSION").read_text().strip()
+    except Exception:
+        return ""
+
+
 def _needs_seed():
+    """Seed when the database is missing/incomplete or was built by another release.
+
+    Comparing against VERSION (not a hardcoded string) means a schema change shipped with a bump
+    forces a reseed instead of leaving an old file that is missing a column."""
     import sqlite3
     if not os.path.exists("data/ops.db"):
         return True
@@ -55,7 +78,8 @@ def _needs_seed():
             con.execute(f"SELECT 1 FROM {t} LIMIT 1")
         v = con.execute("SELECT value FROM meta WHERE key='seed_version'").fetchone()
         con.close()
-        return not (v and v[0] == "v75")
+        version = _current_version()
+        return not (v and version and v[0] == version)
     except Exception:
         return True
 
@@ -79,6 +103,17 @@ _DEMO_SESSION = store.is_demo()
 st.set_page_config(page_title="Resolution Intelligence — POC", page_icon="assets/icon.png",
                    layout="wide")
 viz.inject_css()
+
+if _RELOAD_FAILURES:
+    _bad = ", ".join(f'{f["module"]} ({f["error"]})' for f in _RELOAD_FAILURES)
+    st.error(
+        f"**Hot reload incomplete** — {len(_RELOAD_FAILURES)} module(s) failed to reload: {_bad}. "
+        "This page may be running stale code; restart the app before trusting the view.")
+    with st.expander("Reload failure detail"):
+        for f in _RELOAD_FAILURES:
+            st.code(f'{f["module"]}: {f["error"]}', language=None)
+        st.caption(f'Build {build.label(short=True)} · if the error names a syntax/missing symbol, '
+                   "fix the module and redeploy — a reload cannot repair broken source.")
 
 flash = st.session_state.pop("flash", None)
 if flash:
@@ -240,7 +275,9 @@ def _collab_bar(dom, ref, you_role):
     with c2:
         with st.popover("Collaborate", type="primary", width="stretch"):
             st.markdown("**Bring someone in**")
-            st.caption("Creates a request on this thread with a deadline — not another side chat.")
+            st.caption("Logs a request on this thread with a deadline. **Simulated: nothing is sent.** "
+                       "No Teams, Slack or email connector is configured, so the channel below is "
+                       "recorded as the intended route only.")
             # A form, not loose widgets: typing does not rerun the page, so the popover stays open and
             # the presenter can type and then press Send without losing what they wrote.
             with st.form(key=f"ask_form_{ref}", clear_on_submit=True, border=False):
@@ -249,22 +286,24 @@ def _collab_bar(dom, ref, you_role):
                                      placeholder="e.g. confirm contract v4 is deployed")
                 mins = st.select_slider("Expected back in", [15, 30, 60, 120], value=30,
                                         format_func=lambda m: f"{m} min", key=f"ask_when_{ref}")
-                channel = st.radio("Channel", ["Teams", "Slack", "Email", "App"], horizontal=True,
-                                   key=f"ask_ch_{ref}")
-                sent = st.form_submit_button("Send request", type="primary", width="stretch")
+                channel = st.radio("Intended channel (recorded only)", ["Teams", "Slack", "Email", "App"],
+                                   horizontal=True, key=f"ask_ch_{ref}")
+                sent = st.form_submit_button("Log request — not sent", type="primary", width="stretch")
             if sent:
                 if not what.strip():
-                    st.warning("Say what you need before sending.")
+                    st.warning("Say what you need before logging the request.")
                 else:
                     act = f'{what.strip()} · expected in {mins} min'
                     collab.add_delegation(ref, you_role, who, act, channel=channel,
                                           stage=journey.lifecycle_stage(inc))
-                    collab.add_comment(ref, you_role, "Person", f'Asked **{who}**: {act}',
+                    collab.add_comment(ref, you_role, "Person",
+                                       f'Asked **{who}**: {act} (simulated — not delivered)',
                                        channel=channel, stage=journey.lifecycle_stage(inc))
                     collab.add_notification(collab.ACTOR_TO_ROLE.get(who, "Incident Manager"), ref,
-                                            f'{you_role} asked you: {what.strip()}')
-                    st.session_state["flash"] = (f"Request sent to {who} — it is on the thread with a "
-                                                 f"{mins} min clock.")
+                                            f'[Simulated · not delivered] {you_role} asked you: {what.strip()}')
+                    st.session_state["flash"] = (
+                        f"Request logged on the thread for {who} with a {mins} min clock. "
+                        f"Simulated — it was NOT delivered: no {channel} connector is configured.")
                     st.rerun()
     with c3:
         with st.popover("Share", width="stretch"):
@@ -283,24 +322,38 @@ def _collab_bar(dom, ref, you_role):
                          expanded=False):
             for d in sorted(asks, key=lambda d: d["ts"] or "", reverse=True):
                 age = _age_min(d)
-                late = age > 30                      # default response expectation until per-request SLAs land
-                state = {"assigned": "sent", "accepted": "acknowledged"}.get(d["status"], d["status"])
-                tone = "#b91c1c" if late else ("#166534" if d["status"] == "accepted" else "#92400e")
-                cols = st.columns([5.6, 1, 1], vertical_alignment="center")
+                late = collab.is_overdue(d, 30)      # default response expectation until per-request SLAs land
+                state = {"assigned": "sent · not delivered", "accepted": "acknowledged",
+                         "reopened": "reopened"}.get(d["status"], d["status"])
+                tone = "#b91c1c" if late or d["status"] == "reopened" else (
+                    "#166534" if d["status"] == "accepted" else "#92400e")
+                actor = d.get("actor") or "unknown"
+                when = str(d.get("changed_at") or d.get("ts") or "")
+                when_show = when[11:16] if len(when) >= 16 else when
+                cols = st.columns([5.1, 0.8, 0.8, 0.8], vertical_alignment="center")
                 cols[0].markdown(
                     f'**{d["to_"]}** · {d["action"]}  \n'
                     f'<span style="color:{tone};font-size:11.5px;font-weight:650">'
                     f'{"OVERDUE · " if late else ""}{state}</span>'
-                    f'<span style="color:#64748b;font-size:11.5px"> · asked by {d["frm"]} · {age} min ago · '
-                    f'{d.get("channel") or "App"}</span>', unsafe_allow_html=True)
-                if cols[1].button("Done", key=f"ask_done_{d['id']}", width="stretch"):
-                    collab.set_delegation_status(d["id"], "done")
-                    collab.add_comment(ref, d["to_"], "Person", f'Done: {d["action"]}')
-                    st.session_state["flash"] = f'Marked done — {d["to_"]} replied on the thread.'
+                    f'<span style="color:#64748b;font-size:11.5px"> · by {actor} · {when_show} · '
+                    f'asked {age} min ago · {d.get("channel") or "App"} (recorded, simulated)</span>',
+                    unsafe_allow_html=True)
+                if cols[1].button("Ack", key=f"ask_ack_{d['id']}", width="stretch",
+                                  disabled=d["status"] == "accepted"):
+                    collab.set_delegation_status(d["id"], "accepted", actor=d["to_"])
+                    collab.add_comment(ref, d["to_"], "Person",
+                                       f'Acknowledged: {d["action"]} (simulated)')
+                    st.session_state["flash"] = f'Acknowledged by {d["to_"]} on the thread (simulated).'
                     st.rerun()
-                if cols[2].button("Chase", key=f"ask_chase_{d['id']}", width="stretch"):
-                    collab.add_comment(ref, you_role, "Person", f'Chased {d["to_"]} for: {d["action"]}')
-                    st.session_state["flash"] = f'Reminder logged to {d["to_"]}.'
+                if cols[2].button("Done", key=f"ask_done_{d['id']}", width="stretch"):
+                    collab.set_delegation_status(d["id"], "done", actor=d["to_"])
+                    collab.add_comment(ref, d["to_"], "Person", f'Done: {d["action"]} (simulated)')
+                    st.session_state["flash"] = f'Marked done — {d["to_"]} replied on the thread (simulated).'
+                    st.rerun()
+                if cols[3].button("Chase", key=f"ask_chase_{d['id']}", width="stretch"):
+                    collab.add_comment(ref, you_role, "Person",
+                                       f'Chased {d["to_"]} for: {d["action"]} (simulated)')
+                    st.session_state["flash"] = f'Reminder logged to {d["to_"]} (simulated).'
                     st.rerun()
             done = [d for d in collab.delegations(ref) if d["status"] == "done"][:4]
             if done:
@@ -309,14 +362,32 @@ def _collab_bar(dom, ref, you_role):
                     c = st.columns([6, 1], vertical_alignment="center")
                     c[0].markdown(f'~~{d["to_"]} · {d["action"]}~~', unsafe_allow_html=True)
                     if c[1].button("Reopen", key=f"ask_reopen_{d['id']}", width="stretch"):
-                        collab.set_delegation_status(d["id"], "assigned")
-                        st.session_state["flash"] = f'Reopened the request to {d["to_"]}.'
+                        collab.set_delegation_status(d["id"], "reopened", actor=you_role)
+                        collab.add_comment(ref, you_role, "Person",
+                                           f'Reopened the request to {d["to_"]}: {d["action"]} (simulated)')
+                        st.session_state["flash"] = f'Reopened the request to {d["to_"]} (simulated).'
                         st.rerun()
     else:
         st.caption("No open requests on this incident — use **Collaborate** to ask someone, with a deadline.")
 
 
-_WS_PANEL_HEIGHT = 470      # px; the workspace body scrolls inside this, the header stays put
+def _ws_panel_css(ref):
+    """Responsive height for the scrolling thread panel.
+
+    The old fixed 470px was right for one screen only: at 720px tall it pushed the panel's bottom
+    below the viewport. The panel now takes the space left below the identity/collaboration bars and
+    above the fold, clamped so it stays usable on a short laptop and does not sprawl on a tall one.
+    The identity bar is outside it and remains visible because the panel scrolls internally."""
+    key = f"ws_panel_{ref}"
+    st.markdown(
+        f"""<style>
+        .st-key-{key} {{
+            flex: 0 0 auto !important;
+            height: clamp(300px, calc(100vh - 400px), 560px) !important;
+            max-height: 560px !important;
+            overflow-y: auto !important;
+        }}
+        </style>""", unsafe_allow_html=True)
 
 _STAGE_ACTION = {
     "Detect": ("Confirm signal", "Correlate", "Check the affected service and the first evidence."),
@@ -404,7 +475,8 @@ def render_workspace_page(dom, ref, you_role):
     # The thread scrolls inside its own panel, so the identity bar above never leaves the screen —
     # this is the only construction that pins on Streamlit Cloud, where the app lives in an
     # auto-height iframe and the outer page (not the app) is what scrolls.
-    with st.container(height=_WS_PANEL_HEIGHT, border=True):
+    _ws_panel_css(ref)
+    with st.container(border=True, key=f"ws_panel_{ref}"):
         _render_incident_detail(dom, ref, you_role)
         # The guided view puts the gate inside its own Close step; rendering it twice reads as a bug.
         if st.session_state.get(f"ws_mode_{ref}") != "Act & verify (guided)":
@@ -412,8 +484,8 @@ def render_workspace_page(dom, ref, you_role):
             _asks = [d for d in collab.delegations(ref) if d["status"] != "done"]
 
             def _finish(d):
-                collab.set_delegation_status(d["id"], "done")
-                st.session_state["flash"] = f'Marked done — {d["to_"]} replied on the thread.'
+                collab.set_delegation_status(d["id"], "done", actor=d["to_"])
+                st.session_state["flash"] = f'Marked done — {d["to_"]} replied on the thread (simulated).'
 
             viz.closure_gate(journey.closure_state(inc),
                              on_close=lambda: journey.close_incident(ref, you_role),

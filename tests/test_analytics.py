@@ -145,7 +145,7 @@ def test_handoff_delay_and_a_never_completed_request(db):
     con.commit()
     con.close()
 
-    collab.set_delegation_status(done_id, "done")          # stamps done_at lazily
+    collab.set_delegation_status(done_id, "done", actor="DBA Team")   # stamps done_at lazily
 
     h = analytics.handoff_delay()
     assert h["n_done"] == 1

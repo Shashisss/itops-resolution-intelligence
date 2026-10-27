@@ -371,7 +371,8 @@ LEGEND = [
     ("Severity", [("info", "#16a34a"), ("warning", "#d97706"), ("critical", "#dc2626")]),
     ("Priority", [("P1", "#dc2626"), ("P2", "#d97706"), ("P3", "#0891b2")]),
     ("Confidence", [("high", "#16a34a"), ("medium", "#d97706"), ("low", "#94a3b8")]),
-    ("Status", [("assigned", "#d97706"), ("accepted", "#0891b2"), ("done", "#16a34a")]),
+    ("Status", [("assigned", "#d97706"), ("accepted", "#0891b2"), ("reopened", "#b91c1c"),
+                ("done", "#16a34a")]),
     ("Autonomy", [("coordination · auto", "#16a34a"), ("execution · approval", "#dc2626")]),
 ]
 

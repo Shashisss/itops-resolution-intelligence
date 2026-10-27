@@ -113,6 +113,27 @@ def test_entity_result_scopes_the_board_and_reset_clears_it():
     assert not at.session_state.get("scope_note"), "reset should release the scope"
 
 
+def test_board_search_scopes_the_list_and_reset_releases_it():
+    at = start()
+    at.text_input(key="board_q").set_value("INC-8841").run()
+    labels = [b.label or "" for b in at.button]
+    assert any("INC-8841" in l for l in labels), labels[:15]
+    assert not any("DOP-1001" in l for l in labels), "the board search must scope the list"
+    at.button(key="board_reset").click().run()
+    labels = [b.label or "" for b in at.button]
+    assert any("DOP-1001" in l for l in labels), "reset must release the search scope"
+
+
+def test_board_filter_with_no_match_explains_the_empty_result():
+    at = start()
+    at.text_input(key="board_q").set_value("zzzz-no-such-incident").run()
+    text = (" ".join(str(c.value) for c in at.caption)
+            + " ".join(str(m.value) for m in at.markdown)
+            + " ".join(str(i.value) for i in at.info))
+    assert "No incidents match" in text or "Nothing matches" in text
+    assert not any("INC-8841" in (b.label or "") for b in at.button)
+
+
 def test_empty_search_says_so_and_can_be_cleared():
     at = start()
     at.text_input(key="global_search").set_value("zzzz-no-such-thing").run()

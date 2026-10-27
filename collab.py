@@ -29,41 +29,113 @@ def add_comment(ref_id, author, role, text, channel="App", stage=None):
     con.close()
 
 
-def delegations(ref_id):
+_ENSURED = set()
+
+
+def _ensure_state_columns(con):
+    """State-audit columns/table, added lazily so an existing database keeps working.
+
+    done_at (v92) is the completion stamp — never backfilled, because a request completed before
+    the column existed has no duration and must not be treated as instant. actor/changed_at (v93)
+    record *who* made the last transition and *when*; delegation_events keeps every transition."""
+    key = str(DB)
+    if key in _ENSURED:
+        return
+    for ddl in ("ALTER TABLE delegations ADD COLUMN done_at TEXT",
+                "ALTER TABLE delegations ADD COLUMN actor TEXT",
+                "ALTER TABLE delegations ADD COLUMN changed_at TEXT"):
+        try:
+            con.execute(ddl)
+        except sqlite3.OperationalError:
+            pass  # already there
+    con.execute("CREATE TABLE IF NOT EXISTS delegation_events("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, delegation_id INTEGER, status TEXT, "
+                "actor TEXT, changed_at TEXT)")
+    con.commit()
+    _ENSURED.add(key)
+
+
+def _connect():
     con = sqlite3.connect(DB)
     con.row_factory = sqlite3.Row
+    _ensure_state_columns(con)
+    return con
+
+
+def delegations(ref_id):
+    con = _connect()
     rows = [dict(r) for r in con.execute("SELECT * FROM delegations WHERE ref_id=? ORDER BY id DESC", (ref_id,))]
     con.close()
     return rows
 
 
-def add_delegation(ref_id, frm, to, action, status="assigned", channel="Teams", stage=None):
-    con = sqlite3.connect(DB)
-    con.execute("INSERT INTO delegations(ref_id,frm,to_,action,status,ts,channel,stage) VALUES(?,?,?,?,?,?,?,?)",
-                (ref_id, frm, to, action, status, _now(), channel, stage))
+def delegation_events(did):
+    """Every recorded transition of one request, oldest first."""
+    con = _connect()
+    rows = [dict(r) for r in con.execute(
+        "SELECT * FROM delegation_events WHERE delegation_id=? ORDER BY id", (did,))]
+    con.close()
+    return rows
+
+
+def _record_event(con, did, status, actor, when):
+    con.execute("INSERT INTO delegation_events(delegation_id,status,actor,changed_at) VALUES(?,?,?,?)",
+                (did, status, actor, when))
+
+
+def add_delegation(ref_id, frm, to, action, status="assigned", channel="Teams", stage=None,
+                   actor=None):
+    now = _now()
+    who = actor or frm
+    con = _connect()
+    cur = con.execute(
+        "INSERT INTO delegations(ref_id,frm,to_,action,status,ts,channel,stage,actor,changed_at) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?)",
+        (ref_id, frm, to, action, status, now, channel, stage, who, now))
+    _record_event(con, cur.lastrowid, status, who, now)
     con.commit()
     con.close()
 
 
-def _ensure_done_at(con):
-    """Completion stamp column. Added lazily (v92) because older databases do not have it; nothing
-    is backfilled, so a request completed before this column existed keeps no duration rather than
-    a guessed one."""
-    try:
-        con.execute("ALTER TABLE delegations ADD COLUMN done_at TEXT")
-    except sqlite3.OperationalError:
-        pass  # already there
+def set_delegation_status(did, status, actor):
+    """Move a request to a new state and record who did it, when.
 
-
-def set_delegation_status(did, status):
-    con = sqlite3.connect(DB)
-    if str(status).lower() == "done":
-        _ensure_done_at(con)
-        con.execute("UPDATE delegations SET status=?, done_at=? WHERE id=?", (status, _now(), did))
+    ``actor`` is required: an unattributed transition makes the collaboration trail unusable for
+    review. ``reopened`` is a distinct state (not silently ``assigned``) and clears done_at, so a
+    request that is open again has no completion duration."""
+    actor = str(actor or "").strip()
+    if not actor:
+        raise ValueError("set_delegation_status requires an actor")
+    status = str(status).lower()
+    now = _now()
+    con = _connect()
+    if status == "done":
+        con.execute("UPDATE delegations SET status=?, done_at=?, actor=?, changed_at=? WHERE id=?",
+                    (status, now, actor, now, did))
+    elif status == "reopened":
+        con.execute("UPDATE delegations SET status=?, done_at=NULL, actor=?, changed_at=? WHERE id=?",
+                    (status, actor, now, did))
     else:
-        con.execute("UPDATE delegations SET status=? WHERE id=?", (status, did))
+        con.execute("UPDATE delegations SET status=?, actor=?, changed_at=? WHERE id=?",
+                    (status, actor, now, did))
+    _record_event(con, did, status, actor, now)
     con.commit()
     con.close()
+
+
+def age_minutes(d, now=None):
+    """Minutes since the request was raised (not since its last transition)."""
+    try:
+        raised = dt.datetime.fromisoformat(str(d.get("ts")))
+    except Exception:
+        return 0
+    ref = now or dt.datetime.now()
+    return max(0, int((ref - raised).total_seconds() / 60))
+
+
+def is_overdue(d, limit=30):
+    """Open longer than the default response expectation — shown, never hidden."""
+    return age_minutes(d) > limit
 
 
 # map a recommendation's "next actor" to a notifiable role

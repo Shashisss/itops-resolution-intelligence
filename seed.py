@@ -7,11 +7,15 @@ ONE connected story across two domains:
   →  business incident (INC-8841) on the Payments service.
 
 All data is synthetic; all actions are simulated."""
-import os, sqlite3, datetime as dt, json
+import os, sqlite3, datetime as dt, json, pathlib
 import duckdb
 
 os.makedirs("data", exist_ok=True)
 DB = "data/ops.db"
+try:
+    VERSION = pathlib.Path(__file__).with_name("VERSION").read_text().strip()
+except Exception:
+    VERSION = "unknown"          # never certify a database with a version it was not built from
 TMP = "data/ops.db.building"      # built aside, then swapped in atomically
 HIST = "data/history.duckdb"
 for f in (DB, TMP, HIST):
@@ -64,7 +68,10 @@ CREATE TABLE live_events(id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, domain T
 CREATE TABLE comments(id INTEGER PRIMARY KEY AUTOINCREMENT, ref_id TEXT, author TEXT, role TEXT,
                       text TEXT, ts TEXT, channel TEXT, stage TEXT);
 CREATE TABLE delegations(id INTEGER PRIMARY KEY AUTOINCREMENT, ref_id TEXT, frm TEXT, to_ TEXT,
-                         action TEXT, status TEXT, ts TEXT, channel TEXT, stage TEXT);
+                         action TEXT, status TEXT, ts TEXT, channel TEXT, stage TEXT,
+                         done_at TEXT, actor TEXT, changed_at TEXT);
+CREATE TABLE delegation_events(id INTEGER PRIMARY KEY AUTOINCREMENT, delegation_id INTEGER,
+                               status TEXT, actor TEXT, changed_at TEXT);
 CREATE TABLE notifications(id INTEGER PRIMARY KEY AUTOINCREMENT, role TEXT, ref_id TEXT, text TEXT,
                            ts TEXT, read INTEGER DEFAULT 0);
 -- OLA = internal Operational Level Agreement per owning team (distinct from the customer SLA)
@@ -75,7 +82,7 @@ CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE resolution_state(ref_id TEXT PRIMARY KEY, verdict TEXT, action_id TEXT, actor TEXT,
                               closed_at TEXT, updated_at TEXT, checks TEXT);
 """)
-c.execute("INSERT INTO meta VALUES('seed_version','v75')")
+c.execute("INSERT INTO meta VALUES('seed_version',?)", (VERSION,))
 
 # ------------------------------------------------------------------ IT Ops
 services = [
@@ -323,6 +330,10 @@ c.executemany("INSERT INTO delegations(ref_id,frm,to_,action,status,ts,channel,s
     ("DOP-1002", "Data Owner", "Data Engineer",
      "Reconcile order_channel schema", "assigned", M(15), "Teams", "Coordinate"),
 ])
+# The initial insertion is itself the first recorded transition: the requester is the actor.
+c.execute("UPDATE delegations SET actor=frm, changed_at=ts WHERE actor IS NULL")
+c.execute("INSERT INTO delegation_events(delegation_id,status,actor,changed_at) "
+          "SELECT id,status,actor,changed_at FROM delegations")
 c.executemany("INSERT INTO notifications(role,ref_id,text,ts,read) VALUES(?,?,?,?,?)", [
     ("Data Engineer", "DOP-1001", "Data Owner delegated to you: Reconcile schema (contract v4) + replay", M(14), 0),
     ("Data Owner", "INC-8841", "Amit (Incident Manager) mentioned you: business impact on Payments", M(12), 0),

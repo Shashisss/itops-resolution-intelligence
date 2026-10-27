@@ -52,6 +52,20 @@ def _base_ready():
         return False
 
 
+def _align_copy(path):
+    """Slide a new session copy onto the current clock.
+
+    The base is aligned once per process, so a tab opened hours later would inherit timestamps from
+    that moment and every incident would read "12h waiting · BREACHED". Re-aligning the copy at
+    creation time is what keeps a long-running deploy demo-ready; a failure here must not stop the
+    session, but it is recorded rather than hidden behind a bare pass."""
+    try:
+        import clock
+        clock.align(path=path)
+    except Exception as exc:  # noqa: BLE001 — a broken demo clock must not block the page
+        print(f"clock: could not align {path}: {type(exc).__name__}: {exc}")
+
+
 def db():
     """The database this session should use."""
     override = os.environ.get("RI_DB")
@@ -66,6 +80,7 @@ def db():
             return path
         path = f"data/session_{uuid.uuid4().hex[:8]}.db"
         shutil.copyfile(BASE, path)
+        _align_copy(path)
         st.session_state["_db_path"] = path
         _janitor()
         return path

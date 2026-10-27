@@ -136,7 +136,7 @@ def test_next_action_advances_with_the_evidence(db):
     assert journey.next_action(inc)["label"] == "Execute fix"
 
     for d in collab.delegations("INC-8850"):
-        collab.set_delegation_status(d["id"], "done")
+        collab.set_delegation_status(d["id"], "done", actor=d["to_"])
     journey.set_resolution("INC-8850", "Verified", action_id="A", checks=PASSING)
     assert journey.next_action(inc)["label"] == "Close incident"
 

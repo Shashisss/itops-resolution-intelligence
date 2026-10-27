@@ -297,8 +297,8 @@ def incident_view(inc, ctx):
         _asks = [d for d in collab.delegations(inc["id"]) if d["status"] != "done"]
 
         def _finish(d):
-            collab.set_delegation_status(d["id"], "done")
-            st.session_state["flash"] = f'Marked done — {d["to_"]} replied on the thread.'
+            collab.set_delegation_status(d["id"], "done", actor=d["to_"])
+            st.session_state["flash"] = f'Marked done — {d["to_"]} replied on the thread (simulated).'
 
         viz.closure_gate(_gate, on_close=lambda: journey.close_incident(inc["id"], "Incident Manager"),
                          asks=_asks, on_done=_finish, prefix="it_close_step")

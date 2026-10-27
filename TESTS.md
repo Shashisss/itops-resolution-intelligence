@@ -4,7 +4,7 @@ Two layers, both runnable without a browser.
 
 ```bash
 python3 -m pip install -r requirements-dev.txt
-python3 -m pytest tests -q          # 14 tests, ~6s
+python3 -m pytest tests -q          # 40 tests, ~13s
 python3 scripts/smoke.py            # deployment smoke test, ~5s
 ```
 
@@ -37,6 +37,17 @@ list and asserts the URL was cleared. It exits non-zero on the first failure.
 | `test_verified_and_clear_closes_once` | Verified + clear → closes; a second close is refused |
 | `test_verdict_mapping_is_explicit` | Investigating / Verified / Mitigated / Recovery failed mapping |
 | `test_execution_is_recorded_once_and_reused_as_the_action_of_record` | one execution per incident; re-verification reuses it |
+
+## Other suites
+
+| File | Asserts |
+|---|---|
+| `tests/test_gate.py` | the closure gate end to end for every verdict, including Recovery failed and the open-request block |
+| `tests/test_collab.py` | request → acknowledged → done → reopened, actor and timestamp recorded on each transition, overdue derivation, reopen clears `done_at` |
+| `tests/test_analytics.py` | measured MTTR (median/p90), stage medians from the timeline, OLA delta sign, verdict counts, handoff delay with n=0; a verdict-less incident is excluded, never counted as zero |
+| `tests/test_seed.py` | `meta.seed_version` equals `VERSION`, and `_needs_seed()` is false for a current database |
+| `tests/test_clock.py` | the demo clock: `align(path=…)` re-anchors a stale database, is memoised per path until forced, and a new session copy is re-aligned while the base is left alone (regression: a tab opened hours after start showed every incident as 12h waiting · BREACHED) |
+| `tests/test_navigation.py` (search/filter) | board search, filter reset and the empty-state message |
 
 ## Not covered yet (honest list)
 
