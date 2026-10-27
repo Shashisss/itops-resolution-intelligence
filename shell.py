@@ -138,6 +138,25 @@ def _demo_menu():
         _reset_control()
 
 
+_CTX_SLOT = None
+
+
+def incident_context(inc_id, verdict, tone, sev, stage, sla):
+    """Mirror the open incident into the sidebar.
+
+    Streamlit Cloud serves the app inside an auto-height iframe, so `position: sticky` has no
+    scrolling ancestor inside it and cannot pin anything. The sidebar is always visible on every
+    host, so the incident identity lives there too."""
+    if _CTX_SLOT is None:
+        return
+    _CTX_SLOT.markdown(
+        f'<div class="ri-sbctx"><div class="l">Open incident</div>'
+        f'<div class="id">{inc_id}</div>'
+        f'<div class="chip" style="background:{tone}1a;color:{tone}">{verdict}</div>'
+        f'<div class="meta">{sev} · {stage}</div>'
+        f'<div class="meta"><b>{sla}</b></div></div>', unsafe_allow_html=True)
+
+
 def sidebar(default_role="CSM", stats=None, build=None, demo=False):
     """Left sidebar: brand, live counts, sections, persona, demo menu."""
     st.sidebar.markdown(
@@ -162,6 +181,8 @@ def sidebar(default_role="CSM", stats=None, build=None, demo=False):
         st.sidebar.caption(f'`{build}`')
     if demo:
         st.sidebar.caption("Demo session · anything you click is discarded on refresh")
+    global _CTX_SLOT
+    _CTX_SLOT = st.sidebar.empty()
     st.sidebar.divider()
     role = st.sidebar.selectbox("Demo persona", ROLES_UNION, key="you_role",
                                 on_change=_apply_persona)

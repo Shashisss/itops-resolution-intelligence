@@ -357,6 +357,7 @@ def render_workspace_page(dom, ref, you_role):
     action_label, action_stage, action_why = nxt["label"], nxt["stage"], nxt["why"]
     if not action_label:
         action_stage = "Close"
+    shell.incident_context(inc["id"], verdict, tone, sev, nxt["stage"], sla)
 
     viz.crumb("All incidents", _close_workspace)
     with st.container(key=f"ws_head_{ref}"):

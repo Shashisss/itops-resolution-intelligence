@@ -174,6 +174,14 @@ div[class*="st-key-boardcard-"] button p,div[class*="st-key-attn-"] button p{lin
   border:1px solid #fde68a;background:#fffbeb;color:#92400e;margin:2px 0 8px}
 .ri-gate.ok{background:#f0fdf4;border-color:#bbf7d0;color:#166534}
 .ri-gate b{font-weight:750}
+.ri-sbctx{border:1px solid #e5e7eb;border-left:4px solid #4f46e5;border-radius:10px;
+  padding:8px 10px;margin:6px 0 2px;background:#fff}
+.ri-sbctx .l{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#64748b;font-weight:700}
+.ri-sbctx .id{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:800;font-size:15px;
+  color:#0f172a;margin:1px 0 3px}
+.ri-sbctx .chip{display:inline-block;font-size:11px;font-weight:750;padding:1px 8px;border-radius:999px}
+.ri-sbctx .meta{font-size:11.5px;color:#64748b;margin-top:2px}
+.ri-sbctx .meta b{color:#0f172a}
 .ri-filterchip{display:inline-block;background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe;
   font-size:11.5px;font-weight:650;padding:3px 9px;border-radius:999px;margin:0 6px 4px 0}
 .ri-scope{display:inline-block;background:#4f46e5;color:#fff;font-size:11.5px;font-weight:700;
