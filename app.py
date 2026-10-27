@@ -314,6 +314,8 @@ def _collab_bar(dom, ref, you_role):
         st.caption("No open requests on this incident — use **Collaborate** to ask someone, with a deadline.")
 
 
+_WS_PANEL_HEIGHT = 470      # px; the workspace body scrolls inside this, the header stays put
+
 _STAGE_ACTION = {
     "Detect": ("Confirm signal", "Correlate", "Check the affected service and the first evidence."),
     "Correlate": ("Confirm cause", "Correlate", "Weigh observed evidence against inferred links."),
@@ -397,19 +399,24 @@ def render_workspace_page(dom, ref, you_role):
 
     _collab_bar(dom, ref, you_role)
     st.query_params["inc"] = ref
-    _render_incident_detail(dom, ref, you_role)
-    # The guided view puts the gate inside its own Close step; rendering it twice reads as a bug.
-    if st.session_state.get(f"ws_mode_{ref}") != "Act & verify (guided)":
-        st.divider()
-        _asks = [d for d in collab.delegations(ref) if d["status"] != "done"]
+    # The thread scrolls inside its own panel, so the identity bar above never leaves the screen —
+    # this is the only construction that pins on Streamlit Cloud, where the app lives in an
+    # auto-height iframe and the outer page (not the app) is what scrolls.
+    with st.container(height=_WS_PANEL_HEIGHT, border=True):
+        _render_incident_detail(dom, ref, you_role)
+        # The guided view puts the gate inside its own Close step; rendering it twice reads as a bug.
+        if st.session_state.get(f"ws_mode_{ref}") != "Act & verify (guided)":
+            st.divider()
+            _asks = [d for d in collab.delegations(ref) if d["status"] != "done"]
 
-        def _finish(d):
-            collab.set_delegation_status(d["id"], "done")
-            st.session_state["flash"] = f'Marked done — {d["to_"]} replied on the thread.'
+            def _finish(d):
+                collab.set_delegation_status(d["id"], "done")
+                st.session_state["flash"] = f'Marked done — {d["to_"]} replied on the thread.'
 
-        viz.closure_gate(journey.closure_state(inc), on_close=lambda: journey.close_incident(ref, you_role),
-                         actor=you_role, expanded=st.session_state.pop("ws_show_gate", False),
-                         asks=_asks, on_done=_finish, prefix=f"page_{ref}")
+            viz.closure_gate(journey.closure_state(inc),
+                             on_close=lambda: journey.close_incident(ref, you_role),
+                             actor=you_role, expanded=st.session_state.pop("ws_show_gate", False),
+                             asks=_asks, on_done=_finish, prefix=f"page_{ref}")
 
 
 def _incident_rows():
@@ -697,6 +704,7 @@ elif nav == "Analytics":
 elif nav == "Activity & audit":
     render_activity()
 
-st.divider()
-st.caption(f"Sample data · simulated actions · {build.label()} — proof of concept, not production. "
-           "See PROTOTYPE_NOTES.md for persistence limits and TESTS.md for the test suite.")
+if not st.session_state.get("open_incident"):
+    st.divider()
+    st.caption(f"Sample data · simulated actions · {build.label()} — proof of concept, not production. "
+               "See PROTOTYPE_NOTES.md for persistence limits and TESTS.md for the test suite.")
