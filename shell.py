@@ -75,7 +75,17 @@ def _apply_persona():
 
 
 def _set_nav(value):
+    """Sidebar navigation. Choosing Incidents is also the way back out of an incident workspace —
+    without clearing the selection the button looked dead, because the workspace re-rendered."""
     st.session_state["nav"] = value
+    if value == "Incidents":
+        st.session_state.pop("open_incident", None)
+        st.session_state["_deep_done"] = True
+        try:
+            if "inc" in st.query_params:
+                del st.query_params["inc"]
+        except Exception:
+            pass
 
 
 def _reset():

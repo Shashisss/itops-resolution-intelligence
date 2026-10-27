@@ -120,3 +120,13 @@ def test_empty_search_says_so_and_can_be_cleared():
     assert "Nothing matches" in text or "No match" in text
     at.button(key="gs_clear_empty").click().run()
     assert not at.session_state.get("global_search")
+
+
+def test_sidebar_incidents_returns_from_a_workspace():
+    at = start()
+    find_button(at, "INC-8841").click().run()
+    assert at.session_state["open_incident"]["ref"] == "INC-8841"
+    at.button(key="nav_Incidents").click().run()
+    assert not at.session_state.get("open_incident"), "sidebar Incidents must leave the workspace"
+    assert at.query_params.get("inc") in (None, [], ""), "and clear the deep link"
+    assert any("DOP-1001" in (b.label or "") for b in at.button), "the list should be rendered"
