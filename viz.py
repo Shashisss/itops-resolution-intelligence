@@ -174,6 +174,16 @@ div[class*="st-key-boardcard-"] button p,div[class*="st-key-attn-"] button p{lin
   border:1px solid #fde68a;background:#fffbeb;color:#92400e;margin:2px 0 8px}
 .ri-gate.ok{background:#f0fdf4;border-color:#bbf7d0;color:#166534}
 .ri-gate b{font-weight:750}
+/* The identity bar must stay visible while the thread scrolls. Streamlit wraps each st.container in a
+   layout div of equal height, which caps position:sticky — so that wrapper is taken out of flow. */
+div:has(> [class*="st-key-ws_head_"]){display:contents!important}
+div[class*="st-key-ws_head_"]{position:sticky;top:0;z-index:98;background:#fff;
+  padding:6px 0 6px;border-bottom:1px solid #eef2f7;margin-bottom:2px}
+.ri-wsid{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.ri-wsid .id{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:800;font-size:19px;color:#0f172a}
+.ri-wsid .chip{font-size:11.5px;font-weight:750;padding:2px 9px;border-radius:999px}
+.ri-wsid .meta{font-size:12.5px;color:#64748b}
+.ri-wsid .meta b{color:#0f172a}
 .ri-wait{margin-left:4px;font-size:11.5px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;
   border-radius:999px;padding:3px 9px;font-weight:650}
 .ri-shead{display:flex;align-items:baseline;gap:10px;margin:14px 0 6px}
@@ -816,7 +826,7 @@ def section(title, hint=None, right=None):
 
 
 # ------------------------------------------------------------------ closure gate (v78)
-def closure_gate(state, on_close, actor="Incident Manager"):
+def closure_gate(state, on_close, actor="Incident Manager", expanded=False):
     """One place that says whether an incident may be closed, and why not."""
     if state["closed"]:
         st.markdown('<div class="ri-gate ok"><b>Closed</b> · kept read-only on the verified record</div>',
@@ -831,7 +841,7 @@ def closure_gate(state, on_close, actor="Incident Manager"):
             st.session_state["flash"] = msg
             st.rerun()
         return
-    with st.expander(f'Closure blocked · {len(state["reasons"])} requirement(s) open', expanded=False):
+    with st.expander(f'Closure blocked · {len(state["reasons"])} requirement(s) open', expanded=expanded):
         for r in state["reasons"]:
             st.markdown(f'- {r}')
         st.caption("Closure is gated on the authoritative verification record — a fix applied is not a "

@@ -277,40 +277,88 @@ def _collab_bar(dom, ref, you_role):
                     st.rerun()
 
 
+_STAGE_ACTION = {
+    "Detect": ("Confirm signal", "Correlate", "Check the affected service and the first evidence."),
+    "Correlate": ("Confirm cause", "Correlate", "Weigh observed evidence against inferred links."),
+    "Coordinate": ("Bring in owner", "Coordinate", "Request an owner or approval with a deadline."),
+    "Act": ("Execute fix", "Act", "Risk-gated: approval is required before execution."),
+    "Verify": ("Verify now", "Verify", "The verdict here decides whether closure is possible."),
+    "Close": ("Close incident", "Close", "Closure is gated on the authoritative verification."),
+}
+
+
+def _go_stage(dom, ref, stage):
+    """Primary action callback — switch the workspace to the guided view at the stage that matters."""
+    prefix = "dop" if dom == "DataOps" else "it"
+    st.session_state[f"ws_mode_{ref}"] = "Act & verify (guided)"
+    st.session_state[f"{prefix}_step_{ref}"] = stage
+
+
+def _close_now(ref, you_role):
+    ok, msg = journey.close_incident(ref, you_role)
+    st.session_state["flash"] = msg
+
+
 def render_workspace_page(dom, ref, you_role):
-    """Full-page incident workspace: real URL, breadcrumb back to the board, prev/next, and the
-    collaboration bar always in the same place."""
+    """Full-page incident workspace: a sticky identity bar with the one action that matters now,
+    then the collaboration bar, then the thread or the guided execution view."""
     inc = _find_dop(ref) if dom == "DataOps" else _find_it(ref)
     if inc is None:
         viz.page_head("Incident not found", f"No incident with id {ref}.")
         st.button("← All incidents", on_click=_close_workspace)
         return
-    viz.crumb("All incidents", _close_workspace)
+
+    stage = journey.lifecycle_stage(inc)
+    verdict = journey.current_verdict(inc)
+    gate = journey.closure_state(inc)
+    closed = gate["closed"]
+    sev = viz.SEV_LABEL.get(inc.get("priority"), ("", "Minor"))[1]
+    sla = _sla_txt(inc) if not closed else "closed"
+    tone = {"Verified": "#16a34a", "Mitigated": "#d97706", "Recovery failed": "#dc2626",
+            "Inconclusive": "#7c3aed"}.get(verdict, "#475569")
+    action_label, action_stage, action_why = _STAGE_ACTION.get(stage, ("Review", "Correlate", ""))
+    if closed:
+        action_label = None
+
+    with st.container(key=f"ws_head_{ref}"):
+        viz.crumb("All incidents", _close_workspace)
+        c1, c2 = st.columns([6.4, 1.5], vertical_alignment="center")
+        with c1:
+            st.markdown(
+                f'<div class="ri-wsid"><span class="id">{inc["id"]}</span>'
+                f'<span class="chip" style="background:{tone}1a;color:{tone}">{verdict}</span>'
+                f'<span class="meta">{sev} · {stage} · <b>{sla}</b></span></div>',
+                unsafe_allow_html=True)
+        if action_label:
+            if action_stage == "Close" and gate["eligible"]:
+                c2.button("Close incident", type="primary", width="stretch", key="ws_primary",
+                          on_click=_close_now, args=(ref, you_role))
+            elif action_stage == "Close":
+                c2.button("See blockers", width="stretch", key="ws_primary",
+                          on_click=lambda: st.session_state.update({"ws_show_gate": True}))
+            else:
+                c2.button(action_label, type="primary", width="stretch", key="ws_primary",
+                          on_click=_go_stage, args=(dom, ref, action_stage), help=action_why)
     refs = _all_refs()
-    idx = next((n for n, (d, i) in enumerate(refs) if i["id"] == ref), None)
-    c1, c2, c3 = st.columns([6.2, 0.85, 0.85], vertical_alignment="center")
-    with c1:
-        sev = viz.SEV_LABEL.get(inc.get("priority"), ("", "Minor"))[1]
-        st.markdown(f'<div class="ri-phead"><div class="t sid">{inc["id"]}</div>'
-                    f'<div class="s">{dom} · {sev} · owner {inc.get("owner_team")} · '
-                    f'stage <b>{journey.lifecycle_stage(inc)}</b> · '
-                    f'<b>{(inc.get("status") or "").title()}</b></div></div>',
-                    unsafe_allow_html=True)
+    idx = next((n for n, (_d, i) in enumerate(refs) if i["id"] == ref), None)
     if idx is not None:
-        if idx > 0 and c2.button("← Previous", key="ws_prev", width="stretch"):
+        p1, p2, p3 = st.columns([6.2, 0.9, 0.9], vertical_alignment="center")
+        p1.caption(f'{idx + 1} of {len(refs)} in the queue · {action_why}')
+        if idx > 0 and p2.button("← Previous", key="ws_prev", width="stretch"):
             prev_dom, prev_inc = refs[idx - 1]
             _open(prev_dom, prev_inc["id"])
             st.rerun()
-        if idx < len(refs) - 1 and c3.button("Next →", key="ws_next", width="stretch"):
+        if idx < len(refs) - 1 and p3.button("Next →", key="ws_next", width="stretch"):
             nxt_dom, nxt_inc = refs[idx + 1]
             _open(nxt_dom, nxt_inc["id"])
             st.rerun()
+
     _collab_bar(dom, ref, you_role)
     st.query_params["inc"] = ref
     _render_incident_detail(dom, ref, you_role)
     st.divider()
-    _gate = journey.closure_state(inc)
-    viz.closure_gate(_gate, on_close=lambda: journey.close_incident(ref, you_role), actor=you_role)
+    viz.closure_gate(gate, on_close=lambda: journey.close_incident(ref, you_role), actor=you_role,
+                     expanded=st.session_state.pop("ws_show_gate", False))
 
 
 def _incident_rows():
