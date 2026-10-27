@@ -170,6 +170,10 @@ div[class*="st-key-boardcard-"] button p,div[class*="st-key-attn-"] button p{lin
 .ri-avatar{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;
   border-radius:50%;background:#eef2ff;color:#4338ca;font-size:10px;font-weight:800;letter-spacing:.02em}
 .ri-person:before{content:"";width:22px;height:22px;border-radius:50%;background:#eef2ff;display:none}
+.ri-gate{display:flex;gap:8px;align-items:center;border-radius:10px;padding:9px 12px;font-size:12.5px;
+  border:1px solid #fde68a;background:#fffbeb;color:#92400e;margin:2px 0 8px}
+.ri-gate.ok{background:#f0fdf4;border-color:#bbf7d0;color:#166534}
+.ri-gate b{font-weight:750}
 .ri-wait{margin-left:4px;font-size:11.5px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;
   border-radius:999px;padding:3px 9px;font-weight:650}
 .ri-shead{display:flex;align-items:baseline;gap:10px;margin:14px 0 6px}
@@ -773,10 +777,10 @@ def page_head(title, subtitle=None, right=None):
             right()
 
 
-def crumb(text, on_click, args=()):
+def crumb(text, on_click, args=(), key=None):
     """Small back-link above a workspace title."""
-    st.button(f"← {text}", key=f"crumb_{abs(hash(text)) % 10**8}", on_click=on_click, args=args,
-              type="tertiary")
+    slug = key or "".join(c if c.isalnum() else "_" for c in text.lower())[:24]
+    st.button(f"← {text}", key=f"crumb_{slug}", on_click=on_click, args=args, type="tertiary")
 
 
 def collab_chips(participants, waiting=None, limit=4):
@@ -809,3 +813,25 @@ def section(title, hint=None, right=None):
     with c2:
         if right:
             right()
+
+
+# ------------------------------------------------------------------ closure gate (v78)
+def closure_gate(state, on_close, actor="Incident Manager"):
+    """One place that says whether an incident may be closed, and why not."""
+    if state["closed"]:
+        st.markdown('<div class="ri-gate ok"><b>Closed</b> · kept read-only on the verified record</div>',
+                    unsafe_allow_html=True)
+        return
+    if state["eligible"]:
+        c1, c2 = st.columns([5, 1.4], vertical_alignment="center")
+        c1.markdown('<div class="ri-gate ok"><b>Closure eligible</b> · independent verification passed '
+                    'and no open requests</div>', unsafe_allow_html=True)
+        if c2.button("Close incident", type="primary", width="stretch", key="close_incident_btn"):
+            ok, msg = on_close()
+            st.session_state["flash"] = msg
+            st.rerun()
+        return
+    with st.expander(f'Closure blocked · {len(state["reasons"])} requirement(s) open', expanded=False):
+        for r in state["reasons"]:
+            st.markdown(f'- {r}')
+        st.caption("Closure is gated on the authoritative verification record — a fix applied is not a closure.")

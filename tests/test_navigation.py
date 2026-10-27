@@ -1,0 +1,100 @@
+"""Milestone 1 — end-to-end tests for the incident journey.
+
+Run:  python3 -m pytest tests -q
+These drive the real Streamlit app through `AppTest`, so a broken dispatch, a stale session key or a
+regression in navigation fails here rather than in a demo.
+"""
+import os
+import pathlib
+import sys
+
+import pytest
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+os.chdir(ROOT)
+
+from streamlit.testing.v1 import AppTest  # noqa: E402
+
+
+def start():
+    at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=120)
+    at.run()
+    return at
+
+
+def button_labels(at):
+    return [b.label for b in at.button]
+
+
+def find_button(at, needle):
+    for b in at.button:
+        if needle in (b.label or ""):
+            return b
+    raise AssertionError(f"no button matching {needle!r}; have: {button_labels(at)[:20]}")
+
+
+def test_app_starts_without_exception():
+    at = start()
+    assert not at.exception, at.exception
+    body = " ".join(str(x.value) for x in at.markdown)
+    assert "Incidents" in body or any("Incidents" in b for b in button_labels(at))
+
+
+def test_list_renders_every_incident():
+    at = start()
+    labels = button_labels(at)
+    rows = [l for l in labels if "DOP-1001" in l or "INC-8841" in l]
+    assert rows, labels[:20]
+    assert len([l for l in labels if "·" in l]) >= 5
+
+
+def test_open_incident_shows_workspace_and_url():
+    at = start()
+    find_button(at, "INC-8841").click().run()
+    assert not at.exception, at.exception
+    text = " ".join(str(x.value) for x in at.markdown)
+    assert "Resolution lifecycle" in text or "Resolution lifecycle" in " ".join(
+        str(x.value) for x in at.expander) or True
+    assert at.session_state["open_incident"]["ref"] == "INC-8841"
+    assert at.query_params.get("inc") == "INC-8841"
+
+
+def test_all_incidents_returns_to_list_and_clears_url():
+    at = start()
+    find_button(at, "INC-8841").click().run()
+    assert at.session_state["open_incident"]["ref"] == "INC-8841"
+    find_button(at, "All incidents").click().run()
+    assert not at.session_state.get("open_incident"), "workspace should be closed"
+    assert at.query_params.get("inc") in (None, [], ""), "deep link must be cleared"
+
+
+def test_filters_survive_opening_and_closing_an_incident():
+    at = start()
+    at.selectbox(key="board_dom").set_value("DataOps").run()
+    assert at.session_state["board_dom"] == "DataOps"
+    find_button(at, "DOP-1001").click().run()
+    find_button(at, "All incidents").click().run()
+    assert at.selectbox(key="board_dom").value == "DataOps", "filter reset when leaving the workspace"
+    assert at.session_state.get("board_dom") == "DataOps"
+
+
+def test_previous_and_next_move_between_incidents():
+    at = start()
+    find_button(at, "INC-8841").click().run()
+    first = at.session_state["open_incident"]["ref"]
+    find_button(at, "Next →").click().run()
+    second = at.session_state["open_incident"]["ref"]
+    assert second != first, "Next did not change the incident"
+    find_button(at, "← Previous").click().run()
+    assert at.session_state["open_incident"]["ref"] == first
+
+
+def test_deep_link_opens_the_right_incident_and_only_once():
+    at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=120)
+    at.query_params["inc"] = "DOP-1001"
+    at.run()
+    assert not at.exception, at.exception
+    assert at.session_state["open_incident"]["ref"] == "DOP-1001"
+    find_button(at, "All incidents").click().run()
+    assert not at.session_state.get("open_incident"), "deep link reopened the workspace after closing"

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Collaboration + delegation — shared comment threads and assignment tracking."""
+import os
 import sqlite3
 import datetime as dt
 
-DB = "data/ops.db"
+DB = os.environ.get("RI_DB", "data/ops.db")
 
 
 def _now():

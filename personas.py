@@ -188,7 +188,14 @@ def action_panel(inc, ctx):
     if not _may:
         st.caption(f'Read-only for **{_role}** — execution needs an Incident Manager or Data Owner. '
                    f'Switch persona to act.')
-    if st.button("Apply selected action (simulated)", disabled=(not approved) or (not _may),
+    _executed = journey.applied_action(inc["id"])
+    _rec = journey.resolution_record(inc["id"])
+    if _executed:
+        st.info(f'Execution recorded · **{_executed}** · authoritative verdict '
+                f'**{( _rec or {}).get("verdict", "—")}**. The same action cannot run twice; re-run the '
+                f'independent verification instead.')
+    if st.button("Apply selected action (simulated)",
+                 disabled=(not approved) or (not _may) or bool(_executed),
                  type=("primary" if _has_deleg else "secondary"), key="it_apply_" + inc["id"]):
         rows = E.it_verification(inc, ctx, opt, True)
         v = journey.verdict(rows, True)
@@ -199,6 +206,14 @@ def action_panel(inc, ctx):
         journey.set_resolution(inc["id"], v, action_id=opt["id"], checks=rows, actor="SRE verification service")
         journey.add_event(inc["id"], "itops", "repair", f'{opt["label"]} — independent verification: {v}')
         st.session_state["flash"] = f'Action applied (simulated). Independent verification → **{v}**.'
+        st.rerun()
+    if _executed and st.button("Re-run independent verification", key="it_reverify_" + inc["id"]):
+        rows = E.it_verification(inc, ctx, opt, True)
+        v = journey.verdict(rows, True)
+        journey.set_resolution(inc["id"], v, action_id=_executed, checks=rows,
+                               actor="SRE verification service")
+        journey.add_event(inc["id"], "itops", "verify", f'Verification re-run: {v}')
+        st.session_state["flash"] = f'Verification re-run → **{v}**.'
         st.rerun()
 
 

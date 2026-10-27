@@ -166,7 +166,7 @@ def _thread_spine(inc, deleg, confirmed, verdict):
                      else "failed" if verdict == "Recovery failed"
                      else "current" if applied else "todo")
     close_status = ("done" if verdict == "Verified"
-                    else "blocked" if verdict in ("Mitigated", "Recovery failed") else "todo")
+                    else "blocked" if verdict in ("Mitigated", "Recovery failed", "Inconclusive") else "todo")
     # Status is derived from EVIDENCE, not stage names: a confirmed hypothesis is not "Correlate complete",
     # and applying a fix is not "Verified". Closure only on Verified.
     stages = [
@@ -176,7 +176,7 @@ def _thread_spine(inc, deleg, confirmed, verdict):
         ("Act", "done" if applied else ("current" if deleg else "todo"),
          "Remediation executed under approval (simulated)", "Act"),
         ("Verify", verify_status, "Independent re-check vs thresholds + verifying actor", "Verify"),
-        ("Close", close_status, "Verified / Mitigated / Recovery failed", "Close"),
+        ("Close", close_status, "Verified / Mitigated / Recovery failed / Inconclusive", "Close"),
     ]
     cur = next((s[0] for s in stages if s[1] == "current"), None)
     items = []
@@ -223,7 +223,8 @@ def it_command(inc, ctx):
     edges = journey.thread_edges_for(inc["id"])
 
     def overview():
-        vcol = {"Verified": "#16a34a", "Mitigated": "#d97706", "Recovery failed": "#dc2626"}.get(
+        vcol = {"Verified": "#16a34a", "Mitigated": "#d97706", "Recovery failed": "#dc2626",
+                "Inconclusive": "#7c3aed"}.get(
             verdict, "#2563eb")
         viz.kpi_row([
             ("Business impact", bizname, "customer-facing", "#dc2626"),

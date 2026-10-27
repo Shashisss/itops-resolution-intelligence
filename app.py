@@ -38,7 +38,7 @@ def _refresh_modules():
 
 _refresh_modules()
 
-VERDICT_OPTIONS = ["Investigating", "Mitigated", "Verified", "Recovery failed"]
+VERDICT_OPTIONS = ["Investigating", "Mitigated", "Verified", "Recovery failed", "Inconclusive"]
 
 
 def _needs_seed():
@@ -63,6 +63,7 @@ if _needs_seed():
     import seed  # noqa: F401
 
 import clock  # noqa: E402
+import build  # noqa: E402
 clock.align()
 
 st.set_page_config(page_title="Resolution Intelligence — POC", page_icon="assets/icon.png",
@@ -92,7 +93,8 @@ if _deep_ref and not st.session_state.get("_deep_done") and not st.session_state
 _open_n = sum(1 for i in list(_it_inc) + list(_dop_inc) if i.get("status") == "open")
 _cross_n = sum(1 for i in _it_inc if journey.correlation_for(i["id"]))
 nav, you_role = shell.sidebar("CSM", stats={"open": _open_n, "cross": _cross_n,
-                                           "total": len(_it_inc) + len(_dop_inc)})
+                                           "total": len(_it_inc) + len(_dop_inc)},
+                              build=build.label())
 # ---- global controls ----
 shell.topbar(_it_inc, _dop_inc, _sv, _dop_data["datasets"], _dop_data["pipelines"], you_role)
 
@@ -131,193 +133,6 @@ def _sla_txt(i):
 
 
 # ================================================================= Collapsible sections (Incidents page)
-def _needs_attention_cards(limit=4):
-    """Trello-style cards for the most urgent open incidents — stage + time left at a glance."""
-    dop = DE.load()
-    incidents = list(_it_inc) + list(dop["incidents"])
-    order = {"P1": 0, "P2": 1, "P3": 2, "P4": 3}
-    attention = sorted([i for i in incidents if i["status"] == "open"],
-                       key=lambda i: (not _sla_risk(i), order.get(i["priority"], 9), i["id"]))[:limit]
-    if not attention:
-        st.caption("No open incidents.")
-        return
-    cols = st.columns(2)
-    for idx, inc in enumerate(attention):
-        dom = "IT Ops" if inc["id"].startswith("INC") else "DataOps"
-        with cols[idx % 2]:
-            viz.board_card(inc, dom, journey.display_verdict(inc), on_click=journey._goto,
-                           args=(dom, None, inc["id"]), stage=journey.lifecycle_stage(inc),
-                           sla=(_sla_txt(inc) if inc["status"] == "open" else None),
-                           linked=bool(journey.correlation_for(inc["id"])), prefix="attn")
-
-
-def _thread_cards(prefix):
-    """One short card per cross-domain thread (all of them, not a single example)."""
-    pairs = []
-    for inc in _it_inc:
-        c = journey.correlation_for(inc["id"])
-        if c:
-            pairs.append((inc, c))
-    if not pairs:
-        st.caption("No cross-domain threads in the current data.")
-        return
-    for inc, c in pairs:
-        edges = journey.thread_edges_for(inc["id"])
-        obs = sum(1 for e in edges if e["kind"] == "observed")
-        inf = sum(1 for e in edges if e["kind"] == "inferred")
-        with st.container(border=True):
-            st.markdown(f'**{inc["id"]}** ↔ **{c["other_id"]}** · {inc["title"][:70]}')
-            st.caption(f'shared cause: {c["shared_cause"]} · {obs} observed / {inf} inferred · '
-                       f'verdict: {journey.display_verdict(inc)}')
-            b1, b2 = st.columns(2)
-            b1.button("Open IT Ops →", key=f"{prefix}_th_it_{inc['id']}", width="stretch",
-                      on_click=journey._goto, args=("IT Ops", None, inc["id"]))
-            b2.button("Open DataOps →", key=f"{prefix}_th_dop_{inc['id']}", width="stretch",
-                      on_click=journey._goto, args=("DataOps", None, c["other_id"]))
-
-
-def _recent_activity(n=6):
-    dop = DE.load()
-    rows = []
-    for ref in [i["id"] for i in _it_inc] + [i["id"] for i in dop["incidents"]]:
-        for cm in collab.comments(ref):
-            rows.append((cm["ts"], ref, cm["author"], cm.get("channel", ""), cm["text"]))
-    rows.sort(reverse=True)
-    for ts, ref, author, ch, text in rows[:n]:
-        st.markdown(f'`{ts[11:16]}` · **{ref}** · {author} · {ch or "—"} — {text[:80]}')
-    if not rows:
-        st.caption("No activity yet.")
-
-
-# ================================================================= Incidents & resolution threads
-def render_board():
-    rows = ([{"inc": i, "domain": "IT Ops"} for i in _it_inc] +
-            [{"inc": i, "domain": "DataOps"} for i in _dop_inc])
-    for r in rows:
-        r["verdict"] = journey.display_verdict(r["inc"])
-
-    st.subheader("Incidents & resolution threads")
-    st.caption("Open and closed incidents in one board. **Click a card to see its details at the top of "
-               "this page** (resolution thread, impact, verification). Closed incidents read as "
-               "**Verified** — closure only happens after an independently verified recovery.")
-
-    n_open = sum(1 for r in rows if r["inc"].get("status") == "open")
-    n_risk = sum(1 for r in rows if r["inc"].get("status") == "open" and _sla_risk(r["inc"]))
-
-    def _kpi(col, label, key, **sets):
-        if col.button(label, key=key, width="stretch"):
-            for k, v in sets.items():
-                st.session_state[k] = v
-
-    k1, k2, k3, k4 = st.columns(4)
-    _kpi(k1, f"{len(rows)}  ·  Total incidents", "kpi_total",
-         board_status="All", board_verdict="All", board_risk=False)
-    _kpi(k2, f"{n_open}  ·  Open", "kpi_open", board_status="Open", board_risk=False)
-    _kpi(k3, f"{len(rows) - n_open}  ·  Closed", "kpi_closed", board_status="Closed", board_risk=False)
-    _kpi(k4, f"{n_risk}  ·  SLA at risk", "kpi_risk", board_status="Open", board_risk=True)
-    st.caption("Click a KPI card to filter. Counts are live from the current incidents.")
-
-    f1, f2, f3, f4, f5, f6 = st.columns([2.2, 1.1, 1.0, 1.4, 1.0, 1.1])
-    q = f1.text_input("Search", placeholder="id · title · owner", key="board_q")
-    domf = f2.selectbox("Domain", ["All", "IT Ops", "DataOps"], key="board_dom")
-    statf = f3.selectbox("Status", ["All", "Open", "Closed"], key="board_status")
-    verf = f4.selectbox("Verdict", ["All"] + VERDICT_OPTIONS, key="board_verdict")
-    prif = f5.selectbox("Priority", ["All", "P1", "P2", "P3"], key="board_pri")
-    risk_only = f6.checkbox("SLA at risk", key="board_risk")
-
-    def _reset_filters():
-        for k, v in (("board_q", ""), ("board_dom", "All"), ("board_status", "All"),
-                     ("board_verdict", "All"), ("board_pri", "All"), ("board_risk", False)):
-            st.session_state[k] = v
-
-    active = []
-    if q:
-        active.append(f"search: {q}")
-    if domf != "All":
-        active.append(f"domain: {domf}")
-    if statf != "All":
-        active.append(f"status: {statf}")
-    if verf != "All":
-        active.append(f"verdict: {verf}")
-    if prif != "All":
-        active.append(f"priority: {prif}")
-    if risk_only:
-        active.append("SLA at risk")
-    if active:
-        st.markdown(" ".join(f'<span class="ri-tag" style="background:#4f46e5">{c}</span>' for c in active),
-                    unsafe_allow_html=True)
-        st.button("Reset filters", key="board_reset", on_click=_reset_filters)
-
-    def _match(r):
-        inc = r["inc"]
-        blob = (inc["id"] + " " + inc["title"] + " " + (inc.get("owner_team") or "")).lower()
-        return (not q or q.lower() in blob) \
-            and (domf == "All" or r["domain"] == domf) \
-            and (statf == "All" or (inc.get("status") or "").lower() == statf.lower()) \
-            and (verf == "All" or r["verdict"] == verf) \
-            and (prif == "All" or inc.get("priority") == prif) \
-            and (not risk_only or _sla_risk(inc))
-
-    order = {"P1": 0, "P2": 1, "P3": 2, "P4": 3}
-    shown = sorted((r for r in rows if _match(r)),
-                   key=lambda r: (r["inc"].get("status") != "open",
-                                  order.get(r["inc"].get("priority"), 9), r["inc"]["id"]))
-    st.caption(f'{len(shown)} of {len(rows)} incidents')
-    if not shown:
-        st.caption("No incidents match the filters.")
-        st.button("Clear filters", key="board_clear", on_click=_reset_filters)
-        return
-    view = st.radio("View", ["Cards", "Table"], horizontal=True, key="board_view",
-                    help="Table is easier for comparison on a wide screen; cards read better when narrow.")
-    linked_map = {r["inc"]["id"]: bool(journey.correlation_for(r["inc"]["id"])) for r in shown}
-    if view == "Table":
-        df = pd.DataFrame([{
-            "ID": r["inc"]["id"], "Cross-domain": "Yes" if linked_map[r["inc"]["id"]] else "—",
-            "Severity": f'{viz.SEV_LABEL.get(r["inc"].get("priority"), ("", "Minor"))[1]}',
-            "Priority": r["inc"].get("priority"),
-            "Domain": r["domain"], "Title": r["inc"]["title"],
-            "Status": (r["inc"].get("status") or "").title(), "Verdict": r["verdict"],
-            "Stage": journey.lifecycle_stage(r["inc"]), "Owner": r["inc"].get("owner_team"),
-            "SLA": (_sla_txt(r["inc"]) if r["inc"].get("status") == "open" else "—"),
-        } for r in shown])
-        ev = st.dataframe(df, hide_index=True, width="stretch", on_select="rerun",
-                          selection_mode="single-row", key="board_table")
-        st.caption("Click a row to open that incident.")
-        try:
-            _rows = list(ev.selection["rows"])
-        except Exception:
-            _rows = []
-        if _rows:
-            r = shown[_rows[0]]
-            journey.toggle_incident(r["domain"], r["inc"]["id"])
-            st.rerun()
-        return
-
-    _open_ref = (st.session_state.get("open_incident") or {}).get("ref")
-
-    def _render_cards(subset):
-        cols = st.columns(2)
-        for idx, r in enumerate(subset):
-            with cols[idx % 2]:
-                viz.board_card(r["inc"], r["domain"], r["verdict"],
-                               on_click=journey.toggle_incident, args=(r["domain"], r["inc"]["id"]),
-                               stage=journey.lifecycle_stage(r["inc"]),
-                               sla=(_sla_txt(r["inc"]) if r["inc"].get("status") == "open" else None),
-                               open_=(r["inc"]["id"] == _open_ref),
-                               linked=linked_map[r["inc"]["id"]])
-
-    cross = [r for r in shown if linked_map[r["inc"]["id"]]]
-    single = [r for r in shown if not linked_map[r["inc"]["id"]]]
-    if cross:
-        st.markdown("#### Cross-domain threads")
-        st.caption("IT Ops and DataOps incidents resolved together as one governed thread.")
-        _render_cards(cross)
-    if single:
-        st.markdown("#### Single-domain incidents")
-        st.caption("Independent IT Ops or DataOps incidents.")
-        _render_cards(single)
-
-
 def _render_incident_detail(dom, ref, you_role):
     """The selected incident's details — rendered in the incident dialog."""
     lens = st.radio("View", ["Resolution thread", "Guided walkthrough"], horizontal=True,
@@ -491,6 +306,9 @@ def render_workspace_page(dom, ref, you_role):
     _collab_bar(dom, ref, you_role)
     st.query_params["inc"] = ref
     _render_incident_detail(dom, ref, you_role)
+    st.divider()
+    _gate = journey.closure_state(inc)
+    viz.closure_gate(_gate, on_close=lambda: journey.close_incident(ref, you_role), actor=you_role)
 
 
 def _incident_rows():
@@ -511,6 +329,14 @@ def render_incidents(you_role):
                   f"<b>{n_open}</b> open · <b>{n_risk}</b> at SLA risk · <b>{n_cross}</b> cross-domain "
                   f"· {len(rows)} total")
 
+    # Filters must survive a trip into an incident and back: Streamlit drops a widget's state when the
+    # widget is not rendered, so the values are mirrored in plain session keys and restored here.
+    _defaults = {"board_q": "", "board_dom": "All", "board_status": "All",
+                 "board_verdict": "All", "board_pri": "All"}
+    for _k, _v in _defaults.items():
+        if _k not in st.session_state:
+            st.session_state[_k] = st.session_state.get(f"keep_{_k}", _v)
+
     f1, f2, f3, f4, f5, f6 = st.columns([2.4, 1.1, 1.0, 1.3, 0.9, 1.0], vertical_alignment="bottom")
     q = f1.text_input("Search", placeholder="id · title · owner", key="board_q")
     domf = f2.selectbox("Domain", ["All", "IT Ops", "DataOps"], key="board_dom")
@@ -518,11 +344,15 @@ def render_incidents(you_role):
     verf = f4.selectbox("Verdict", ["All"] + VERDICT_OPTIONS, key="board_verdict")
     prif = f5.selectbox("Priority", ["All", "P1", "P2", "P3"], key="board_pri")
     risk_only = f6.checkbox("SLA at risk", key="board_risk")
+    for _k in _defaults:
+        st.session_state[f"keep_{_k}"] = st.session_state.get(_k, _defaults[_k])
+    st.session_state["keep_board_risk"] = bool(risk_only)
 
     def _reset_filters():
         for k, v in (("board_q", ""), ("board_dom", "All"), ("board_status", "All"),
                      ("board_verdict", "All"), ("board_pri", "All"), ("board_risk", False)):
             st.session_state[k] = v
+            st.session_state[f"keep_{k}"] = v
 
     def _match(r):
         inc = r["inc"]
@@ -751,5 +581,5 @@ elif nav == "Activity & audit":
     render_activity()
 
 st.divider()
-st.caption("Sample data · simulated actions · build v77 — proof of concept, not production. "
-           "See PROTOTYPE_NOTES.md for persistence limits.")
+st.caption(f"Sample data · simulated actions · {build.label()} — proof of concept, not production. "
+           "See PROTOTYPE_NOTES.md for persistence limits and TESTS.md for the test suite.")

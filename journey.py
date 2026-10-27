@@ -2,6 +2,7 @@
 """Shared journey layer — detection, time-correlated timeline, ranked hypotheses,
 INDEPENDENT verification, resolution record and cross-domain correlation.
 Used by both the IT Ops and DataOps domains."""
+import os
 import sqlite3
 import datetime as dt
 import json
@@ -9,7 +10,7 @@ import pandas as pd
 import streamlit as st
 import viz
 
-DB = "data/ops.db"
+DB = os.environ.get("RI_DB", "data/ops.db")
 CONF_RANK = {"high": 3, "medium": 2, "low": 1}
 
 # ------------------------------------------------------------------ ONE shared lifecycle
@@ -114,16 +115,6 @@ def thread_edges_for(ref_id):
     return rows
 
 
-def toggle_incident(domain, ref):
-    """Board-card toggle: clicking a card opens its workspace; clicking the same card again closes it."""
-    cur = st.session_state.get("open_incident")
-    if cur and cur.get("ref") == ref:
-        st.session_state.pop("open_incident", None)
-    else:
-        st.session_state["nav"] = WORKSPACE_NAV
-        st.session_state["open_incident"] = {"domain": domain, "ref": ref}
-
-
 # ---------------------------------------------------------------- collaboration stats
 def collab_stats(inc, stage=None):
     """Collaboration around an incident — optionally filtered to one lifecycle stage."""
@@ -155,15 +146,23 @@ def collab_stats(inc, stage=None):
 
 
 def verdict(rows, applied):
-    """Overall recovery verdict from independently-checked rows."""
+    """Overall recovery verdict from independently-checked rows.
+
+    Investigating — nothing executed yet. Verified — every check passed. Mitigated — some passed.
+    Recovery failed — every check failed on evidence. Inconclusive — applied, but the checks could
+    not be decided (a missing source, a timeout); it is NOT a pass and NOT a failure."""
     if not applied or not rows:
         return "Investigating"
-    oks = [str(r["result"]).startswith("✅") for r in rows]
+    results = [str(r.get("result", "")).strip() for r in rows]
+    oks = [r.startswith("✅") for r in results]
+    fails = [r.startswith("✖") or r.startswith("❌") for r in results]
     if all(oks):
         return "Verified"
     if any(oks):
         return "Mitigated"
-    return "Recovery failed"
+    if all(fails):
+        return "Recovery failed"
+    return "Inconclusive"
 
 
 def display_verdict(inc):
@@ -247,6 +246,8 @@ def render_recovery_by_verdict(title, verdict, restored, partial, failed):
         render_recovery_update(title, restored + " (Simulated.)")
     elif verdict == "Mitigated":
         render_recovery_update(title, partial + " (Simulated.)", kind="warning")
+    elif verdict == "Inconclusive":
+        return "Inconclusive — the checks could not be decided; treat as NOT verified."
     elif verdict == "Recovery failed":
         render_recovery_update(title, failed + " (Simulated.)", kind="error")
 
@@ -323,6 +324,8 @@ def render_resolution(inc_id, applied, sla_txt, owner, verdict="", extra=""):
     elif verdict == "Mitigated":
         st.warning(f'Fix applied but **NOT verified** — incident **{inc_id}** remains **OPEN** · SLA {sla_txt} · '
                    f'owner {owner}. Partial recovery only — further action required.')
+    elif verdict == "Inconclusive":
+        return "Inconclusive — the checks could not be decided; treat as NOT verified."
     elif verdict == "Recovery failed":
         st.error(f'Recovery **FAILED** — incident **{inc_id}** remains **OPEN** · SLA {sla_txt} · owner {owner}. '
                  f'Escalate.')
@@ -438,3 +441,64 @@ def render_correlation(inc_id):
     else:
         st.button(f'View {c["other_id"]} in IT Ops →', key="go_it_" + inc_id,
                   on_click=_goto, args=("IT Ops", None, c["other_id"]))
+
+
+# ---------------------------------------------------------------- closure gate (v78)
+def closure_state(inc):
+    """The single authority on whether an incident may be closed.
+
+    Closure needs an independent verification that passed, no outstanding collaboration request, and
+    the incident not already closed. Everything else is a stated reason, never a silent block."""
+    import collab
+    rec = resolution_record(inc["id"])
+    verdict = (rec or {}).get("verdict")
+    closed = (inc.get("status") or "").lower() == "closed"
+    reasons = []
+    asks = [d for d in collab.delegations(inc["id"]) if d["status"] != "done"]
+    if closed:
+        return {"eligible": False, "closed": True, "verdict": verdict or "Verified",
+                "reasons": [], "record": rec}
+    if not rec or not rec.get("checks"):
+        reasons.append("No verification record yet — apply a remediation and let the independent checks run.")
+    elif verdict != "Verified":
+        reasons.append(f"Authoritative verdict is **{verdict}** — closure requires **Verified**.")
+        for c in (rec.get("checks") or []):
+            if not str(c.get("result", "")).startswith("✅"):
+                reasons.append(f'Failing check · {c.get("check") or c.get("metric") or "check"} → {c.get("result")}')
+    if asks:
+        reasons.append(f'{len(asks)} open collaboration request(s) — complete or withdraw them first.')
+    return {"eligible": not reasons, "closed": False, "verdict": verdict or "Investigating",
+            "reasons": reasons, "record": rec}
+
+
+def close_incident(inc_id, actor="Incident Manager"):
+    """Close an incident — only through the gate. Returns (ok, message)."""
+    import collab
+    con = sqlite3.connect(DB)
+    con.row_factory = sqlite3.Row
+    row = None
+    for table in ("incidents", "dop_incidents"):
+        r = con.execute(f"SELECT * FROM {table} WHERE id=?", (inc_id,)).fetchone()
+        if r:
+            row = dict(r)
+            table_hit = table
+            break
+    con.close()
+    if row is None:
+        return False, "Incident not found."
+    state = closure_state(row)
+    if state["closed"]:
+        return False, "Already closed."
+    if not state["eligible"]:
+        return False, state["reasons"][0] if state["reasons"] else "Closure blocked."
+    con = sqlite3.connect(DB)
+    con.execute(f"UPDATE {table_hit} SET status='closed' WHERE id=?", (inc_id,))
+    now = dt.datetime.now().replace(microsecond=0).isoformat(timespec="seconds")
+    con.execute("UPDATE resolution_state SET closed_at=?, updated_at=? WHERE ref_id=?", (now, now, inc_id))
+    con.commit()
+    con.close()
+    add_event(inc_id, "itops" if table_hit == "incidents" else "dataops", "verify",
+              f"Closure gate passed — closed by {actor} on the verified record")
+    collab.add_comment(inc_id, actor, "Person",
+                       "[Simulated] Closed on the authoritative verification record.", channel="App")
+    return True, "Incident closed on the verified record."

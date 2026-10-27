@@ -71,6 +71,7 @@ def _apply_persona():
     spec = persona(st.session_state.get("you_role"))
     for k, v in spec["board"].items():
         st.session_state[k] = v
+        st.session_state[f"keep_{k}"] = v
 
 
 def _set_nav(value):
@@ -127,7 +128,7 @@ def _demo_menu():
         _reset_control()
 
 
-def sidebar(default_role="CSM", stats=None):
+def sidebar(default_role="CSM", stats=None, build=None):
     """Left sidebar: brand, live counts, sections, persona, demo menu."""
     st.sidebar.markdown(
         '<div class="ri-sidebrand">Resolution Intelligence<br>'
@@ -147,6 +148,8 @@ def sidebar(default_role="CSM", stats=None):
                           on_click=_set_nav, args=(label,), help=desc)
         if nav == label:
             st.sidebar.caption(desc)
+    if build:
+        st.sidebar.caption(f'`{build}`')
     st.sidebar.divider()
     role = st.sidebar.selectbox("Demo persona", ROLES_UNION, key="you_role",
                                 on_change=_apply_persona)
