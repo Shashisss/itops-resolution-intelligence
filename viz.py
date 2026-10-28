@@ -194,10 +194,7 @@ input:focus-visible,textarea:focus-visible,button:focus-visible,[role=button]:fo
    60px; 0 locally), measured at runtime by viz.platform_offset(): without it the bar pins underneath
    that header and is invisible on Cloud. */
 div[class*="st-key-ws_head_"]{background:#fff;padding:4px 0 6px;border-bottom:1px solid #eef2f7;
-  min-height:52px;z-index:99999}
-div[class*="st-key-ws_head_"].ri-pinned{position:fixed!important;z-index:99999!important;
-  box-shadow:0 6px 14px rgba(15,23,42,.10);border-bottom:1px solid #e2e8f0;padding:4px 12px 6px}
-.ri-wshead-spacer{height:0}
+  min-height:52px}
 div[class*="st-key-ws_head_"] [data-testid="stHorizontalBlock"]{align-items:center}
 .ri-wsid{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .ri-wsid .id{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:800;font-size:19px;color:#0f172a}
@@ -250,51 +247,39 @@ def inject_css():
 
 
 def platform_offset():
-    """Keep the incident identity bar on screen while the thread scrolls — on every host.
+    """Keep the incident identity bar on screen, with the thread scrolling in one full-height area.
 
-    Two platform facts make this more than a CSS one-liner:
+    Why not just sticky/fixed over the content: Streamlit wraps every container in a layout div of
+    the same height (so the bar has no travel room), and on a published app the platform also draws
+    its own 60px header above the app. Attempts to overlay the bar ended with the bar painted *under*
+    the content it was meant to sit on — visible in the DOM, invisible on screen.
 
-    * Streamlit wraps every container in a layout div of the same height, so position:sticky on the
-      bar has no room to travel (the old workaround, display:contents, made the bar paint *under*
-      the content that scrolls behind it — the bar was there and invisible).
-    * A published app also draws its own 60px header (Fork / source) above the content with a huge
-      z-index, so a bar pinned at top:0 hides underneath it.
+    So the workspace uses a full-height scroll area instead of an overlay: the identity bar stays a
+    normal element at the top of the page and never scrolls, and everything under it scrolls in the
+    area that remains (--ri-panel-h, measured from the bar's bottom edge to the viewport). Nothing
+    overlaps, so nothing can be painted in the wrong order, on any host.
 
-    So the bar is pinned by script: a zero-height spacer marks where it belongs, and when that
-    marker goes under the platform header the bar becomes position:fixed just below it, sized to the
-    content column, with the spacer taking its place so nothing jumps. The measurements are published
-    as CSS variables for the jump targets (--ri-offset). Runs through components.html because a
-    component iframe re-executes its script on every rerun; the listener is installed once and
-    reuses itself afterwards.
+    Measurements are published as CSS variables; the target of a jump (--ri-offset) is the distance
+    from the top of the viewport to the top of that scroll area. Runs through components.html because
+    a component iframe re-executes its script on every rerun.
     """
     import streamlit.components.v1 as components
     components.html(
         "<script>(function(){try{var w=window.parent,d=w.document;"
-        "function bar(){return d.querySelector('[class*=\"st-key-ws_head_\"]');}"
         "function main(){return d.querySelector('[data-testid=\"stMain\"]');}"
+        "function panel(){return d.querySelector('[class*=\"st-key-ws_panel_\"]');}"
         "function hdr(){var h=d.querySelector('[data-testid=\"stHeader\"]');if(!h)return 0;"
         "var cs=d.defaultView.getComputedStyle(h);var bg=cs.backgroundColor||'';"
         "var m=bg.match(/rgba?\\(([^)]+)\\)/);"
-        "var alpha=m?(m[1].split(',').length>3?parseFloat(m[1].split(',')[3]):1):1;"
-        "if(alpha<0.2)return 0;"
-        "return h.getBoundingClientRect().height;}"
-        "function spacer(){var s=d.querySelector('.ri-wshead-spacer');"
-        "if(!s){var b=bar();if(!b)return null;s=d.createElement('div');s.className='ri-wshead-spacer';"
-        "b.parentNode.insertBefore(s,b);}return s;}"
-        "function place(){var b=bar(),m=main(),s=spacer();if(!b||!m||!s)return;"
-        "var hh=hdr();var bh=b.offsetHeight||52;"
-        "var col=d.querySelector('[data-testid=\"stMainBlockContainer\"]');"
-        "var ce=col||b;var r=ce.getBoundingClientRect();"
-        "var mark=s.getBoundingClientRect().top;"
-        "var pin=mark<hh;"
-        "if(pin){b.classList.add('ri-pinned');b.style.top=hh+'px';b.style.left=Math.round(r.left)+'px';"
-        "b.style.width=Math.round(r.width)+'px';s.style.height=bh+'px';}"
-        "else{b.classList.remove('ri-pinned');b.style.top='';b.style.left='';b.style.width='';s.style.height='0px';}"
+        "var a=m?(m[1].split(',').length>3?parseFloat(m[1].split(',')[3]):1):1;"
+        "if(a<0.2)return 0;return h.getBoundingClientRect().height;}"
+        "function place(){var m=main(),p=panel();if(!m)return;var hh=hdr();"
         "var root=d.documentElement.style;root.setProperty('--ri-head',hh+'px');"
-        "root.setProperty('--ri-offset',(hh+bh+14)+'px');}"
-        "if(!w.__riBar){w.__riBar=place;"
-        "var m=main();if(m){m.addEventListener('scroll',place,{passive:true});}"
-        "w.addEventListener('resize',place);}"
+        "if(!p){root.setProperty('--ri-offset',(hh+70)+'px');return;}"
+        "var top=p.getBoundingClientRect().top;"
+        "var h=Math.max(240,Math.round(d.documentElement.clientHeight-top-6));"
+        "root.setProperty('--ri-panel-h',h+'px');root.setProperty('--ri-offset',Math.round(top)+'px');}"
+        "if(!w.__riBar){w.__riBar=place;w.addEventListener('resize',place);}"
         "w.__riBar=place;place();setTimeout(place,120);setTimeout(place,600);setTimeout(place,1500);"
         "}catch(e){}})();</script>", height=0)
 

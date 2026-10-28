@@ -379,25 +379,25 @@ def _collab_bar(dom, ref, you_role):
 
 
 def _ws_panel_css(ref):
-    """The thread flows in the page; the identity bar pins to the top of that one scroll surface.
+    """The identity bar stays put; everything under it scrolls in one full-height area.
 
-    v93 gave the thread its own fixed-height box (clamp 300–560px) so the identity bar could stay put
-    inside Streamlit Cloud's auto-height iframe — but that turned the guided walkthrough into a keyhole
-    with a second scrollbar inside it. The nested scroll is gone: content flows in the app's own
-    scroll surface ([data-testid="stMain"]), which is also the sticky bar's scrolling ancestor, so the
-    bar still pins. Sections carry a scroll margin so the bar never covers a section the page jumps
-    to."""
+    v93 put the thread in a clamp(300–560px) box, which turned the guided walkthrough into a keyhole.
+    The box is gone — the thread now fills the rest of the viewport (--ri-panel-h, measured by
+    viz.platform_offset), so it reads as one page with a scrollbar, while the bar above it never
+    moves. Overlaying the bar instead (sticky/fixed) painted it under the content on Cloud, so the
+    bar keeps its own row and nothing has to be stacked."""
     key = f"ws_panel_{ref}"
     st.markdown(
         f"""<style>
-        [data-testid="stMain"] {{ overflow-y: auto !important; }}
+        [data-testid="stMain"] {{ overflow: hidden !important; }}
         .st-key-{key} {{
             flex: 0 0 auto !important;
-            height: auto !important;
+            height: var(--ri-panel-h, 70vh) !important;
             max-height: none !important;
-            overflow: visible !important;
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
         }}
-        [class*="_anchor_"], .st-key-ws_gate_ {{ scroll-margin-top: var(--ri-offset, 150px); }}
+        [class*="_anchor_"], .st-key-ws_gate_ {{ scroll-margin-top: 12px; }}
         </style>""", unsafe_allow_html=True)
 
 
@@ -412,17 +412,16 @@ def _scroll_to_anchor(key, settle_ms=4000):
     It assigns the scroll container's scrollTop instead of calling scrollIntoView — a smooth
     animation is interrupted by Streamlit's re-render and stops halfway. The correction loop runs for
     a few seconds on requestAnimationFrame because the sections above the target (expanders, charts)
-    settle after the jump and move it again. --ri-offset (set by viz.platform_offset) keeps the target
-    clear of the sticky bar and of Streamlit's own header. A missing element is a silent no-op: a
-    demo never shows a scroll error."""
+    settle after the jump and move it again. The target lands 12px below the top of the scroll area,
+    which already begins below the identity bar. A missing element is a silent no-op: a demo never
+    shows a scroll error."""
     components.html(
         "<script>(function(){try{var d=window.parent.document;var t0=Date.now();"
-        "function box(){return d.querySelector('[data-testid=\"stMain\"]')||d.scrollingElement;}"
+        "function box(){return d.querySelector('[class*=\"st-key-ws_panel_\"]')||d.querySelector('[data-testid=\"stMain\"]')||d.scrollingElement;}"
         "function go(){var el=d.querySelector('[class*=\"st-key-" + key + "\"]');if(!el)return;"
         "var c=box();if(!c)return;"
-        "var cs=d.defaultView.getComputedStyle(d.documentElement);"
-        "var off=parseFloat(cs.getPropertyValue('--ri-offset'))||150;"
-        "var delta=el.getBoundingClientRect().top-off;"
+        "var top=(c.getBoundingClientRect?c.getBoundingClientRect().top:0)+12;"
+        "var delta=el.getBoundingClientRect().top-top;"
         "if(Math.abs(delta)>6){c.scrollTop=c.scrollTop+delta;}}"
         "go();(function loop(){go();if(Date.now()-t0<" + str(settle_ms) + "){requestAnimationFrame(loop);}})();"
         "}catch(e){}})();</script>",
@@ -513,13 +512,16 @@ def render_workspace_page(dom, ref, you_role):
             _open(nxt_dom, nxt_inc["id"])
             st.rerun()
 
-    _collab_bar(dom, ref, you_role)
     st.query_params["inc"] = ref
     # The thread flows in the page and the identity bar pins to the top of that one scroll surface —
     # the bar is a sticky child of the app's scroll container, so there is no second scrollbar inside
     # the walkthrough. Sections carry scroll margins; actions jump to them (see _scroll_to_anchor).
     _ws_panel_css(ref)
     with st.container(border=True, key=f"ws_panel_{ref}"):
+        # The collaboration bar scrolls with the thread (it is content, not chrome): keeping it
+        # above the scroll area cost a third of a laptop screen and pushed the walkthrough back
+        # towards the keyhole this change exists to remove.
+        _collab_bar(dom, ref, you_role)
         with st.container(key=f"ws_lens_{ref}"):
             _render_incident_detail(dom, ref, you_role)
         # The guided view puts the gate inside its own Close step; rendering it twice reads as a bug.
