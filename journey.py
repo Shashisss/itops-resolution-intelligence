@@ -398,18 +398,26 @@ def _nav(key, steps, delta):
 
 
 def wizard(key, steps, renderers, default=0, help=None, handoffs=None):
-    """Single-step-at-a-time wizard with one progress metaphor and a handshake into each stage."""
+    """Single-step-at-a-time wizard with one progress metaphor and a handshake into each stage.
+
+    Each stage renders inside a keyed container so the page can jump to it: the workspace's primary
+    action ("Confirm cause", "Execute fix", …) and the step control both land the reader on the
+    section they just asked for, instead of at the top of a long page."""
     if key not in st.session_state or st.session_state.get(key) not in steps:
         st.session_state[key] = steps[default]
     st.radio("Step", steps, horizontal=True, key=key)
     step = st.session_state[key]
+    if st.session_state.get(key + "_prev") != step:
+        st.session_state[key + "_prev"] = step
+        st.session_state.setdefault("_scroll_anchor", f"{key}_anchor_{step}")
     viz.resolution_flow(current=step)
     if handoffs and step in handoffs:
         viz.handshake(handoffs[step])          # the handshake BEFORE this stage's content
     if help and step in help:
         st.markdown(f'<div class="ri-card" style="background:#f8fafc;padding:9px 13px;margin:2px 0 10px">'
                     f'<b>What this stage is:</b> {help[step]}</div>', unsafe_allow_html=True)
-    renderers[step]()
+    with st.container(key=f"{key}_anchor_{step}"):
+        renderers[step]()
     i = steps.index(step)
     back, nxt, _ = st.columns([1, 1, 5])
     back.button("← Back", key=key + "_back", disabled=(i == 0),

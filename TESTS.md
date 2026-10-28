@@ -4,7 +4,7 @@ Two layers, both runnable without a browser.
 
 ```bash
 python3 -m pip install -r requirements-dev.txt
-python3 -m pytest tests -q          # 40 tests, ~13s
+python3 -m pytest tests -q          # 44 tests, ~19s
 python3 scripts/smoke.py            # deployment smoke test, ~5s
 ```
 
@@ -46,6 +46,7 @@ list and asserts the URL was cleared. It exits non-zero on the first failure.
 | `tests/test_collab.py` | request → acknowledged → done → reopened, actor and timestamp recorded on each transition, overdue derivation, reopen clears `done_at` |
 | `tests/test_analytics.py` | measured MTTR (median/p90), stage medians from the timeline, OLA delta sign, verdict counts, handoff delay with n=0; a verdict-less incident is excluded, never counted as zero |
 | `tests/test_seed.py` | `meta.seed_version` equals `VERSION`, and `_needs_seed()` is false for a current database |
+| `tests/test_workspace_scroll.py` | the workspace has one scroll surface (no clamped panel height), the primary action opens the guided step it names, and the DataOps view uses the same anchored wizard |
 | `tests/test_clock.py` | the demo clock: `align(path=…)` re-anchors a stale database, is memoised per path until forced, and a new session copy is re-aligned while the base is left alone (regression: a tab opened hours after start showed every incident as 12h waiting · BREACHED) |
 | `tests/test_navigation.py` (search/filter) | board search, filter reset and the empty-state message |
 

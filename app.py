@@ -9,6 +9,7 @@ import importlib
 import pathlib
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 import engine as E
 import personas
 import dataops_engine as DE
@@ -184,6 +185,11 @@ def _render_incident_detail(dom, ref, you_role):
                     key="ws_mode_" + ref, label_visibility="collapsed",
                     help="The thread explains what happened; the guided view is where you execute, "
                          "verify and close.")
+    _prev_lens = st.session_state.get("_lens_" + ref)
+    if _prev_lens is not None and _prev_lens != lens:
+        # A stage action sets a more specific target first; switching the lens must not overwrite it.
+        st.session_state.setdefault("_scroll_anchor", f"ws_lens_{ref}")
+    st.session_state["_lens_" + ref] = lens
     if dom == "DataOps":
         data = DE.load()
         inc = next((i for i in data["incidents"] if i["id"] == ref), None)
@@ -372,22 +378,51 @@ def _collab_bar(dom, ref, you_role):
 
 
 def _ws_panel_css(ref):
-    """Responsive height for the scrolling thread panel.
+    """The thread flows in the page; the identity bar pins to the top of that one scroll surface.
 
-    The old fixed 470px was right for one screen only: at 720px tall it pushed the panel's bottom
-    below the viewport. The panel now takes the space left below the identity/collaboration bars and
-    above the fold, clamped so it stays usable on a short laptop and does not sprawl on a tall one.
-    The identity bar is outside it and remains visible because the panel scrolls internally."""
+    v93 gave the thread its own fixed-height box (clamp 300–560px) so the identity bar could stay put
+    inside Streamlit Cloud's auto-height iframe — but that turned the guided walkthrough into a keyhole
+    with a second scrollbar inside it. The nested scroll is gone: content flows in the app's own
+    scroll surface ([data-testid="stMain"]), which is also the sticky bar's scrolling ancestor, so the
+    bar still pins. Sections carry a scroll margin so the bar never covers a section the page jumps
+    to."""
     key = f"ws_panel_{ref}"
     st.markdown(
         f"""<style>
+        [data-testid="stMain"] {{ overflow-y: auto !important; }}
         .st-key-{key} {{
             flex: 0 0 auto !important;
-            height: clamp(300px, calc(100vh - 400px), 560px) !important;
-            max-height: 560px !important;
-            overflow-y: auto !important;
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
         }}
+        [class*="_anchor_"], .st-key-ws_gate_ {{ scroll-margin-top: 150px; }}
         </style>""", unsafe_allow_html=True)
+
+
+def _scroll_to_anchor(key, offset=150, settle_ms=4000):
+    """Jump to a rendered section after an action.
+
+    Streamlit cannot move the viewport from the server, so this is a few lines of DOM code sent with
+    the page. It goes through components.html rather than st.html because a component iframe
+    re-executes its script on every rerun (st.html runs only when the node is first created, so the
+    second click jumped nowhere).
+
+    It assigns the scroll container's scrollTop instead of calling scrollIntoView — a smooth
+    animation is interrupted by Streamlit's re-render and stops halfway. The correction loop runs for
+    a few seconds on requestAnimationFrame because the sections above the target (expanders, charts)
+    settle after the jump and move it again. `offset` keeps the target clear of the sticky identity
+    bar. A missing element is a silent no-op: a demo never shows a scroll error."""
+    components.html(
+        "<script>(function(){try{var d=window.parent.document;var t0=Date.now();"
+        "function box(){return d.querySelector('[data-testid=\"stMain\"]')||d.scrollingElement;}"
+        "function go(){var el=d.querySelector('[class*=\"st-key-" + key + "\"]');if(!el)return;"
+        "var c=box();if(!c)return;var delta=el.getBoundingClientRect().top-" + str(offset) + ";"
+        "if(Math.abs(delta)>6){c.scrollTop=c.scrollTop+delta;}}"
+        "go();(function loop(){go();if(Date.now()-t0<" + str(settle_ms) + "){requestAnimationFrame(loop);}})();"
+        "}catch(e){}})();</script>",
+        height=0)
+
 
 _STAGE_ACTION = {
     "Detect": ("Confirm signal", "Correlate", "Check the affected service and the first evidence."),
@@ -400,10 +435,12 @@ _STAGE_ACTION = {
 
 
 def _go_stage(dom, ref, stage):
-    """Primary action callback — switch the workspace to the guided view at the stage that matters."""
+    """Primary action callback — switch the workspace to the guided view at the stage that matters,
+    and land the page on that stage's section instead of leaving the reader at the top."""
     prefix = "dop" if dom == "DataOps" else "it"
     st.session_state[f"ws_mode_{ref}"] = "Act & verify (guided)"
     st.session_state[f"{prefix}_step_{ref}"] = stage
+    st.session_state["_scroll_anchor"] = f"{prefix}_step_{ref}_anchor_{stage}"
 
 
 def _close_now(ref, you_role):
@@ -449,7 +486,8 @@ def render_workspace_page(dom, ref, you_role):
                           on_click=_close_now, args=(ref, you_role))
             elif action_stage == "Close":
                 c2.button("See blockers", width="stretch", key="ws_primary",
-                          on_click=lambda: st.session_state.update({"ws_show_gate": True}))
+                          on_click=lambda: st.session_state.update(
+                              {"ws_show_gate": True, "_scroll_anchor": f"ws_gate_{ref}"}))
             elif action_stage == "Coordinate":
                 c2.button(action_label, type="primary", width="stretch", key="ws_primary",
                           on_click=_go_stage, args=(dom, ref, "Coordinate"), help=action_why)
@@ -472,12 +510,13 @@ def render_workspace_page(dom, ref, you_role):
 
     _collab_bar(dom, ref, you_role)
     st.query_params["inc"] = ref
-    # The thread scrolls inside its own panel, so the identity bar above never leaves the screen —
-    # this is the only construction that pins on Streamlit Cloud, where the app lives in an
-    # auto-height iframe and the outer page (not the app) is what scrolls.
+    # The thread flows in the page and the identity bar pins to the top of that one scroll surface —
+    # the bar is a sticky child of the app's scroll container, so there is no second scrollbar inside
+    # the walkthrough. Sections carry scroll margins; actions jump to them (see _scroll_to_anchor).
     _ws_panel_css(ref)
     with st.container(border=True, key=f"ws_panel_{ref}"):
-        _render_incident_detail(dom, ref, you_role)
+        with st.container(key=f"ws_lens_{ref}"):
+            _render_incident_detail(dom, ref, you_role)
         # The guided view puts the gate inside its own Close step; rendering it twice reads as a bug.
         if st.session_state.get(f"ws_mode_{ref}") != "Act & verify (guided)":
             st.divider()
@@ -487,10 +526,15 @@ def render_workspace_page(dom, ref, you_role):
                 collab.set_delegation_status(d["id"], "done", actor=d["to_"])
                 st.session_state["flash"] = f'Marked done — {d["to_"]} replied on the thread (simulated).'
 
-            viz.closure_gate(journey.closure_state(inc),
-                             on_close=lambda: journey.close_incident(ref, you_role),
-                             actor=you_role, expanded=st.session_state.pop("ws_show_gate", False),
-                             asks=_asks, on_done=_finish, prefix=f"page_{ref}")
+            with st.container(key=f"ws_gate_{ref}"):
+                viz.closure_gate(journey.closure_state(inc),
+                                 on_close=lambda: journey.close_incident(ref, you_role),
+                                 actor=you_role, expanded=st.session_state.pop("ws_show_gate", False),
+                                 asks=_asks, on_done=_finish, prefix=f"page_{ref}")
+
+    _anchor = st.session_state.pop("_scroll_anchor", None)
+    if _anchor:
+        _scroll_to_anchor(_anchor)
 
 
 def _incident_rows():
