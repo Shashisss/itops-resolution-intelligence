@@ -169,14 +169,21 @@ def _thread_spine(inc, deleg, confirmed, verdict):
                     else "blocked" if verdict in ("Mitigated", "Recovery failed", "Inconclusive") else "todo")
     # Status is derived from EVIDENCE, not stage names: a confirmed hypothesis is not "Correlate complete",
     # and applying a fix is not "Verified". Closure only on Verified.
+    import learn
+    closed = (inc.get("status") or "").lower() == "closed"
+    learn_status = ("done" if learn.get(inc["id"]) else ("current" if closed else "todo"))
     stages = [
         ("Detect", "done", "Incident and upstream failure detected", "Detect"),
-        ("Correlate", "done", "Cross-domain link — ranked hypotheses (observed vs inferred)", "Correlate"),
-        ("Coordinate", "done" if deleg else "current", "Owner assigned, approvals, remediation", "Coordinate"),
-        ("Act", "done" if applied else ("current" if deleg else "todo"),
-         "Remediation executed under approval (simulated)", "Act"),
+        ("Triage", "done", "Severity, owner and routing decided", "Triage"),
+        ("Investigate", "done" if confirmed else "current",
+         "Evidence assembled — timeline, dependency path, telemetry", "Investigate"),
+        ("Correlate", "done" if confirmed else "todo",
+         "Cross-domain link — ranked hypotheses (observed vs inferred)", "Correlate"),
+        ("Act", "done" if applied else ("current" if confirmed else "todo"),
+         "Owner engaged, remediation executed under approval (simulated)", "Act"),
         ("Verify", verify_status, "Independent re-check vs thresholds + verifying actor", "Verify"),
         ("Close", close_status, "Verified / Mitigated / Recovery failed / Inconclusive", "Close"),
+        ("Learn", learn_status, "What worked captured as a reusable record", "Learn"),
     ]
     cur = next((s[0] for s in stages if s[1] == "current"), None)
     items = []

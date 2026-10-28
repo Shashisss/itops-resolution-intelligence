@@ -1,6 +1,6 @@
 # PROTOTYPE NOTES — Resolution Intelligence POC
 
-Build v93 · sample data · simulated actions. This is a proof of concept, **not** production.
+Build v98 · sample data · simulated actions. This is a proof of concept, **not** production.
 
 ## Persistence boundary — what survives what
 
@@ -14,6 +14,7 @@ session copy.
 | Verdict, action, checks, actor, closure time | `resolution_state` | survives | **reset to seed** | reset to seed |
 | Incident stage / confirmed cause | `incidents`, `dop_incidents` | survives | reset | reset |
 | Thread history | `timeline`, `comments`, `delegations`, `notifications` | survives | reset | reset |
+| **Learn record** (root cause, steps, outcome, evidence) | `data/learn.json` | survives | **survives** | reset |
 | UI selections | Streamlit session state | survives | reset | reset |
 
 - **Nothing is persisted outside the container.** There is no shared database, no user account,
@@ -23,6 +24,12 @@ session copy.
   `data/ops.db`, which still disappears when the container is rebuilt.
 - Tests and tools that must not depend on a browser session use `RI_DB` / `RI_DEMO_MODE=0`
   against a throwaway copy of the base database.
+- **Learning is the one exception, on purpose.** A learn record is written to
+  `data/learn.json` (override with `RI_LEARN_PATH`), not to the session copy, because a page
+  reload replaces that copy and the whole point of the Learn stage is a durable record. The
+  document is seeded once from sample records; edits replace a record by incident id. It is a
+  file in the container, so it survives reloads and sessions but not a rebuild or redeploy —
+  a real deployment would put it behind the same store as the incident.
 
 ## The demo clock only shifts sample data
 

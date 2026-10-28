@@ -36,17 +36,26 @@ import statistics
 
 DB = os.environ.get("RI_DB", "data/ops.db")
 
-STAGES = ["Detect", "Correlate", "Coordinate", "Act", "Verify", "Close"]
+STAGES = ["Detect", "Triage", "Investigate", "Correlate", "Act", "Verify", "Close", "Learn"]
 
 # Timeline kinds are the recorded signals; they are mapped onto the one shared lifecycle vocabulary.
 KIND_STAGE = {
     "alert": "Detect", "impact": "Detect", "change": "Detect", "incident": "Detect",
-    "ticket": "Correlate", "repair": "Act", "verify": "Verify", "close": "Close",
+    "ticket": "Triage", "repair": "Act", "verify": "Verify", "close": "Close",
+}
+
+# Stage names recorded before v98 (Coordinate, Triaged, Diagnosed …) still map onto the one list.
+LEGACY_STAGE = {
+    "Coordinate": "Act", "Detected": "Detect", "Triaged": "Triage", "Diagnosed": "Correlate",
+    "Change raised": "Act", "Fix in progress": "Act", "Fix applied": "Verify",
+    "Verified": "Verify", "Closed": "Close", "Backfilled": "Verify", "Validated": "Verify",
+    "Learned": "Learn",
 }
 
 # Fallback OLA targets, identical to what the app seeds and to engine.load_stage_olas(). The table
 # is authoritative when it exists; these only keep the module usable on an un-migrated database.
-STAGE_OLA_DEFAULT = {"Detect": 5, "Correlate": 15, "Coordinate": 15, "Act": 30, "Verify": 30}
+STAGE_OLA_DEFAULT = {"Detect": 5, "Triage": 10, "Investigate": 20, "Correlate": 15, "Act": 30,
+                     "Verify": 30, "Learn": 60}
 
 DEFAULT_SLA_HOURS = {"P1": 4, "P2": 8, "P3": 24, "P4": 72}
 
@@ -112,9 +121,12 @@ def _median(values):
 def incidents():
     """Every incident, IT and DataOps, with its stored timing."""
     out = []
-    for table, domain in (("incidents", "IT Ops"), ("dop_incidents", "DataOps")):
-        for r in _rows(f"SELECT id,title,priority,status,created_at,owner_team,stage FROM {table}"):
+    for table, domain, comp in (("incidents", "IT Ops", "service_id"),
+                                ("dop_incidents", "DataOps", "dataset_id")):
+        for r in _rows(f"SELECT id,title,priority,status,created_at,owner_team,stage,"
+                       f"{comp} AS component FROM {table}"):
             r["domain"] = domain
+            r[comp] = r.pop("component")
             out.append(r)
     return out
 
@@ -185,14 +197,18 @@ def _stage_anchors(ref, closed_at):
             anchors[stage] = ts
 
     for cm in _rows("SELECT ts,stage FROM comments WHERE ref_id=? ORDER BY ts", (ref,)):
-        add(str(cm.get("stage") or "").strip().title(), cm.get("ts"))
+        raw = str(cm.get("stage") or "").strip().title()
+        add(LEGACY_STAGE.get(raw, raw), cm.get("ts"))
     for ev in _rows("SELECT ts,kind,detail FROM timeline WHERE ref_id=? ORDER BY ts", (ref,)):
         detail = str(ev.get("detail") or "").lower()
         stage = "Close" if "closure gate passed" in detail else KIND_STAGE.get(ev.get("kind"))
         add(stage, ev.get("ts"))
     dels = _rows("SELECT ts FROM delegations WHERE ref_id=? ORDER BY ts", (ref,))
     if dels:
-        add("Coordinate", dels[0].get("ts"))
+        add("Act", dels[0].get("ts"))
+    learn_ts = _learn_anchor(ref)
+    if learn_ts:
+        add("Learn", learn_ts)
     add("Close", closed_at)
 
     kept, last = [], None
@@ -208,6 +224,16 @@ def _stage_anchors(ref, closed_at):
         kept.append((stage, ts))
         last = cur
     return kept
+
+
+def _learn_anchor(ref):
+    """A learn record is the Learn stage's anchor — its save time, never the closure time."""
+    try:
+        import learn
+        rec = learn.get(ref)
+        return (rec or {}).get("saved_at")
+    except Exception:
+        return None
 
 
 def stage_durations():
@@ -360,6 +386,71 @@ def sla_load():
         rows.append(b)
     return {"rows": rows, "n": sum(b["total"] for b in rows),
             "breaches": sum(b["breaches"] for b in rows)}
+
+
+def learning():
+    """Learning metrics: cause-confirmation accuracy, reuse, and the size of the record set.
+
+    Accuracy counts decisions — confirmed vs overridden — from the durable learn records. A rejected
+    cause is a decision but not a confirmation, so it is reported separately. Every figure carries
+    its n; an empty sample is None (rendered as a dash), never zero.
+    """
+    import learn
+    recs = learn.records()
+    counts = {o: sum(1 for r in recs if r.get("outcome") == o)
+              for o in ("confirmed", "overridden", "rejected")}
+    decided = counts["confirmed"] + counts["overridden"]
+    reuse = [r for r in recs if r.get("reused_from")]
+    return {
+        "n_records": len(recs),
+        "counts": counts,
+        "n_decided": decided,
+        "accuracy": round(counts["confirmed"] / decided, 3) if decided else None,
+        "n_reused": len(reuse),
+        "reuse_rate": round(len(reuse) / len(recs), 3) if recs else None,
+        "reused": [{"ref": r["ref"], "from": r["reused_from"], "saved_at": r.get("saved_at")}
+                   for r in reuse],
+    }
+
+
+def mttr_by_learn():
+    """Median time-to-resolution with a prior learn record vs without one.
+
+    "Prior" is strict: a record saved after the incident was raised cannot have helped resolve it,
+    so it is not counted as knowledge the responder had. A group with no closures reports n=0 and
+    no median — never a zero-minute improvement."""
+    import learn
+    incs = {i["id"]: i for i in incidents()}
+    recs = _resolution_records()
+    earliest = {}
+    for r in learn.records():
+        sig, ts = r.get("signature"), _ts(r.get("saved_at"))
+        if sig and ts and (sig not in earliest or ts < earliest[sig]):
+            earliest[sig] = ts
+    groups = {"with": [], "without": []}
+    rows = []
+    for ref, rec in recs.items():
+        if (rec.get("verdict") or "") != "Verified" or not rec.get("closed_at"):
+            continue
+        inc = incs.get(ref)
+        if not inc:
+            continue
+        mins = _minutes(rec["closed_at"], inc.get("created_at"))
+        if mins is None:
+            continue
+        sig = learn.signature(inc, inc.get("domain") or "IT Ops")
+        prior = earliest.get(sig)
+        created = _ts(inc.get("created_at"))
+        matched = bool(prior and created and prior < created)
+        groups["with" if matched else "without"].append(mins)
+        rows.append({"ref": ref, "domain": inc.get("domain"), "minutes": mins, "matched": matched,
+                     "signature": sig,
+                     "prior_saved_at": prior.isoformat(timespec="seconds") if prior else None})
+    return {
+        "with": {"median_min": _median(groups["with"]), "n": len(groups["with"])},
+        "without": {"median_min": _median(groups["without"]), "n": len(groups["without"])},
+        "rows": rows,
+    }
 
 
 def summary():

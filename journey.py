@@ -14,17 +14,20 @@ DB = os.environ.get("RI_DB", "data/ops.db")
 CONF_RANK = {"high": 3, "medium": 2, "low": 1}
 
 # ------------------------------------------------------------------ ONE shared lifecycle
-# The single progress model used across IT Ops and DataOps (see viz.thread_spine).
-LIFECYCLE = ["Detect", "Correlate", "Coordinate", "Act", "Verify", "Close"]
+# The single progress model used across IT Ops and DataOps (see viz.thread_spine). Learn is the
+# stage after Close: a closed incident is not finished until what worked is captured.
+LIFECYCLE = ["Detect", "Triage", "Investigate", "Correlate", "Act", "Verify", "Close", "Learn"]
 # The nav target that opens an incident workspace (kept here so shell/app/callbacks agree).
 WORKSPACE_NAV = "Incidents"
 
-_IT_STAGE_TO_THREAD = {"Detected": "Detect", "Triaged": "Correlate", "Diagnosed": "Correlate",
-                       "Change raised": "Coordinate", "Fix in progress": "Act",
-                       "Fix applied": "Verify", "Verified": "Verify", "Closed": "Close"}
-_DOP_STAGE_TO_THREAD = {"Detected": "Detect", "Triaged": "Correlate", "Diagnosed": "Correlate",
+_IT_STAGE_TO_THREAD = {"Detected": "Detect", "Triaged": "Triage", "Diagnosed": "Correlate",
+                       "Change raised": "Act", "Fix in progress": "Act",
+                       "Fix applied": "Verify", "Verified": "Verify", "Closed": "Close",
+                       "Learned": "Learn"}
+_DOP_STAGE_TO_THREAD = {"Detected": "Detect", "Triaged": "Triage", "Diagnosed": "Correlate",
                         "Fix in progress": "Act", "Fix applied": "Verify",
-                        "Backfilled": "Verify", "Validated": "Verify", "Closed": "Close"}
+                        "Backfilled": "Verify", "Validated": "Verify", "Closed": "Close",
+                        "Learned": "Learn"}
 
 
 def lifecycle_stage(inc):
@@ -73,6 +76,50 @@ def correlation_for(ref_id):
     return d
 
 
+# ---------------------------------------------------------------- one definition of staleness
+def freshness(dataset_id):
+    """The ONE definition of staleness: now − dop_freshness.last_updated.
+
+    The thread edge, the hypothesis evidence, the metric card and the verification row all render
+    this number. A hardcoded "45m" in a seed string cannot agree with a value computed later, so
+    every live claim is rewritten from the stored freshness record at render time."""
+    con = sqlite3.connect(DB)
+    con.row_factory = sqlite3.Row
+    r = con.execute("SELECT f.last_updated, f.sla_min, d.name FROM dop_freshness f "
+                    "LEFT JOIN dop_datasets d ON d.id=f.dataset_id WHERE f.dataset_id=?",
+                    (dataset_id,)).fetchone()
+    con.close()
+    if not r:
+        return None
+    try:
+        lag = int((dt.datetime.now() - dt.datetime.fromisoformat(r["last_updated"])).total_seconds() / 60)
+    except Exception:
+        return None
+    return {"dataset_id": dataset_id, "name": r["name"] or dataset_id, "lag_min": lag,
+            "sla_min": r["sla_min"], "breach": lag > r["sla_min"]}
+
+
+def stale_dataset(ref):
+    """The dataset an IT incident consumes — the one whose staleness the thread is talking about."""
+    con = sqlite3.connect(DB)
+    con.row_factory = sqlite3.Row
+    r = con.execute("SELECT dataset_id FROM service_data WHERE service_id="
+                    "(SELECT service_id FROM incidents WHERE id=?)", (ref,)).fetchone()
+    con.close()
+    return r["dataset_id"] if r else None
+
+
+def _stale_text(text, ds):
+    """Rewrite a stored staleness claim with the computed value — one number, both places."""
+    import re
+    f = freshness(ds) if ds else None
+    if not f:
+        return text
+    text = re.sub(r"freshness \d+m", f'freshness {f["lag_min"]}m', text)
+    text = re.sub(r"data_age(_min)? \d+", lambda m: f'{m.group(0).rsplit(" ", 1)[0]} {f["lag_min"]}', text)
+    return text
+
+
 # ---------------------------------------------------------------- cross-domain thread edges
 # Relationships are STRUCTURED records (not built in UI code). kind distinguishes an observed
 # signal/relationship from an inferred hypothesis; confidence is a rule-based indicator.
@@ -103,15 +150,21 @@ def _ensure_thread_edges():
 
 
 def thread_edges_for(ref_id):
-    """Return the structured cross-domain relationships for an incident's thread."""
+    """Return the structured cross-domain relationships for an incident's thread.
+
+    Staleness claims are rewritten from the stored freshness record so the thread and the
+    investigation can never disagree about the same number."""
     _ensure_thread_edges()
     c = correlation_for(ref_id)
     thread_ref = c["it_id"] if c else ref_id
+    ds = stale_dataset(thread_ref)
     con = sqlite3.connect(DB)
     con.row_factory = sqlite3.Row
     rows = [dict(r) for r in con.execute(
         "SELECT * FROM thread_edges WHERE thread_ref=? ORDER BY id", (thread_ref,))]
     con.close()
+    for e in rows:
+        e["source"] = _stale_text(e.get("source") or "", ds)
     return rows
 
 
@@ -297,10 +350,11 @@ def render_hypotheses(hyps, title="Root cause — ranked hypotheses (suspected v
     if not hyps:
         st.info("No signal linked yet.")
         return hyps
-    viz.hypothesis_cards(hyps[:limit] if limit else hyps)
+    total = len(hyps)
+    viz.hypothesis_cards(hyps[:limit] if limit else hyps, total=total, offset=0)
     if limit and len(hyps) > limit:
         with st.expander(f"Show all {len(hyps)} hypotheses"):
-            viz.hypothesis_cards(hyps[limit:])
+            viz.hypothesis_cards(hyps[limit:], total=total, offset=limit)
     st.caption(confidence_note(hyps))
     return hyps
 
@@ -577,7 +631,13 @@ def next_action(inc, stage=None):
     stage = stage or lifecycle_stage(inc)
 
     if closed:
-        return {"label": None, "stage": "Close", "why": "Closed on the verified record.", "state": "closed"}
+        import learn
+        if not learn.get(inc["id"]):
+            return {"label": "Capture the learning", "stage": "Learn",
+                    "why": "Closed on the verified record — capture what worked before moving on.",
+                    "state": "closed"}
+        return {"label": None, "stage": "Learn", "why": "Closed on the verified record.",
+                "state": "closed"}
     if applied and verdict == "Verified":
         return {"label": "Close incident", "stage": "Close",
                 "why": "Verification passed — closure is now allowed.", "state": "verified"}
@@ -594,7 +654,7 @@ def next_action(inc, stage=None):
                 "why": "Cause confirmed and an owner is engaged — execute the approved remediation.",
                 "state": "delegated"}
     if confirmed:
-        return {"label": "Bring in owner", "stage": "Coordinate",
+        return {"label": "Bring in owner", "stage": "Act",
                 "why": "Root cause confirmed. Get the owner and the approval on the thread with a deadline.",
                 "state": "confirmed"}
     return {"label": "Review evidence", "stage": "Correlate", "why": "", "state": "unknown"}

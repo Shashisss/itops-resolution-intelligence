@@ -10,6 +10,7 @@ import collab
 
 NAV_ITEMS = [
     ("Incidents", "▤", "Unified list, filters, severity, ownership, lifecycle."),
+    ("Learn", "◎", "Reusable records — what worked, and incidents with the same signature."),
     ("Analytics", "↗", "MTTR, recurrence, verification outcomes, operational trends."),
     ("Activity & audit", "◷", "Actions, approvals, handoffs, verification records."),
 ]

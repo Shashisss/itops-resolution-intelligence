@@ -14,19 +14,23 @@ import collab
 PERSONAS = ["Data Engineer", "Data Owner", "Platform Engineer", "Data Consumer"]
 DOP_STEP_HELP = {
     "Detect": "What failed and when — the failing pipeline run, freshness / DQ alerts, and the lineage of affected datasets.",
+    "Triage": "Severity, owner and routing — which data product is affected, the freshness / OLA at risk, and the next engineer.",
+    "Investigate": "The evidence: failing run, lineage, DQ breaches and downstream consumers, assembled without a context call.",
     "Correlate": "Ranked pipeline root-cause hypotheses (schema drift, data quality, backlog) with evidence and confidence.",
-    "Coordinate": "The recommended repair, the next responsible engineer, and the data-product SLA / OLA at risk.",
-    "Act": "Run the chosen repair (simulated) — production data changes require human approval.",
+    "Act": "The recommended repair and next responsible engineer, then the repair itself — production data changes require approval.",
     "Verify": "An independent re-check of freshness, DQ and downstream health → Verified / Mitigated / Recovery failed.",
     "Close": "Closure record — only when independent verification passed.",
+    "Learn": "Capture the confirmed cause, the steps that actually worked and the evidence — then match it to past incidents with the same signature.",
 }
 DOP_HANDOFFS = {
     "Detect": "Data observability → Data Engineer  (failing run + freshness/DQ alerts detected)  ·  OLA 5m",
+    "Triage": "Data Engineer → Data Owner  (classified, owned and routed)  ·  OLA 10m",
+    "Investigate": "Data Engineer  (run, lineage, DQ and consumers assembled)  ·  OLA 20m",
     "Correlate": "Data Engineer → Data Owner  (root-cause context shared)  ·  OLA 15m",
-    "Coordinate": "Data Engineer + Data Owner  (repair recommendation and ownership)  ·  OLA 15m",
     "Act": "Data Owner → Data Engineer / Platform Engineer  (execution under the approval gate)  ·  OLA 30m",
     "Verify": "Verification service → Data Owner sign-off → Data Consumer update  ·  OLA 15m",
-    "Close": "Data Owner → Data Consumer  (verified closure + post-incident notes)",
+    "Close": "Data Owner → Data Consumer  (verified closure)",
+    "Learn": "Data Owner → Data Platform  (learn record saved and reusable)  ·  OLA 60m",
 }
 
 
@@ -79,17 +83,18 @@ def handoff(text):
                 unsafe_allow_html=True)
 
 
-def hypotheses(inc, data):
+def hypotheses(inc, data, limit=2):
     st.markdown("**Pipeline RCA — hypotheses (suspected vs confirmed, evidence & confidence)**")
     hyps = DE.causes(inc, data)
     if not hyps:
         st.info("No failing run, DQ breach or freshness breach linked yet.")
         return hyps
     hyps = journey.rank(hyps)
-    viz.hypothesis_cards(hyps[:2])
-    if len(hyps) > 2:
+    total = len(hyps)
+    viz.hypothesis_cards(hyps[:limit] if limit else hyps, total=total, offset=0)
+    if limit and len(hyps) > limit:
         with st.expander(f"Show all {len(hyps)} hypotheses"):
-            viz.hypothesis_cards(hyps[2:])
+            viz.hypothesis_cards(hyps[limit:], total=total, offset=limit)
     top = hyps[0]
     if top["status"] != "confirmed":
         c1, c2 = st.columns([1, 1])
@@ -225,15 +230,60 @@ def pipeline_view(inc, data):
             st.write("**Downstream datasets:** " + (", ".join(data["datasets"][d]["name"] for d in downs) or "—"))
             st.write("**Consumers impacted:** " + (", ".join(cons) or "—"))
 
-    def diagnose():
-        with st.expander("🎯 Pipeline RCA — hypotheses", expanded=True):
-            hypotheses(inc, data)
+    def triage():
+        fresh_txt, breach, lag, sla = _fresh(data, inc["dataset_id"])
+        ds = data["datasets"].get(inc["dataset_id"], {}).get("name", inc["dataset_id"])
+        ola = next((o for o in DE.load_olas() if o["team"] == inc["owner_team"]), None) if hasattr(DE, "load_olas") else None
+        viz.fact_cards([("Severity", inc["priority"], "#dc2626"),
+                        ("Owner", inc["owner_team"], "#0d9488"),
+                        ("Freshness", fresh_txt, "#d97706"),
+                        ("OLA", f'{ola["restore_min"]}m restore' if ola else "team OLA", "#0891b2")])
+        rec = DE.recommend(inc, DE.causes(inc, data), data)
+        st.markdown(f'**Routing** — next engineer **{rec["actor"]}** · repair *{rec["action"]}* · '
+                    f'gate **{rec["mode"]}**')
+        st.markdown("**First response**")
+        for step in [f'Check the latest run for {data["pipelines"].get(inc["pipeline_id"], {}).get("name", inc["pipeline_id"])}',
+                     f'Confirm whether {ds} is inside its freshness SLA',
+                     "Check the data contract before replaying anything",
+                     "Escalate to the Data Owner once the blast radius is known"]:
+            st.write(f'- {step}')
+        handoff(f'to the Data Owner — {ds} · owner {inc["owner_team"]} · freshness {fresh_txt}.')
 
-    def decide():
+    def investigate():
+        with st.expander("Operational timeline", expanded=True):
+            journey.render_timeline(inc["id"])
+        with st.expander("Lineage and affected datasets", expanded=False):
+            labels = {d: data["datasets"][d]["name"] for d in data["datasets"]}
+            stale = tuple(d for d in data["datasets"] if _fresh(data, d)[1])
+            viz.chain(DE.lineage_paths(inc["dataset_id"], data["G"])[0], labels,
+                      stale=stale, highlight=(inc["dataset_id"],))
+        with st.expander("Failing run and data quality", expanded=False):
+            run = DE.latest_run(inc["pipeline_id"], data["runs"])
+            if run:
+                st.markdown(f'**Latest run:** {run["id"]} · **{run["status"]}** · {run["started_at"]} · '
+                            f'{run["duration_min"]} min' + (f' · `{run["error"]}`' if run["error"] else ''))
+            breaches = _dq(data, inc["dataset_id"])
+            if breaches:
+                viz.card_rows([{"rule": d["rule"], "value": d["value"], "threshold": d["threshold"]}
+                               for d in breaches], "#d97706")
+            else:
+                st.caption("No data-quality rule breaching on this dataset.")
+        with st.expander("Downstream consumers", expanded=False):
+            downs, cons = DE.impact(inc["dataset_id"], data)
+            st.write("**Datasets:** " + (", ".join(data["datasets"][d]["name"] for d in downs) or "—"))
+            st.write("**Consumers:** " + (", ".join(cons) or "—"))
+
+    def correlate():
+        with st.expander("🎯 Pipeline RCA — hypotheses", expanded=True):
+            hypotheses(inc, data, limit=None)
+        journey.render_correlation(inc["id"])
+
+    def act():
         with st.expander("Recommended repair (policy-governed)", expanded=True):
             rec = DE.recommend(inc, DE.causes(inc, data), data)
             viz.rec_card(rec["action"], rec["risk"], rec["mode"], journey.actors(rec))
             journey.engage_block(inc["id"], rec["action"], journey.actors(rec))
+        action_panel(inc, data)
 
     def close():
         _gate = journey.closure_state(inc)
@@ -253,11 +303,17 @@ def pipeline_view(inc, data):
             journey.render_resolution(inc["id"], applied_any, f'freshness {fresh_txt0}',
                                       inc["owner_team"], verdict=journey.current_verdict(inc))
 
-    journey.wizard("dop_step_" + inc["id"], viz.RESOLUTION_FLOW,
-                   {"Detect": detect, "Correlate": diagnose, "Coordinate": decide,
-                    "Act": lambda: action_panel(inc, data), "Verify": lambda: verify_panel(inc, data),
-                    "Close": close},
-                   default=0, help=DOP_STEP_HELP, handoffs=DOP_HANDOFFS)
+    def learn_stage():
+        import learn
+        learn.panel(inc, "DataOps", actor=st.session_state.get("you_role", "Data Owner"))
+
+    stages = journey.LIFECYCLE
+    start = stages.index(journey.lifecycle_stage(inc))
+    journey.wizard("dop_step_" + inc["id"], stages,
+                   {"Detect": detect, "Triage": triage, "Investigate": investigate,
+                    "Correlate": correlate, "Act": act, "Verify": lambda: verify_panel(inc, data),
+                    "Close": close, "Learn": learn_stage},
+                   default=start, help=DOP_STEP_HELP, handoffs=DOP_HANDOFFS)
 
 
 def data_engineer_view(inc, data):

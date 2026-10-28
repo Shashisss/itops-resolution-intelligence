@@ -121,7 +121,9 @@ def _row(db, ref):
     return dict(r)
 
 
-def test_next_action_advances_with_the_evidence(db):
+def test_next_action_advances_with_the_evidence(db, tmp_path, monkeypatch):
+    import learn
+    monkeypatch.setattr(learn, "PATH", str(tmp_path / "learn.json"))
     inc = _row(db, "INC-8850")
     assert journey.next_action(inc)["label"] == "Confirm cause"
 
@@ -142,6 +144,12 @@ def test_next_action_advances_with_the_evidence(db):
 
     ok, _ = journey.close_incident("INC-8850")
     assert ok
+    # Closed is not finished: the next thing is capturing the learning (v98).
+    nxt = journey.next_action(_row(db, "INC-8850"))
+    assert nxt["label"] == "Capture the learning" and nxt["stage"] == "Learn"
+    learn.save(_row(db, "INC-8850"), "IT Ops",
+               {"root_cause": "schema drift", "summary": "rolled back and replayed",
+                "steps": "roll back\nreplay", "outcome": "confirmed"})
     assert journey.next_action(_row(db, "INC-8850"))["label"] is None
 
 

@@ -4,7 +4,7 @@ Two layers, both runnable without a browser.
 
 ```bash
 python3 -m pip install -r requirements-dev.txt
-python3 -m pytest tests -q          # 44 tests, ~19s
+python3 -m pytest tests -q          # 61 tests, ~15s
 python3 scripts/smoke.py            # deployment smoke test, ~5s
 ```
 
@@ -49,6 +49,10 @@ list and asserts the URL was cleared. It exits non-zero on the first failure.
 | `tests/test_workspace_scroll.py` | the workspace has one scroll surface (no clamped panel height), the primary action opens the guided step it names, and the DataOps view uses the same anchored wizard |
 | `tests/test_clock.py` | the demo clock: `align(path=…)` re-anchors a stale database, is memoised per path until forced, and a new session copy is re-aligned while the base is left alone (regression: a tab opened hours after start showed every incident as 12h waiting · BREACHED) |
 | `tests/test_navigation.py` (search/filter) | board search, filter reset and the empty-state message |
+| `tests/test_learn.py` | a saved learn record is written to disk and read back; it is retrievable from the incident and from the list; similarity matches the failure signature (not the service alone); the seed carries a non-confirmed decision and a reused record |
+| `tests/test_learning_metrics.py` | cause-confirmation accuracy counts confirmed vs overridden with its n; an empty sample is `None` (a dash), never zero; MTTR is split only by records saved *before* the incident was raised |
+| `tests/test_stages.py` | one stage list (`journey.LIFECYCLE` = `viz.RESOLUTION_FLOW` = `analytics.STAGES`), the audit/funnel/OLA vocabulary only names those stages, the thread spine and every `next_action` use them |
+| `tests/test_honesty.py` | the competing DB signal is ranked 4th of 4 with low/30% confidence; staleness is one computed number rendered in the thread, the hypotheses and the metric card |
 
 ## Not covered yet (honest list)
 

@@ -304,7 +304,7 @@ def verdict_badge(state):
                 unsafe_allow_html=True)
 
 
-RESOLUTION_FLOW = ["Detect", "Correlate", "Coordinate", "Act", "Verify", "Close"]
+RESOLUTION_FLOW = ["Detect", "Triage", "Investigate", "Correlate", "Act", "Verify", "Close", "Learn"]
 
 
 def resolution_flow(current=None):
@@ -326,9 +326,23 @@ CONF_PCT = {"high": 85, "medium": 55, "low": 30}
 CONF_COLOR = {"high": "#16a34a", "medium": "#d97706", "low": "#94a3b8"}
 
 
-def hypothesis_cards(hyps):
-    """Render RCA hypotheses as visual cards with confidence bars, badges and evidence."""
+def _ordinal(n):
+    if 10 <= n % 100 <= 20:
+        suf = "th"
+    else:
+        suf = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suf}"
+
+
+def hypothesis_cards(hyps, total=None, offset=0):
+    """Render RCA hypotheses as visual cards with confidence bars, badges and evidence.
+
+    The rank is printed from the SAME ordered list the cards come from, so a low-confidence signal
+    can never be presented as if it were near the top: the competing DB signal reads
+    "ranked 4th of 4 · low · 30%"."""
+    total = total or (offset + len(hyps))
     for i, h in enumerate(hyps):
+        rank = offset + i + 1
         conf = h.get("confidence", "low")
         pct = CONF_PCT.get(conf, 30)
         col = CONF_COLOR.get(conf, "#94a3b8")
@@ -340,7 +354,7 @@ def hypothesis_cards(hyps):
         icon = (f'<span style="font-size:10.5px;font-weight:700;letter-spacing:.04em;color:#64748b;'
                 f'text-transform:uppercase">{_kind} · </span>') if _kind else ""
         top = ('<span style="background:#4f46e5;color:#fff;font-size:10px;font-weight:700;'
-               'padding:2px 8px;border-radius:999px;margin-left:8px">MOST LIKELY</span>') if i == 0 else ""
+               'padding:2px 8px;border-radius:999px;margin-left:8px">MOST LIKELY</span>') if rank == 1 else ""
         st.markdown(
             f'<div style="border:1px solid #e5e7eb;border-left:7px solid {col};border-radius:12px;'
             f'padding:12px 15px;margin:9px 0;background:{bg};box-shadow:0 1px 2px rgba(0,0,0,.05)">'
@@ -348,12 +362,15 @@ def hypothesis_cards(hyps):
             f'<div style="font-size:14px;font-weight:700;color:#0f172a">{icon} '
             f'{h.get("label") or h.get("type","").title()}'
             f'{top}<div style="font-weight:500;color:#334155;margin-top:3px">{h.get("text","")}</div></div>'
-            f'<span style="white-space:nowrap;background:{badgecol};color:#fff;font-weight:700;font-size:11px;'
-            f'padding:3px 10px;border-radius:999px">{badge}</span></div>'
+            f'<div style="text-align:right;white-space:nowrap">'
+            f'<span style="background:{badgecol};color:#fff;font-weight:700;font-size:11px;'
+            f'padding:3px 10px;border-radius:999px">{badge}</span>'
+            f'<div style="font-size:11px;color:#64748b;margin-top:5px">ranked {_ordinal(rank)} of {total}</div>'
+            f'</div></div>'
             f'<div style="margin:9px 0 3px"><div style="height:8px;background:#e5e7eb;border-radius:999px;'
             f'overflow:hidden"><div style="height:8px;width:{pct}%;background:{col};border-radius:999px">'
             f'</div></div><div style="font-size:12px;color:#64748b;margin-top:4px">confidence: '
-            f'<b>{conf}</b> ({pct}%)</div></div>'
+            f'<b>{conf}</b> ({pct}%) · ranked {_ordinal(rank)} of {total}</div></div>'
             f'<div style="font-size:12.5px;color:#475569"><b>Evidence</b> · {h.get("evidence","")}</div>'
             f'</div>',
             unsafe_allow_html=True)

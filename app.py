@@ -19,12 +19,13 @@ import viz
 import journey
 import collab
 import analytics
+import learn
 import shell
 import workspace
 import realtime
 
 
-_RELOAD_TARGETS = (viz, journey, collab, analytics, E, DE, personas, DV, workspace,
+_RELOAD_TARGETS = (viz, journey, collab, analytics, learn, E, DE, personas, DV, workspace,
                    command_center, shell, realtime)
 
 
@@ -99,6 +100,7 @@ clock.align()
 _DB_PATH = store.db()
 for _mod in (E, DE, journey, collab, analytics, realtime):
     _mod.DB = _DB_PATH
+learn.DB = _DB_PATH          # learn records live outside the session copy on purpose (durable)
 _DEMO_SESSION = store.is_demo()
 
 st.set_page_config(page_title="Resolution Intelligence — POC", page_icon="assets/icon.png",
@@ -136,6 +138,11 @@ if _deep_ref and not st.session_state.get("_deep_done") and not st.session_state
     if _exists:
         st.session_state["open_incident"] = {"domain": _deep_dom, "ref": _deep_ref}
         st.session_state["nav"] = "Incidents"
+        _deep_step = str(st.query_params.get("step") or "").strip().title()
+        if _deep_step in journey.LIFECYCLE:
+            _prefix = "dop" if _deep_dom == "DataOps" else "it"
+            st.session_state[f"ws_mode_{_deep_ref}"] = "Act & verify (guided)"
+            st.session_state[f"{_prefix}_step_{_deep_ref}"] = _deep_step
 # ---- left sidebar navigation (five sections) ----
 _open_n = sum(1 for i in list(_it_inc) + list(_dop_inc) if i.get("status") == "open")
 _cross_n = sum(1 for i in _it_inc if journey.correlation_for(i["id"]))
@@ -438,12 +445,14 @@ def _scroll_to_anchor(key, settle_ms=4000):
 
 
 _STAGE_ACTION = {
-    "Detect": ("Confirm signal", "Correlate", "Check the affected service and the first evidence."),
+    "Detect": ("Confirm signal", "Detect", "Check the affected service and the first evidence."),
+    "Triage": ("Triage & route", "Triage", "Set severity, owner and the next responsible actor."),
+    "Investigate": ("Review evidence", "Investigate", "Timeline, dependency path, telemetry and change risk."),
     "Correlate": ("Confirm cause", "Correlate", "Weigh observed evidence against inferred links."),
-    "Coordinate": ("Bring in owner", "Coordinate", "Request an owner or approval with a deadline."),
     "Act": ("Execute fix", "Act", "Risk-gated: approval is required before execution."),
     "Verify": ("Verify now", "Verify", "The verdict here decides whether closure is possible."),
     "Close": ("Close incident", "Close", "Closure is gated on the authoritative verification."),
+    "Learn": ("Capture the learning", "Learn", "What worked becomes a reusable record."),
 }
 
 
@@ -481,7 +490,7 @@ def render_workspace_page(dom, ref, you_role):
     nxt = journey.next_action(inc, stage)
     action_label, action_stage, action_why = nxt["label"], nxt["stage"], nxt["why"]
     if not action_label:
-        action_stage = "Close"
+        action_stage = "Learn"
     shell.incident_context(inc["id"], verdict, tone, sev, nxt["stage"], sla)
 
     viz.crumb("All incidents", _close_workspace)
@@ -501,9 +510,6 @@ def render_workspace_page(dom, ref, you_role):
                 c2.button("See blockers", width="stretch", key="ws_primary",
                           on_click=lambda: st.session_state.update(
                               {"ws_show_gate": True, "_scroll_anchor": f"ws_gate_{ref}"}))
-            elif action_stage == "Coordinate":
-                c2.button(action_label, type="primary", width="stretch", key="ws_primary",
-                          on_click=_go_stage, args=(dom, ref, "Coordinate"), help=action_why)
             else:
                 c2.button(action_label, type="primary", width="stretch", key="ws_primary",
                           on_click=_go_stage, args=(dom, ref, action_stage), help=action_why)
@@ -813,6 +819,30 @@ def render_analytics():
                                                   f'record are uncounted, not "unresolved"')} · '
                f'verified-closure rate {int(round((oc["verified_rate"] or 0) * 100))}% of records.')
 
+    # ---------------- learning
+    lg = analytics.learning()
+    mttr_l = analytics.mttr_by_learn()
+    viz.section("Learning", "cause-confirmation accuracy, reuse, and time-to-resolution with a prior record")
+    l1, l2, l3 = st.columns(3)
+    l1.metric("Cause-confirmation accuracy", _pct(lg["accuracy"]),
+              help="confirmed vs overridden, from the durable learn records")
+    l1.caption(f'{lg["counts"]["confirmed"]} confirmed · {lg["counts"]["overridden"]} overridden · '
+               f'{lg["counts"]["rejected"]} rejected · ' + (f'n={lg["n_decided"]} decisions'
+                                                           if lg["n_decided"] else "n=0 — no decision yet"))
+    l2.metric("Learn reuse", str(lg["n_reused"]) if lg["n_records"] else "—",
+              help="records where a prior learn record was applied")
+    l2.caption(f'applied a prior record · ' + (f'n={lg["n_records"]} records'
+                                               if lg["n_records"] else "n=0 — no records yet"))
+    l3.metric("MTTR · prior learn record", f'{mttr_l["with"]["median_min"]:g} min'
+              if mttr_l["with"]["median_min"] is not None else "—",
+              help="verified closures whose signature had a learn record saved before the incident was raised")
+    l3.caption(f'with n={mttr_l["with"]["n"]} · without '
+               + (f'{mttr_l["without"]["median_min"]:g} min (n={mttr_l["without"]["n"]})'
+                  if mttr_l["without"]["median_min"] is not None else f'— (n={mttr_l["without"]["n"]})'))
+    viz.data_badge("live")
+    st.caption("A dash means the sample is empty — never zero. A learn record saved after an incident was "
+               "raised is not counted as knowledge the responder had.")
+
     # ---------------- handoff
     viz.section("Handoff delay", "request → completion, and what is still outstanding")
     if hd["completed"]:
@@ -887,6 +917,63 @@ def render_analytics():
                    "page is a benefit claim.")
 
 
+# ================================================================= Learn (page)
+def _pct(v):
+    return f'{int(round(v * 100))}%' if v is not None else "—"
+
+
+def render_learn():
+    viz.page_head("Learn — what worked, and where it applies",
+                  "Durable records saved after closure. Each carries the confirmed cause, the steps that "
+                  "actually worked, the verification outcome with who and when, and the evidence behind it.")
+    recs = learn.records()
+    lg = analytics.learning()
+    mttr_l = analytics.mttr_by_learn()
+    viz.kpi_row([
+        ("Learn records", str(lg["n_records"]), "durable — survive a page reload", "#4f46e5"),
+        ("Cause accuracy", _pct(lg["accuracy"]),
+         f'confirmed vs overridden · n={lg["n_decided"]}' if lg["n_decided"] else "no decisions yet · n=0",
+         "#16a34a"),
+        ("Reuse", str(lg["n_reused"]),
+         f'applied a prior record · n={lg["n_records"]}' if lg["n_records"] else "no records · n=0",
+         "#7c3aed"),
+        ("MTTR with prior learn",
+         f'{mttr_l["with"]["median_min"]:g} min' if mttr_l["with"]["median_min"] is not None else "—",
+         f'n={mttr_l["with"]["n"]} closures', "#0891b2"),
+    ])
+    if not recs:
+        st.info("No learn records yet. Close an incident, then capture the learning in its Learn stage.")
+        return
+    st.caption(f'Stored at `{learn.PATH}` — outside the per-session demo database, so a reload does not '
+               f'lose it.')
+    groups = {}
+    for r in recs:
+        groups.setdefault(r.get("signature") or "unclassified", []).append(r)
+    for sig, rows in sorted(groups.items(), key=lambda kv: kv[1][0].get("saved_at") or "", reverse=True):
+        st.markdown(f'**Signature `{sig}`** · {len(rows)} record(s) — same component and cause class')
+        for r in rows:
+            title = f'{r["ref"]} · {r["title"]} · {r.get("outcome")} · {r.get("saved_at")}'
+            with st.expander(title, expanded=False):
+                st.markdown(f'**Root cause** — {r.get("root_cause") or "—"}')
+                st.markdown(f'**Resolution summary** — {r.get("summary") or "—"}')
+                st.markdown("**Steps that worked (runbook draft)**")
+                for i, step in enumerate(r.get("steps") or [], 1):
+                    st.markdown(f'{i}. {step}')
+                st.markdown(f'**Cause verification** — {learn.OUTCOME_LABEL.get(r.get("outcome"), r.get("outcome"))} '
+                            f'· {r.get("outcome_by") or "—"} · {r.get("outcome_at") or "—"}')
+                if r.get("reused_from"):
+                    st.markdown(f'**Reuse** — applied the fix recorded for **{r["reused_from"]}**.')
+                st.markdown(f'**Evidence carried over ({len(r.get("evidence") or [])})**')
+                for e in r.get("evidence") or []:
+                    st.caption(f'· {e}')
+                row, dom = learn.incident_row(r["ref"])
+                if row and st.button(f'Open {r["ref"]} in the workspace', key=f'learn_open_{r["ref"]}'):
+                    _open(dom, r["ref"])
+                    st.rerun()
+                elif not row:
+                    st.caption("The incident this record came from is archived — the record is what survives.")
+
+
 # ================================================================= Activity & audit (page)
 def render_activity():
     st.subheader("Activity & audit — actions, handoffs, verification")
@@ -938,6 +1025,8 @@ if nav == journey.WORKSPACE_NAV:
         render_workspace_page(_sel["domain"], _sel["ref"], you_role)
     else:
         render_incidents(you_role)
+elif nav == "Learn":
+    render_learn()
 elif nav == "Analytics":
     render_analytics()
 elif nav == "Activity & audit":

@@ -22,7 +22,7 @@ os.chdir(ROOT)
 
 # `seed` is deliberately excluded: importing it reseeds the demo database (it is a script).
 MODULES = ["analytics", "build", "clock", "collab", "command_center", "dataops_engine",
-           "dataops_views", "engine", "journey", "personas", "realtime", "shell", "viz",
+           "dataops_views", "engine", "journey", "learn", "personas", "realtime", "shell", "viz",
            "workspace"]
 
 

@@ -19,21 +19,25 @@ STAGES = ["Detected", "Triaged", "Diagnosed", "Change raised", "Fix in progress"
 PERSONAS = ["CIO", "CSM", "Service Desk", "L1 Engineer", "L2 / L3 Engineer", "Developer", "Incident Manager"]
 IT_STEP_HELP = {
     "Detect": "What fired and when — the ServiceNow incident, the Jira defect and observability alerts on one timeline.",
+    "Triage": "Severity, owner and routing — who owns it, the SLA / OLA at risk, and what the first responder can do now.",
+    "Investigate": "The evidence assembled in one place: dependency path, breaching telemetry, change risk and related incidents.",
     "Correlate": "Ranked root-cause hypotheses with the evidence and confidence behind each — human-confirmed, never assumed.",
-    "Coordinate": "The recommended action, the next responsible actor, and the SLA / OLA at risk. Coordination is "
-                  "autonomous; execution is gated.",
-    "Act": "Run the chosen remediation (simulated) — production changes require human approval.",
+    "Act": "The recommended action and next responsible actor, then the remediation itself — coordination is autonomous, execution is gated.",
     "Verify": "An independent re-check of telemetry against thresholds → Verified / Mitigated / Recovery failed. "
               "Only Verified closes the incident.",
     "Close": "Closure record — only when independent verification passed. A fix applied is not a closure.",
+    "Learn": "Capture the confirmed cause, the steps that actually worked and the evidence — then match it to past "
+             "incidents with the same signature.",
 }
 IT_HANDOFFS = {
     "Detect": "Monitoring → Service Desk  (auto-detected; incident raised in ServiceNow)  ·  OLA 5m",
-    "Correlate": "Service Desk (L1) → L2 / L3  (escalated with the assembled context)  ·  OLA 15m",
-    "Coordinate": "L2 / L3 + Incident Manager  (recommendation and next-actor coordination)  ·  OLA 15m",
-    "Act": "Incident Manager → owning team  (execution under the approval gate)  ·  OLA 30m",
+    "Triage": "Service Desk (L1) → L2 / L3  (classified, owned and routed with the assembled context)  ·  OLA 10m",
+    "Investigate": "L2 / L3  (evidence assembled: timeline, dependency path, telemetry, change risk)  ·  OLA 20m",
+    "Correlate": "L2 / L3 + DataOps  (cross-domain hypotheses, human-confirmed)  ·  OLA 15m",
+    "Act": "Incident Manager → owning team  (coordination autonomous; execution under the approval gate)  ·  OLA 30m",
     "Verify": "Verification service → Incident Manager sign-off → CSM update  ·  OLA 15m",
-    "Close": "Incident Manager → CSM / Data Owner  (verified closure + post-incident notes)",
+    "Close": "Incident Manager → CSM / Data Owner  (verified closure)",
+    "Learn": "Incident Manager → Data Platform / owning team  (learn record saved and reusable)  ·  OLA 60m",
 }
 METRIC_LABELS = {"p95_latency_ms": "Latency (p95, ms)", "error_rate_pct": "Error rate (%)",
                  "active_connections": "DB connections", "cpu_pct": "DB CPU (%)"}
@@ -122,9 +126,9 @@ def _carried(inc, ctx, biz, sla_txt):
     return ", ".join(bits)
 
 
-def hypotheses(inc, ctx):
+def hypotheses(inc, ctx, limit=2):
     hyps = journey.render_hypotheses(E.causes(inc, ctx["G"], ctx["changes"], ctx["metrics"], ctx["services"]),
-                                      limit=2)
+                                      limit=limit)
     if not hyps:
         return hyps
     top = journey.rank(hyps)[0]
@@ -270,13 +274,38 @@ def incident_view(inc, ctx):
             df = _kpi_df()
             st.line_chart(df[df.scenario == "current"].set_index("ts")["value"], height=150)
 
-    def diagnose():
-        with st.expander("🎯 Root cause — hypotheses with evidence", expanded=True):
-            hypotheses(inc, ctx)
-        with st.expander("🔁 Related incidents", expanded=False):
-            sim = E.similar(incidents, inc)
-            for s in (sim or [f'None above the relevance threshold ({E.SIMILARITY_THRESHOLD}).']):
-                st.write(f'- {s}')
+    def triage():
+        biz = E.business_service(G, E.dependency_paths(G, inc["service_id"])[0], services)
+        sla_txt, _, _, _ = _sla_detail(inc)
+        ola = next((o for o in E.load_olas() if o["team"] == inc["owner_team"]), None)
+        sev = viz.SEV_LABEL.get(inc["priority"], ("", "Minor"))[1]
+        viz.fact_cards([("Severity", f'{inc["priority"]} · {sev}', "#dc2626"),
+                        ("Owner", inc["owner_team"], "#0d9488"),
+                        ("SLA", sla_txt, "#d97706"),
+                        ("OLA", f'{ola["restore_min"]}m restore' if ola else "not defined", "#0891b2")])
+        rec = E.recommend(inc, E.causes(inc, G, changes, metrics, services))
+        st.markdown(f'**Routing** — next actor **{rec["actor"]}** · action *{rec["action"]}* · '
+                    f'gate **{rec["mode"]}**')
+        st.markdown("**First response**")
+        for step in ["Confirm the blast radius on the dependency path",
+                     "Check recent deployments and the upstream data feed",
+                     "Apply a known remediation only if policy allows it",
+                     "Escalate to the owning team with the context already assembled"]:
+            st.write(f'- {step}')
+        handoff(f'to L2/L3 — {_carried(inc, ctx, biz, sla_txt)}.')
+
+    def investigate():
+        with st.expander("Operational timeline", expanded=True):
+            journey.render_timeline(inc["id"])
+        with st.expander("Dependency path(s) — handles multiple parents", expanded=False):
+            for p in E.dependency_paths(G, inc["service_id"]):
+                st.write("→ " + " → ".join(services[n]["name"] for n in p))
+        with st.expander("Telemetry (breaching)", expanded=False):
+            scope = E.impacted(G, inc["service_id"])
+            rows = [{"service": m["service_id"], "metric": m["metric"], "value": m["value"],
+                     "threshold": m["threshold"]} for m in metrics
+                    if m["service_id"] in scope and m["value"] > m["threshold"]]
+            viz.card_rows(rows, "#d97706") if rows else st.caption("No breaching telemetry.")
         with st.expander("🔧 Change risk", expanded=False):
             ch = _latest_change(inc, ctx)
             if ch:
@@ -285,12 +314,22 @@ def incident_view(inc, ctx):
                 st.write("Blast radius: " + (", ".join(cr["blast"]) or "—"))
             else:
                 st.caption("No recent change in the impacted subgraph.")
+        with st.expander("🔁 Related incidents", expanded=False):
+            sim = E.similar(incidents, inc)
+            for s in (sim or [f'None above the relevance threshold ({E.SIMILARITY_THRESHOLD}).']):
+                st.write(f'- {s}')
 
-    def decide():
+    def correlate():
+        with st.expander("🎯 Root cause — hypotheses with evidence", expanded=True):
+            hypotheses(inc, ctx, limit=None)
+        journey.render_correlation(inc["id"])
+
+    def act():
         with st.expander("Recommended action (policy-governed)", expanded=True):
             rec = E.recommend(inc, E.causes(inc, G, changes, metrics, services))
             viz.rec_card(rec["action"], rec["risk"], rec["mode"], journey.actors(rec))
             journey.engage_block(inc["id"], rec["action"], journey.actors(rec))
+        action_panel(inc, ctx)
 
     def close():
         _gate = journey.closure_state(inc)
@@ -309,11 +348,17 @@ def incident_view(inc, ctx):
             journey.render_resolution(inc["id"], applied_any, _sla_detail(inc)[0], inc["owner_team"],
                                       verdict=journey.current_verdict(inc))
 
-    journey.wizard("it_step_" + inc["id"], viz.RESOLUTION_FLOW,
-                   {"Detect": detect, "Correlate": diagnose, "Coordinate": decide,
-                    "Act": lambda: action_panel(inc, ctx), "Verify": lambda: verify_panel(inc, ctx),
-                    "Close": close},
-                   default=0, help=IT_STEP_HELP, handoffs=IT_HANDOFFS)
+    def learn_stage():
+        import learn
+        learn.panel(inc, "IT Ops", actor=st.session_state.get("you_role", "Incident Manager"))
+
+    stages = journey.LIFECYCLE
+    start = stages.index(journey.lifecycle_stage(inc))
+    journey.wizard("it_step_" + inc["id"], stages,
+                   {"Detect": detect, "Triage": triage, "Investigate": investigate,
+                    "Correlate": correlate, "Act": act, "Verify": lambda: verify_panel(inc, ctx),
+                    "Close": close, "Learn": learn_stage},
+                   default=start, help=IT_STEP_HELP, handoffs=IT_HANDOFFS)
 
 
 def csm_view(inc, ctx):

@@ -88,15 +88,16 @@ def test_stage_median_from_a_synthetic_timeline(db):
     event(con, "INC-S1", "2026-01-01T11:00:00", "verify")
     incident(con, "INC-S2", created="2026-01-01T09:55:00")
     event(con, "INC-S2", "2026-01-01T12:00:00", "alert")
-    event(con, "INC-S2", "2026-01-01T12:30:00", "ticket")   # Detect 30, Correlate unmeasured
+    event(con, "INC-S2", "2026-01-01T12:30:00", "ticket")   # Detect 30, Triage unmeasured
     con.commit()
     con.close()
 
     rows = {r["stage"]: r for r in analytics.stage_durations()["rows"]}
     # Detect: 20 min and 30 min → median 25
     assert rows["Detect"]["n"] == 2 and rows["Detect"]["median_min"] == 25.0
-    # Correlate: only INC-S1 measured (10:20 → 11:00 = 40); INC-S2 has no next stage
-    assert rows["Correlate"]["n"] == 1 and rows["Correlate"]["median_min"] == 40.0
+    # Triage: only INC-S1 measured (10:20 → 11:00 = 40); INC-S2 has no next stage
+    assert rows["Triage"]["n"] == 1 and rows["Triage"]["median_min"] == 40.0
+    assert rows["Correlate"]["n"] == 0, "a ticket is a Triage anchor, not a Correlate one"
     assert rows["Verify"]["median_min"] is None and rows["Verify"]["n"] == 0
     assert rows["Detect"]["indicative"] is True, "two samples are indicative, not significant"
 

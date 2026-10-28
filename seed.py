@@ -166,9 +166,11 @@ _closed_checks = json.dumps([
 ])
 c.executemany("INSERT INTO resolution_state(ref_id,verdict,action_id,actor,closed_at,updated_at,checks) "
               "VALUES(?,?,?,?,?,?,?)", [
-    ("INC-8802", "Verified", "A", "SRE verification service", M(6 * 24 * 60 - 30), M(6 * 24 * 60 - 30), _closed_checks),
-    ("INC-8711", "Verified", "A", "SRE verification service", M(14 * 24 * 60 - 30), M(14 * 24 * 60 - 30), _closed_checks),
-    ("INC-8655", "Verified", "A", "SRE verification service", M(21 * 24 * 60 - 30), M(21 * 24 * 60 - 30), _closed_checks),
+    # Resolution times differ on purpose: the first two had a prior learn record with the same
+    # signature, the third did not — the learning metric measures exactly that difference.
+    ("INC-8802", "Verified", "A", "SRE verification service", M(6 * 24 * 60 - 40), M(6 * 24 * 60 - 40), _closed_checks),
+    ("INC-8711", "Verified", "A", "SRE verification service", M(14 * 24 * 60 - 25), M(14 * 24 * 60 - 25), _closed_checks),
+    ("INC-8655", "Verified", "A", "SRE verification service", M(21 * 24 * 60 - 180), M(21 * 24 * 60 - 180), _closed_checks),
 ])
 
 # ------------------------------------------------------------------ DataOps
@@ -247,8 +249,8 @@ timeline = [
     ("T-1", "DOP-1001", "dataops", M(60), "change", "core_ledger source schema changed — new column 'region_code'"),
     ("T-2", "DOP-1001", "dataops", M(36), "alert", "run R-9001 failed — SCHEMA_MISMATCH 'region_code'"),
     ("T-3", "DOP-1001", "dataops", M(35), "incident", "DOP-1001 raised (P1) — owner Data Platform"),
-    ("T-4", "DOP-1001", "dataops", M(45), "impact", "payments_gold stale (45 min > 15 min SLA)"),
-    ("T-5", "INC-8841", "itops", M(44), "alert", "Payment API data_age_min 45 > 15 (serving stale risk data)"),
+    ("T-4", "DOP-1001", "dataops", M(45), "impact", "payments_gold stale — above the 15 min SLA"),
+    ("T-5", "INC-8841", "itops", M(44), "alert", "Payment API data_age above the 15 min SLA (serving stale risk data)"),
     ("T-6", "INC-8841", "itops", M(43), "alert", "Payment API error_rate_pct 8.1 > 1.0"),
     ("T-7", "INC-8841", "itops", M(42), "incident",
      "ServiceNow: INC-8841 raised (P2) — owner Platform Engineering"),
@@ -286,11 +288,11 @@ c.executemany("INSERT INTO live_events(ts,domain,severity,source,message,ref_id)
 ])
 c.executemany("INSERT INTO comments(ref_id,author,role,text,ts,channel,stage) VALUES(?,?,?,?,?,?,?)", [
     ("INC-8841", "Monitoring (Observability)", "Observability",
-     "Alert: error_rate 8.1 > 1.0; data_age 45 > 15.", M(44), "App", "Detect"),
+     "Alert: error_rate 8.1 > 1.0; data_age above the 15 min SLA.", M(44), "App", "Detect"),
     ("INC-8841", "Priya (Data Engineer)", "Data Engineer",
      "Linked to DOP-1001: core_ledger schema drift.", M(30), "Teams", "Correlate"),
     ("INC-8841", "Amit (Incident Manager)", "Incident Manager",
-     "Engaging Data Owner + Platform Engineering; CSM informed.", M(12), "Email", "Coordinate"),
+     "Engaging Data Owner + Platform Engineering; CSM informed.", M(12), "Email", "Act"),
     ("INC-8841", "Priya (Data Engineer)", "Data Engineer",
      "Replay approved; contract v4 applied.", M(6), "Teams", "Act"),
     ("INC-8841", "SRE verification service", "System",
@@ -320,15 +322,15 @@ c.executemany("INSERT INTO comments(ref_id,author,role,text,ts,channel,stage) VA
 ])
 c.executemany("INSERT INTO delegations(ref_id,frm,to_,action,status,ts,channel,stage) VALUES(?,?,?,?,?,?,?,?)", [
     ("INC-8841", "Incident Manager", "Platform Engineering",
-     "Approve pipeline replay + service restart", "accepted", M(9), "Teams", "Coordinate"),
+     "Approve pipeline replay + service restart", "accepted", M(9), "Teams", "Act"),
     ("INC-8841", "CIO", "Data Platform",
-     "Confirm contract v4 is deployed to payments", "assigned", M(38), "Teams", "Coordinate"),
+     "Confirm contract v4 is deployed to payments", "assigned", M(38), "Teams", "Act"),
     ("DOP-1001", "Data Owner", "Data Engineer",
-     "Reconcile schema (contract v4) + replay", "assigned", M(14), "Jira", "Coordinate"),
+     "Reconcile schema (contract v4) + replay", "assigned", M(14), "Jira", "Act"),
     # INC-8850 deliberately has no handoff yet: it is the incident used to demonstrate the full
     # progression confirm cause → bring in owner → execute → verify → close.
     ("DOP-1002", "Data Owner", "Data Engineer",
-     "Reconcile order_channel schema", "assigned", M(15), "Teams", "Coordinate"),
+     "Reconcile order_channel schema", "assigned", M(15), "Teams", "Act"),
 ])
 # The initial insertion is itself the first recorded transition: the requester is the actor.
 c.execute("UPDATE delegations SET actor=frm, changed_at=ts WHERE actor IS NULL")
@@ -344,7 +346,8 @@ c.executemany("INSERT INTO olas(team,response_min,restore_min) VALUES(?,?,?)", [
     ("Analytics Engineering", 60, 240),
 ])
 c.executemany("INSERT INTO stage_olas(stage,target_min) VALUES(?,?)", [
-    ("Detect", 5), ("Correlate", 15), ("Coordinate", 15), ("Act", 30), ("Verify", 30),
+    ("Detect", 5), ("Triage", 10), ("Investigate", 20), ("Correlate", 15), ("Act", 30),
+    ("Verify", 30), ("Learn", 60),
 ])
 
 con.commit()

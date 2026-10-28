@@ -18,7 +18,19 @@ def load():
     incidents = [dict(r) for r in con.execute("SELECT * FROM incidents")]
     changes = [dict(r) for r in con.execute("SELECT * FROM changes")]
     metrics = [dict(r) for r in con.execute("SELECT * FROM metrics")]
+    links = {r["service_id"]: r["dataset_id"] for r in con.execute("SELECT * FROM service_data")}
     con.close()
+    # "Data age" is by definition now − last_updated: render the ONE computed number, not the value
+    # frozen into the seed, so the metric card cannot disagree with the thread or the hypotheses.
+    try:
+        import journey
+        for m in metrics:
+            if m.get("metric") == "data_age_min" and m["service_id"] in links:
+                f = journey.freshness(links[m["service_id"]])
+                if f:
+                    m["value"] = float(f["lag_min"])
+    except Exception:
+        pass
     G = nx.DiGraph()
     for sid, s in services.items():
         G.add_node(sid, **s)
@@ -168,10 +180,9 @@ def causes(inc, G, changes, metrics, services):
         fr = con.execute("SELECT last_updated, sla_min FROM dop_freshness WHERE dataset_id=?", (dsi,)).fetchone()
         nm = con.execute("SELECT name FROM dop_datasets WHERE id=?", (dsi,)).fetchone()
         if fr and nm:
-            try:
-                lag = int((dt.datetime.now() - dt.datetime.fromisoformat(fr["last_updated"])).total_seconds() / 60)
-            except Exception:
-                lag = 0
+            import journey
+            f = journey.freshness(dsi)
+            lag = f["lag_min"] if f else 0
             if lag > fr["sla_min"]:
                 key = f'UPSTREAM:{dsi}'
                 out.append({"type": "upstream data", "key": key, "service": dsi, "label": "Stale upstream data",
