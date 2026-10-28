@@ -104,6 +104,7 @@ _DEMO_SESSION = store.is_demo()
 st.set_page_config(page_title="Resolution Intelligence — POC", page_icon="assets/icon.png",
                    layout="wide")
 viz.inject_css()
+viz.platform_offset()
 
 if _RELOAD_FAILURES:
     _bad = ", ".join(f'{f["module"]} ({f["error"]})' for f in _RELOAD_FAILURES)
@@ -396,11 +397,11 @@ def _ws_panel_css(ref):
             max-height: none !important;
             overflow: visible !important;
         }}
-        [class*="_anchor_"], .st-key-ws_gate_ {{ scroll-margin-top: 150px; }}
+        [class*="_anchor_"], .st-key-ws_gate_ {{ scroll-margin-top: var(--ri-offset, 150px); }}
         </style>""", unsafe_allow_html=True)
 
 
-def _scroll_to_anchor(key, offset=150, settle_ms=4000):
+def _scroll_to_anchor(key, settle_ms=4000):
     """Jump to a rendered section after an action.
 
     Streamlit cannot move the viewport from the server, so this is a few lines of DOM code sent with
@@ -411,13 +412,17 @@ def _scroll_to_anchor(key, offset=150, settle_ms=4000):
     It assigns the scroll container's scrollTop instead of calling scrollIntoView — a smooth
     animation is interrupted by Streamlit's re-render and stops halfway. The correction loop runs for
     a few seconds on requestAnimationFrame because the sections above the target (expanders, charts)
-    settle after the jump and move it again. `offset` keeps the target clear of the sticky identity
-    bar. A missing element is a silent no-op: a demo never shows a scroll error."""
+    settle after the jump and move it again. --ri-offset (set by viz.platform_offset) keeps the target
+    clear of the sticky bar and of Streamlit's own header. A missing element is a silent no-op: a
+    demo never shows a scroll error."""
     components.html(
         "<script>(function(){try{var d=window.parent.document;var t0=Date.now();"
         "function box(){return d.querySelector('[data-testid=\"stMain\"]')||d.scrollingElement;}"
         "function go(){var el=d.querySelector('[class*=\"st-key-" + key + "\"]');if(!el)return;"
-        "var c=box();if(!c)return;var delta=el.getBoundingClientRect().top-" + str(offset) + ";"
+        "var c=box();if(!c)return;"
+        "var cs=d.defaultView.getComputedStyle(d.documentElement);"
+        "var off=parseFloat(cs.getPropertyValue('--ri-offset'))||150;"
+        "var delta=el.getBoundingClientRect().top-off;"
         "if(Math.abs(delta)>6){c.scrollTop=c.scrollTop+delta;}}"
         "go();(function loop(){go();if(Date.now()-t0<" + str(settle_ms) + "){requestAnimationFrame(loop);}})();"
         "}catch(e){}})();</script>",
