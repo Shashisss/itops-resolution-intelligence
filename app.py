@@ -20,13 +20,15 @@ import journey
 import collab
 import analytics
 import learn
+import graph
+import graph_views
 import shell
 import workspace
 import realtime
 
 
 _RELOAD_TARGETS = (viz, journey, collab, analytics, learn, E, DE, personas, DV, workspace,
-                   command_center, shell, realtime)
+                   command_center, shell, realtime, graph, graph_views)
 
 
 def _refresh_modules():
@@ -101,6 +103,8 @@ _DB_PATH = store.db()
 for _mod in (E, DE, journey, collab, analytics, realtime):
     _mod.DB = _DB_PATH
 learn.DB = _DB_PATH          # learn records live outside the session copy on purpose (durable)
+graph.DB = _DB_PATH          # the views read the graph, not the flat tables
+_GRAPH_INFO = graph.ensure(_DB_PATH)   # idempotent projection — an older database gains the graph
 _DEMO_SESSION = store.is_demo()
 
 st.set_page_config(page_title="Resolution Intelligence — POC", page_icon="assets/icon.png",
@@ -137,7 +141,7 @@ if _deep_ref and not st.session_state.get("_deep_done") and not st.session_state
     _exists = any(i["id"] == _deep_ref for i in (_it_inc if _deep_dom == "IT Ops" else _dop_inc))
     if _exists:
         st.session_state["open_incident"] = {"domain": _deep_dom, "ref": _deep_ref}
-        st.session_state["nav"] = "Incidents"
+        st.session_state["nav"] = journey.WORKSPACE_NAV
         _deep_step = str(st.query_params.get("step") or "").strip().title()
         if _deep_step in journey.LIFECYCLE:
             _prefix = "dop" if _deep_dom == "DataOps" else "it"
@@ -186,38 +190,27 @@ def _sla_txt(i):
     return "BREACHED" if rem <= 0 else f"{int(rem)}h {int((rem % 1) * 60)}m left"
 
 
-# ================================================================= Collapsible sections (Incidents page)
+# ================================================================= The incident (one scroll)
 def _render_incident_detail(dom, ref, you_role):
-    """The selected incident's details — rendered in the incident dialog."""
-    lens = st.radio("View", ["Resolution thread", "Act & verify (guided)"], horizontal=True,
-                    key="ws_mode_" + ref, label_visibility="collapsed",
-                    help="The thread explains what happened; the guided view is where you execute, "
-                         "verify and close.")
-    _prev_lens = st.session_state.get("_lens_" + ref)
-    if _prev_lens is not None and _prev_lens != lens:
-        # A stage action sets a more specific target first; switching the lens must not overwrite it.
-        st.session_state.setdefault("_scroll_anchor", f"ws_lens_{ref}")
-    st.session_state["_lens_" + ref] = lens
+    """The incident itself: thread, actions, close gate and learn record in one scroll.
+
+    v99 removed the thread/guided switch. Two lenses meant the person had to decide how to read
+    before reading, and the actions hid behind one of them. Every stage keeps its section anchor,
+    so the primary action still lands the page on the step it names."""
     if dom == "DataOps":
         data = DE.load()
         inc = next((i for i in data["incidents"] if i["id"] == ref), None)
         if inc is None:
             st.warning("Incident not found.")
             return
-        if lens == "Resolution thread":
-            command_center.dop_command(inc, data)
-        else:
-            DV.pipeline_view(inc, data)
+        DV.pipeline_view(inc, data)
     else:
         ctx = _it_ctx()
         inc = _find_it(ref)
         if inc is None:
             st.warning("Incident not found.")
             return
-        if lens == "Resolution thread":
-            command_center.it_command(inc, ctx)
-        else:
-            personas.incident_view(inc, ctx)
+        personas.incident_view(inc, ctx)
 
 
 def _open(dom, ref):
@@ -385,6 +378,49 @@ def _collab_bar(dom, ref, you_role):
         st.caption("No open requests on this incident — use **Collaborate** to ask someone, with a deadline.")
 
 
+def _core_strip(dom, ref, inc):
+    """The first thing readable on any incident: cross-domain, wait + SLA, and the open request.
+
+    Collaboration and speed are the story; this strip is where they are stated before any evidence.
+    """
+    corr = journey.correlation_for(ref)
+    asks = [d for d in collab.delegations(ref) if d["status"] != "done"]
+
+    def _age(d):
+        try:
+            return int((dt.datetime.now() - dt.datetime.fromisoformat(d["ts"])).total_seconds() / 60)
+        except Exception:
+            return 0
+
+    oldest = min(asks, key=lambda d: d["ts"] or "") if asks else None
+    late = [d for d in asks if collab.is_overdue(d, 30)]
+    wait_txt = "nobody"
+    if oldest:
+        m = _age(oldest)
+        wait_txt = (f'{m} min' if m < 90 else f'{m // 60}h {m % 60:02d}m') + f' · {oldest["to_"]}'
+    sla_txt = _sla_txt(inc)
+    cross_txt = f'⇄ {corr["other_id"]} · {corr["other_domain"]}' if corr else "—"
+    viz.fact_cards([
+        ("Cross-domain", cross_txt, "#7c3aed" if corr else "#94a3b8"),
+        ("Waiting on", wait_txt, "#b45309" if oldest else "#94a3b8"),
+        ("SLA remaining", sla_txt, "#dc2626" if sla_txt == "BREACHED" else "#0891b2"),
+        ("Open requests", f'{len(asks)}' + (f' · {len(late)} overdue' if late else ""),
+         "#dc2626" if late else "#0d9488"),
+    ])
+    if oldest:
+        tone = "#b91c1c" if oldest in late else "#92400e"
+        st.markdown(
+            f'<div style="margin:2px 0 6px;font-size:13px"><b>Open request</b> — '
+            f'{oldest["to_"]} · {oldest["action"]} · asked {_age(oldest)} min ago · '
+            f'<span style="color:{tone};font-weight:700">'
+            f'{"OVERDUE" if oldest in late else oldest["status"]}</span></div>',
+            unsafe_allow_html=True)
+    else:
+        st.caption("No open request on this incident — use Collaborate to ask someone, with a deadline.")
+    if corr:
+        st.caption(f'Shared cause with {corr["other_domain"]} {corr["other_id"]}: {corr["shared_cause"]}')
+
+
 def _ws_panel_css(ref):
     """The page scrolls; the identity bar stays pinned to the top of it.
 
@@ -528,28 +564,17 @@ def render_workspace_page(dom, ref, you_role):
             st.rerun()
 
     st.query_params["inc"] = ref
-    # The thread flows in the page and the identity bar pins to the top of that one scroll surface —
-    # the bar is a sticky child of the app's scroll container, so there is no second scrollbar inside
-    # the walkthrough. Sections carry scroll margins; actions jump to them (see _scroll_to_anchor).
+    _core_strip(dom, ref, inc)
+    # The page is the only scroll surface: the identity bar is a sticky child of the app's scroll
+    # container, and every stage section carries a scroll margin so an action can land on it.
     _ws_panel_css(ref)
     _collab_bar(dom, ref, you_role)
     with st.container(border=True, key=f"ws_panel_{ref}"):
         with st.container(key=f"ws_lens_{ref}"):
             _render_incident_detail(dom, ref, you_role)
-        # The guided view puts the gate inside its own Close step; rendering it twice reads as a bug.
-        if st.session_state.get(f"ws_mode_{ref}") != "Act & verify (guided)":
-            st.divider()
-            _asks = [d for d in collab.delegations(ref) if d["status"] != "done"]
-
-            def _finish(d):
-                collab.set_delegation_status(d["id"], "done", actor=d["to_"])
-                st.session_state["flash"] = f'Marked done — {d["to_"]} replied on the thread (simulated).'
-
-            with st.container(key=f"ws_gate_{ref}"):
-                viz.closure_gate(journey.closure_state(inc),
-                                 on_close=lambda: journey.close_incident(ref, you_role),
-                                 actor=you_role, expanded=st.session_state.pop("ws_show_gate", False),
-                                 asks=_asks, on_done=_finish, prefix=f"page_{ref}")
+        st.divider()
+        with st.container(key=f"ws_activity_{ref}"):
+            activity_section(ref)
 
     _anchor = st.session_state.pop("_scroll_anchor", None)
     if _anchor:
@@ -975,10 +1000,14 @@ def render_learn():
 
 
 # ================================================================= Activity & audit (page)
-def render_activity():
-    st.subheader("Activity & audit — actions, handoffs, verification")
+def activity_section(ref=None, heading=True):
+    """Activity & audit as a section of the incident screen (v99 folded the page in here).
+
+    `ref` scopes it to one incident; without it the section covers the whole board."""
+    if heading:
+        st.markdown("**Activity & audit** — actions, handoffs, verification records")
     st.caption("Persisted records from the current data (sample).")
-    refs = [i["id"] for i in _it_inc] + [i["id"] for i in _dop_inc]
+    refs = [ref] if ref else [i["id"] for i in _it_inc] + [i["id"] for i in _dop_inc]
     t1, t2, t3 = st.tabs(["Comments", "Handoffs", "Verification records"])
     with t1:
         rows = []
@@ -1024,13 +1053,15 @@ if nav == journey.WORKSPACE_NAV:
     if _sel:
         render_workspace_page(_sel["domain"], _sel["ref"], you_role)
     else:
+        st.caption("No incident is open — pick one from the list.")
         render_incidents(you_role)
+elif nav == "Incidents":
+    render_incidents(you_role)
 elif nav == "Learn":
     render_learn()
 elif nav == "Analytics":
     render_analytics()
-elif nav == "Activity & audit":
-    render_activity()
+
 
 if not st.session_state.get("open_incident"):
     st.divider()

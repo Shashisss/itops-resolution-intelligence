@@ -371,4 +371,11 @@ try:
 except Exception:
     pass
 os.replace(TMP, DB)
+# Project the node/edge store from the rows just written (v99). The UI reads the graph; the flat
+# tables remain the write model, and this projection is the migration path for older databases.
+try:
+    import graph
+    graph.project(DB, now=now)
+except Exception as exc:                      # a seed that half-projects must say so
+    print(f"graph projection failed: {type(exc).__name__}: {exc}")
 print("Seeded one connected scenario (source schema change → pipeline failure → stale data → business incident).")

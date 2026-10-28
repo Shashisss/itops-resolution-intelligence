@@ -18,7 +18,12 @@ CONF_RANK = {"high": 3, "medium": 2, "low": 1}
 # stage after Close: a closed incident is not finished until what worked is captured.
 LIFECYCLE = ["Detect", "Triage", "Investigate", "Correlate", "Act", "Verify", "Close", "Learn"]
 # The nav target that opens an incident workspace (kept here so shell/app/callbacks agree).
-WORKSPACE_NAV = "Incidents"
+WORKSPACE_NAV = "Incident"
+
+# The four phases the stepper shows (v99). The eight stages below are what the data records.
+PHASES = viz.PHASES
+phase_of = viz.phase_of
+stages_in_phase = viz.stages_in_phase
 
 _IT_STAGE_TO_THREAD = {"Detected": "Detect", "Triaged": "Triage", "Diagnosed": "Correlate",
                        "Change raised": "Act", "Fix in progress": "Act",

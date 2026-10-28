@@ -11,6 +11,7 @@ CSS = """
 .ri-step.done{background:#16a34a}
 .ri-step.current{background:#4f46e5;animation:ripulse 1.6s infinite}
 .ri-step.todo{background:#e5e7eb;color:#6b7280}
+.ri-substep{display:block;font-size:10.5px;font-weight:600;letter-spacing:.04em;opacity:.9;margin-top:1px}
 .ri-arrow{font-size:16px;color:#94a3b8;animation:rislide 1.2s infinite}
 .ri-arrow.hot{color:#4f46e5}
 @keyframes rislide{0%{transform:translateX(-2px);opacity:.45}50%{transform:translateX(3px);opacity:1}100%{transform:translateX(-2px);opacity:.45}}
@@ -290,6 +291,43 @@ def stepper(stages, current):
         cls = "done" if i < idx else ("current" if i == idx else "todo")
         html.append(f'<span class="ri-step {cls}">{s}</span>')
         if i < len(stages) - 1:
+            hot = " hot" if i == idx - 1 or i == idx else ""
+            html.append(f'<span class="ri-arrow{hot}">➜</span>')
+    html.append("</div>")
+    st.markdown("".join(html), unsafe_allow_html=True)
+
+
+# ---------------------------------------------------------------- phases (v99)
+# Eight stages is too many to read on a projector. The stepper shows four phases; the stage the
+# incident is actually in is named inside the active phase. The stages themselves are untouched —
+# they are what the data, the audit trail and the OLAs record.
+PHASES = ["Detect", "Resolve", "Act & Verify", "Close & Learn"]
+PHASE_OF = {"Detect": "Detect",
+            "Triage": "Resolve", "Investigate": "Resolve", "Correlate": "Resolve",
+            "Act": "Act & Verify", "Verify": "Act & Verify",
+            "Close": "Close & Learn", "Learn": "Close & Learn"}
+
+
+def phase_of(stage):
+    return PHASE_OF.get(stage, PHASES[0])
+
+
+def stages_in_phase(phase):
+    return [s for s in RESOLUTION_FLOW if PHASE_OF.get(s) == phase]
+
+
+def phase_stepper(stage):
+    """Four phase chips; the active one carries the stage name inside it."""
+    phase = phase_of(stage)
+    idx = PHASES.index(phase)
+    html = ['<div class="ri-flow">']
+    for i, p in enumerate(PHASES):
+        cls = "done" if i < idx else ("current" if i == idx else "todo")
+        inner = p
+        if i == idx:
+            inner = (f'{p}<span class="ri-substep">{stage}</span>')
+        html.append(f'<span class="ri-step {cls}">{inner}</span>')
+        if i < len(PHASES) - 1:
             hot = " hot" if i == idx - 1 or i == idx else ""
             html.append(f'<span class="ri-arrow{hot}">➜</span>')
     html.append("</div>")
@@ -650,6 +688,20 @@ def kpi_row(items):
             f'<div class="l">{label}</div>'
             f'<div class="v{_vcls(value)}" title="{value}">{value}</div>{sub_html}</div>')
     st.markdown(f'<div class="ri-facts">{"".join(cells)}</div>', unsafe_allow_html=True)
+
+
+def stage_head(stage, note=None):
+    """A stage section header for the single-scroll incident screen: number, name, its phase."""
+    n = RESOLUTION_FLOW.index(stage) + 1 if stage in RESOLUTION_FLOW else ""
+    st.markdown(
+        f'<div style="display:flex;align-items:baseline;gap:9px;margin:18px 0 2px;'
+        f'border-bottom:1px solid #e2e8f0;padding-bottom:4px">'
+        f'<span style="font-size:11px;font-weight:700;color:#94a3b8">{n}</span>'
+        f'<span style="font-size:16px;font-weight:700;color:#0f172a">{stage}</span>'
+        f'<span style="font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;'
+        f'color:#4f46e5">{phase_of(stage)}</span></div>', unsafe_allow_html=True)
+    if note:
+        st.caption(note)
 
 
 def handshake(text):

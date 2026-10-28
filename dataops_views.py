@@ -10,6 +10,7 @@ import journey
 import shell
 import viz
 import collab
+import graph_views
 
 PERSONAS = ["Data Engineer", "Data Owner", "Platform Engineer", "Data Consumer"]
 DOP_STEP_HELP = {
@@ -52,7 +53,7 @@ def context_header(inc, data):
     name = data["datasets"].get(ds, {}).get("name", ds)
     fresh_txt, breach, _, _ = _fresh(data, ds)
     downs, cons = DE.impact(ds, data)
-    viz.stepper(journey.LIFECYCLE, journey.lifecycle_stage(inc))
+    viz.phase_stepper(journey.lifecycle_stage(inc))
     _owner = pipe.get("owner_team", inc["owner_team"])
     ola = next((o for o in E.load_olas() if o["team"] == _owner), None)
     ola_txt = "not defined"
@@ -203,12 +204,11 @@ def verify_panel(inc, data):
                      "Outcome independently verified.",
             partial="Partial recovery only — freshness improved but downstream is NOT fully healthy; repair ongoing.",
             failed="The repair did NOT restore freshness/quality — escalated.")
-    journey.render_correlation(inc["id"])
 
 
 # ---------------------------------------------------------------- personas
 def pipeline_view(inc, data):
-    st.subheader("Pipeline intelligence — full walkthrough")
+    """One scroll: the pipeline incident with every stage as a section, all anchors kept."""
     context_header(inc, data)
     fresh_txt0, _, _, _ = _fresh(data, inc["dataset_id"])
     viz.status_bar(f'{inc["id"]} · {inc["priority"]} · owner {inc["owner_team"]} · '
@@ -277,6 +277,8 @@ def pipeline_view(inc, data):
         with st.expander("🎯 Pipeline RCA — hypotheses", expanded=True):
             hypotheses(inc, data, limit=None)
         journey.render_correlation(inc["id"])
+        st.markdown("**Connections** — the graph behind this incident")
+        graph_views.connections_panel(inc["id"], key="dop_conn_" + inc["id"])
 
     def act():
         with st.expander("Recommended repair (policy-governed)", expanded=True):
@@ -307,13 +309,15 @@ def pipeline_view(inc, data):
         import learn
         learn.panel(inc, "DataOps", actor=st.session_state.get("you_role", "Data Owner"))
 
-    stages = journey.LIFECYCLE
-    start = stages.index(journey.lifecycle_stage(inc))
-    journey.wizard("dop_step_" + inc["id"], stages,
-                   {"Detect": detect, "Triage": triage, "Investigate": investigate,
-                    "Correlate": correlate, "Act": act, "Verify": lambda: verify_panel(inc, data),
-                    "Close": close, "Learn": learn_stage},
-                   default=start, help=DOP_STEP_HELP, handoffs=DOP_HANDOFFS)
+    sections = {"Detect": detect, "Triage": triage, "Investigate": investigate,
+                "Correlate": correlate, "Act": act, "Verify": lambda: verify_panel(inc, data),
+                "Close": close, "Learn": learn_stage}
+    for stage in journey.LIFECYCLE:
+        with st.container(key=f"dop_step_{inc['id']}_anchor_{stage}"):
+            viz.stage_head(stage, DOP_STEP_HELP.get(stage))
+            if DOP_HANDOFFS.get(stage):
+                viz.handshake(DOP_HANDOFFS[stage])
+            sections[stage]()
 
 
 def data_engineer_view(inc, data):

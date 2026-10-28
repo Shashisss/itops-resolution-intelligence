@@ -8,11 +8,14 @@ import streamlit as st
 import viz
 import collab
 
+# Four destinations (v99). The incident is its own destination: thread, actions, close gate and
+# learn record live on one screen, and Activity & audit is a section at the bottom of it rather than
+# a place to go.
 NAV_ITEMS = [
     ("Incidents", "▤", "Unified list, filters, severity, ownership, lifecycle."),
+    ("Incident", "◉", "The open incident — thread, actions, close gate and learn in one scroll."),
     ("Learn", "◎", "Reusable records — what worked, and incidents with the same signature."),
     ("Analytics", "↗", "MTTR, recurrence, verification outcomes, operational trends."),
-    ("Activity & audit", "◷", "Actions, approvals, handoffs, verification records."),
 ]
 NAV = [n for n, _, _ in NAV_ITEMS]
 
@@ -77,7 +80,10 @@ def _apply_persona():
 
 def _set_nav(value):
     """Sidebar navigation. Choosing Incidents is also the way back out of an incident workspace —
-    without clearing the selection the button looked dead, because the workspace re-rendered."""
+    without clearing the selection the button looked dead, because the workspace re-rendered.
+    Choosing Incident keeps whatever is open; with nothing open it shows the list."""
+    if value == "Incident" and not st.session_state.get("open_incident"):
+        value = "Incidents"
     st.session_state["nav"] = value
     if value == "Incidents":
         st.session_state.pop("open_incident", None)

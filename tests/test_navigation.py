@@ -54,8 +54,8 @@ def test_open_incident_shows_workspace_and_url():
     find_button(at, "INC-8841").click().run()
     assert not at.exception, at.exception
     text = " ".join(str(x.value) for x in at.markdown)
-    assert "Resolution lifecycle" in text or "Resolution lifecycle" in " ".join(
-        str(x.value) for x in at.expander) or True
+    assert "Cross-domain" in text and "SLA remaining" in text, "the core strip must be readable first"
+    assert "Connections" in text, "the graph panel is part of the incident screen"
     assert at.session_state["open_incident"]["ref"] == "INC-8841"
     assert at.query_params.get("inc") == "INC-8841"
 

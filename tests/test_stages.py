@@ -62,7 +62,7 @@ def test_thread_spine_uses_the_same_stages(db):
     inc = dict(con.execute("SELECT * FROM incidents WHERE id='INC-8841'").fetchone())
     con.close()
     items = command_center._thread_spine(inc, deleg=False, confirmed=False, verdict="Investigating")
-    assert [i[0] for i in items] == EXPECTED
+    assert [i[0] for i in items] == viz.PHASES, "the spine reads as four phases"
 
 
 def test_every_next_action_names_a_stage_on_the_list(db):
@@ -72,3 +72,17 @@ def test_every_next_action_names_a_stage_on_the_list(db):
     con.close()
     for inc in rows:
         assert journey.next_action(inc)["stage"] in EXPECTED, inc["id"]
+
+
+def test_four_phases_cover_the_eight_stages_exactly_once():
+    """v99: the stepper shows phases; the stages are untouched underneath."""
+    assert viz.PHASES == ["Detect", "Resolve", "Act & Verify", "Close & Learn"]
+    covered = []
+    for phase in viz.PHASES:
+        covered += viz.stages_in_phase(phase)
+    assert covered == EXPECTED, "every stage belongs to exactly one phase, in order"
+    assert journey.phase_of("Detect") == "Detect"
+    assert journey.phase_of("Triage") == journey.phase_of("Investigate") == journey.phase_of("Correlate") == "Resolve"
+    assert journey.phase_of("Act") == journey.phase_of("Verify") == "Act & Verify"
+    assert journey.phase_of("Close") == journey.phase_of("Learn") == "Close & Learn"
+    assert journey.PHASES == viz.PHASES

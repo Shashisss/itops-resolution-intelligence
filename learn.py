@@ -185,6 +185,13 @@ def save(inc, domain, fields, actor="Incident Manager"):
     recs = [r for r in _read() if r.get("ref") != ref]
     recs.append(rec)
     _write(recs)
+    # the graph reads learn records too: re-project so the new record shows in Connections without
+    # waiting for the next session
+    try:
+        import graph
+        graph.project(DB)
+    except Exception:
+        pass
     return rec
 
 

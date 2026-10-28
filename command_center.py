@@ -186,13 +186,24 @@ def _thread_spine(inc, deleg, confirmed, verdict):
         ("Learn", learn_status, "What worked captured as a reusable record", "Learn"),
     ]
     cur = next((s[0] for s in stages if s[1] == "current"), None)
+    # v99: the spine reads as four phases; the stage the incident is in is named inside its phase.
     items = []
-    for title, status, detail, key in stages:
-        if key in olas:
-            ola = _stage_ola_live(inc, key, olas[key]) if key == cur else f'{olas[key]}m'
+    for phase in viz.PHASES:
+        members = [s for s in stages if viz.phase_of(s[0]) == phase]
+        statuses = [m[1] for m in members]
+        status = ("current" if "current" in statuses
+                  else "blocked" if "blocked" in statuses
+                  else "failed" if "failed" in statuses
+                  else "done" if all(x == "done" for x in statuses) else "todo")
+        active = next((m for m in members if m[1] == "current"), None)
+        detail = (f'{active[0]} — {active[2]}' if active
+                  else " · ".join(m[0] for m in members) + (" complete" if status == "done" else ""))
+        targets = [olas[m[0]] for m in members if m[0] in olas]
+        if active and active[0] in olas:
+            ola = _stage_ola_live(inc, active[0], olas[active[0]])
         else:
-            ola = None
-        items.append((title, status, detail, ola))
+            ola = f'{sum(targets)}m' if targets else None
+        items.append((phase, status, detail, ola))
     return items
 
 

@@ -68,10 +68,15 @@ def test_guided_walkthrough_step_is_remembered_per_incident():
     assert at.session_state["it_step_INC-8841"] == "Verify"
 
 
-def test_dataops_workspace_uses_the_same_anchored_wizard():
+def test_dataops_workspace_is_the_same_one_scroll_with_the_same_anchors():
+    """v99 removed the lens switch and the step control: both domains render every stage as an
+    anchored section in one scroll, and a stage action still lands on its own section."""
     at = open_incident("DOP-1001")
     assert not at.exception, at.exception
-    at.radio(key="ws_mode_DOP-1001").set_value("Act & verify (guided)").run()
+    text = all_markdown(at)
+    assert "Connections" in text, "the incident screen carries the connections section"
+    assert "Close & Learn" in text, "the phase name appears in the stage headers"
+    assert not any(r.key == "ws_mode_DOP-1001" for r in at.radio), "the lens switch is gone"
+    at.session_state["_scroll_anchor"] = "dop_step_DOP-1001_anchor_Act"
+    at.run()
     assert not at.exception, at.exception
-    assert at.session_state["dop_step_DOP-1001"] in ("Detect", "Correlate", "Coordinate",
-                                                    "Act", "Verify", "Close")

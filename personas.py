@@ -12,6 +12,7 @@ import developer
 import journey
 import viz
 import collab
+import graph_views
 import shell
 
 SLA_HOURS = {"P1": 4, "P2": 8, "P3": 24, "P4": 72}
@@ -78,7 +79,7 @@ def context_header(inc, ctx):
     chain = E.dependency_paths(G, inc["service_id"])[0]
     biz = E.business_service(G, chain, services)
     sla_txt, rem, target, elapsed = _sla_detail(inc)
-    viz.stepper(journey.LIFECYCLE, journey.lifecycle_stage(inc))
+    viz.phase_stepper(journey.lifecycle_stage(inc))
     k = _kpi(ctx, biz)
     ola = next((o for o in E.load_olas() if o["team"] == inc["owner_team"]), None)
     ola_txt = "not defined"
@@ -250,17 +251,18 @@ def verify_panel(inc, ctx):
                      "Outcome independently verified.",
             partial="Partial improvement only — the service is better but NOT fully restored; teams are still working.",
             failed="The attempted repair did NOT restore service — escalated for immediate action.")
-    journey.render_correlation(inc["id"])
 
 
 # ---------------------------------------------------------------- personas
-def incident_view(inc, ctx):
+
+def incident_sections(inc, ctx):
+    """The whole incident in ONE scroll — thread, actions, close gate and learn record.
+
+    v99 removed the guided/thread switch and the eight-step control: the reader now lands on the
+    incident and scrolls, and the primary action jumps to the section it names (each section keeps
+    its stage anchor, so the audit trail and the OLAs are untouched)."""
     services, changes, metrics, incidents, G = (ctx["services"], ctx["changes"], ctx["metrics"],
                                                  ctx["incidents"], ctx["G"])
-    st.subheader("Incident intelligence — full walkthrough")
-    context_header(inc, ctx)
-    viz.status_bar(f'{inc["id"]} · {inc["priority"]} · owner {inc["owner_team"]} · '
-                   f'SLA {_sla_detail(inc)[0]} · {journey.current_verdict(inc)}')
 
     def detect():
         with st.expander("Detection", expanded=True):
@@ -323,6 +325,8 @@ def incident_view(inc, ctx):
         with st.expander("🎯 Root cause — hypotheses with evidence", expanded=True):
             hypotheses(inc, ctx, limit=None)
         journey.render_correlation(inc["id"])
+        st.markdown("**Connections** — the graph behind this incident")
+        graph_views.connections_panel(inc["id"], key="it_conn_" + inc["id"])
 
     def act():
         with st.expander("Recommended action (policy-governed)", expanded=True):
@@ -352,13 +356,26 @@ def incident_view(inc, ctx):
         import learn
         learn.panel(inc, "IT Ops", actor=st.session_state.get("you_role", "Incident Manager"))
 
-    stages = journey.LIFECYCLE
-    start = stages.index(journey.lifecycle_stage(inc))
-    journey.wizard("it_step_" + inc["id"], stages,
-                   {"Detect": detect, "Triage": triage, "Investigate": investigate,
-                    "Correlate": correlate, "Act": act, "Verify": lambda: verify_panel(inc, ctx),
-                    "Close": close, "Learn": learn_stage},
-                   default=start, help=IT_STEP_HELP, handoffs=IT_HANDOFFS)
+    def verify():
+        verify_panel(inc, ctx)
+
+    return {"Detect": detect, "Triage": triage, "Investigate": investigate,
+            "Correlate": correlate, "Act": act, "Verify": verify, "Close": close,
+            "Learn": learn_stage}
+
+
+def incident_view(inc, ctx):
+    """One scroll: identity and carried context, then every stage as a section."""
+    context_header(inc, ctx)
+    viz.status_bar(f'{inc["id"]} · {inc["priority"]} · owner {inc["owner_team"]} · '
+                   f'SLA {_sla_detail(inc)[0]} · {journey.current_verdict(inc)}')
+    sections = incident_sections(inc, ctx)
+    for stage in journey.LIFECYCLE:
+        with st.container(key=f"it_step_{inc['id']}_anchor_{stage}"):
+            viz.stage_head(stage, IT_STEP_HELP.get(stage))
+            if IT_HANDOFFS.get(stage):
+                viz.handshake(IT_HANDOFFS[stage])
+            sections[stage]()
 
 
 def csm_view(inc, ctx):

@@ -1,6 +1,6 @@
 # PROTOTYPE NOTES — Resolution Intelligence POC
 
-Build v98 · sample data · simulated actions. This is a proof of concept, **not** production.
+Build v99 · sample data · simulated actions. This is a proof of concept, **not** production.
 
 ## Persistence boundary — what survives what
 
@@ -87,6 +87,38 @@ Relationships are **structured records** in `thread_edges` (source, target, rela
 observed/inferred kind, evidence source, timestamp, rule-based confidence). UI code no longer
 builds edges by hand; `journey.thread_edges_for()` resolves a thread via the correlation model.
 Inferred relationships are labelled as hypotheses, not proven facts.
+
+## The graph store (v99)
+
+The screen now reads a property graph, not the flat tables: `graph.py` holds `graph_nodes`
+(id, type, business_key, properties, version, valid_from/valid_to) and `graph_edges` (from, to,
+type, properties, source, confidence, basis, version, valid_from/valid_to). Node types are
+Incident, Signal, Change, Service, KPI, Runbook, Learn, Team, Policy; edge types are caused_by,
+observed_in, affects, resolved_by, evidenced_by, learned_from, depends_on.
+
+- **One interface.** `GraphStore.neighbours()`, `path()` and `traverse()` are the only reads the UI
+  does (`graph_views.connections_panel`). Swapping SQLite for Neo4j means reimplementing those
+  three methods plus the upserts — the views do not change.
+- **Provenance is on the edge, not the node.** `basis` is observed or inferred, and `confidence` is
+  0..1 with the `source` string the claim came from. A metric is an observed fact; the claim that
+  it caused the incident is inferred — that is why the DB-saturation signal shows as
+  `inferred · 0.30` next to `observed · 0.90` telemetry.
+- **Projection, not a second fixture.** `graph.project()` reads the relational tables and upserts
+  the graph; `graph.ensure()` runs it when the graph is missing, which is how a database built by
+  an earlier release gains the graph without losing a row. `seed.py` projects after writing.
+  `write_many(..., replace=True)` clears the previous projection first, so a claim the projection
+  no longer makes (a runbook that is no longer recommended) cannot linger.
+- **One definition of staleness still holds.** `data_age_min` and freshness signals take their value
+  from `journey.freshness()` at projection, and the panel rewrites any stored number with
+  `journey._stale_text()` at render, so the graph cannot disagree with the Investigation section.
+- **Legacy labels are migrated once.** Free-text `thread_edges` labels map onto node ids through
+  `LEGACY_ALIASES` (with a name fallback), keeping the original source, confidence and
+  observed/inferred kind.
+
+Limits: the graph is rebuilt from the relational tables on each session start, so an action taken
+mid-session appears in the panel only after the next projection (Learn save triggers one); there is
+no graph query planner, no multi-hop weighting, and `path()` is undirected by default because the
+screen's question is "how are these connected", not "which direction did it flow".
 
 ## Migration path to production
 
