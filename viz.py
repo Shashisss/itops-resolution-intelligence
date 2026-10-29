@@ -259,9 +259,8 @@ div[class*="st-key-nav_"] button p{font-size:13.5px!important}
 .ri-hero3 .f{min-width:0}
 .ri-hero3 .k{font-size:var(--ri-fs-xs);letter-spacing:.06em;text-transform:uppercase;
   color:var(--ri-muted);font-weight:700}
-.ri-hero3 .v{font-size:26px;line-height:1.15;font-weight:800;letter-spacing:-.02em;
-  margin:2px 0 3px;overflow-wrap:normal;word-break:normal}
-@media (max-width:1200px){.ri-hero3 .v{font-size:22px}}
+.ri-hero3 .v{font-size:clamp(20px,1.75vw,26px);line-height:1.15;font-weight:800;
+  letter-spacing:-.02em;margin:2px 0 3px;overflow-wrap:normal;word-break:normal}
 .ri-hero3 .n{font-size:var(--ri-fs-s);color:var(--ri-muted);overflow-wrap:anywhere}
 @media (max-width:900px){.ri-hero3{grid-template-columns:1fr;gap:var(--ri-sp-2)}}
 .ri-chain{display:flex;align-items:stretch;gap:var(--ri-sp-2);flex-wrap:wrap;

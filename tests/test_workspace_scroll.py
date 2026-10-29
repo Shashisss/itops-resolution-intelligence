@@ -8,6 +8,7 @@ section it opened.
 """
 import os
 import pathlib
+import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -40,13 +41,56 @@ def all_markdown(at):
     return " ".join(str(x.value) for x in at.markdown)
 
 
+_PANEL_RULE = re.compile(r"\.st-key-ws_panel_[^{]*\{([^}]*)\}")
+
+
+def panel_declarations(css):
+    """Declarations inside every rule that targets the thread panel.
+
+    The guard is about the panel, not about the whole stylesheet: a clamp() on a font-size elsewhere
+    is legitimate, a clamped height on this container is the nested scroll that v94 removed."""
+    return [m.group(1) for m in _PANEL_RULE.finditer(css)]
+
+
+def panel_height_violations(css):
+    """The bug this test exists to catch: any height cap on the thread panel.
+
+    `height: auto` / `max-height: none` are the fix and pass; a clamp, a px cap or a percentage is
+    a nested scroll and fails. Any clamp() in a panel declaration fails too."""
+    bad = []
+    allowed = {"auto", "none", "unset", "initial", "inherit"}
+    for decls in panel_declarations(css):
+        for decl in decls.split(";"):
+            prop, _, value = decl.partition(":")
+            prop = prop.strip().lower()
+            value = value.replace("!important", "").strip().lower()
+            if "clamp(" in value:
+                bad.append(f"{prop}: {value}")
+            elif prop in ("height", "max-height") and value not in allowed:
+                bad.append(f"{prop}: {value}")
+    return bad
+
+
 def test_thread_panel_is_not_height_clamped():
     at = open_incident()
     css = all_markdown(at)
     assert "st-key-ws_panel_" in css, "the thread container should still be addressed by CSS"
-    assert "clamp(" not in css, "the panel must not have a clamped height — that is the nested scroll"
-    assert "max-height: 560px" not in css, "the old fixed cap is what turned the walkthrough into a keyhole"
+    assert panel_declarations(css), "the panel rule must actually be rendered for this guard to mean anything"
+    assert panel_height_violations(css) == [], (
+        "the panel must not cap its height — that is the nested scroll that turned the walkthrough "
+        f"into a keyhole: {panel_height_violations(css)}")
     assert "scroll-margin-top" in css, "jump targets need a margin so the sticky bar cannot cover them"
+
+
+def test_the_panel_guard_still_catches_a_clamped_height():
+    """The narrowed guard must still fail on the bug it was written for — it is not a weaker test."""
+    assert panel_height_violations(
+        ".st-key-ws_panel_INC-1 { flex: 0 0 auto; height: clamp(300px, 50vh, 560px) !important; }")
+    assert panel_height_violations(".st-key-ws_panel_INC-1 { max-height: 560px !important; }")
+    assert panel_height_violations(".st-key-ws_panel_INC-1 { height: 70vh !important; }")
+    assert panel_height_violations(
+        ".st-key-ws_panel_INC-1 { height: auto !important; max-height: none !important; "
+        "overflow: visible !important; }") == [], "the real fix must pass"
 
 
 def test_primary_action_opens_the_matching_guided_step():
