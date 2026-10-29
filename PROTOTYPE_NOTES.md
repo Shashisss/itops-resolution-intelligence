@@ -1,6 +1,6 @@
 # PROTOTYPE NOTES — Resolution Intelligence POC
 
-Build v100 · sample data · simulated actions. This is a proof of concept, **not** production.
+Build v101 · sample data · simulated actions. This is a proof of concept, **not** production.
 
 ## Persistence boundary — what survives what
 
@@ -87,6 +87,31 @@ Relationships are **structured records** in `thread_edges` (source, target, rela
 observed/inferred kind, evidence source, timestamp, rule-based confidence). UI code no longer
 builds edges by hand; `journey.thread_edges_for()` resolves a thread via the correlation model.
 Inferred relationships are labelled as hypotheses, not proven facts.
+
+## Ask — grounded questions (v101)
+
+The Ask box (Incidents and Analytics) parses a question into a four-intent schema and executes it
+against the same functions the Analytics page uses. No model is called; no answer is written from
+prose.
+
+| Intent | Trigger | Computation |
+|---|---|---|
+| `count` | "how many … incidents/reported/failed/raised" | `analytics.created_between(start, end, status)` — created_at window + status bucket; `failed` = verdict `Recovery failed` |
+| `summary` | an incident id + "summarise / what happened / walk me through" | `timeline` events in order + `story.hero/chain/acceleration` — raise, signals, holder, what unblocked it, how it ended |
+| `held_longest` | "which domain held us longest / slowest" | `analytics.held_by_domain(start, end)` — delegation clocks grouped by the recipient's domain |
+| `median_resolution` | "median / average / typical … resolution / MTTR / time to close" | `analytics.mttr_between(start, end)` — the MTTR filter, windowed by `closed_at` |
+
+Every answer card carries: the interpretation with the exact dates, the number (or the narrative)
+with its n, **Show the query** (the statement actually executed, with its parameters), and the
+tables/definitions it rests on. An unsupported question returns the same card shape with an em dash,
+the reason, and three questions it can answer — it never shows a number.
+
+Windows are rolling and stated in full on the card ("created between 28 Oct 00:00 and 28 Oct 23:59"),
+so "last month" cannot quietly mean two different things. A window with no verified closure answers
+with a dash plus when the most recent closure was, and a chip to widen the window.
+
+Twenty questions (thirteen supported, seven unsupported) plus six behaviour tests live in
+`tests/test_ask.py`; each supported number is checked against an independent SQL count in the test.
 
 ## The story layer (v100) — one definition per claim
 

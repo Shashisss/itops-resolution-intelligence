@@ -259,8 +259,9 @@ div[class*="st-key-nav_"] button p{font-size:13.5px!important}
 .ri-hero3 .f{min-width:0}
 .ri-hero3 .k{font-size:var(--ri-fs-xs);letter-spacing:.06em;text-transform:uppercase;
   color:var(--ri-muted);font-weight:700}
-.ri-hero3 .v{font-size:clamp(20px,1.75vw,26px);line-height:1.15;font-weight:800;letter-spacing:-.02em;
+.ri-hero3 .v{font-size:26px;line-height:1.15;font-weight:800;letter-spacing:-.02em;
   margin:2px 0 3px;overflow-wrap:normal;word-break:normal}
+@media (max-width:1200px){.ri-hero3 .v{font-size:22px}}
 .ri-hero3 .n{font-size:var(--ri-fs-s);color:var(--ri-muted);overflow-wrap:anywhere}
 @media (max-width:900px){.ri-hero3{grid-template-columns:1fr;gap:var(--ri-sp-2)}}
 .ri-chain{display:flex;align-items:stretch;gap:var(--ri-sp-2);flex-wrap:wrap;
@@ -310,6 +311,18 @@ div[class*="st-key-nav_"] button p{font-size:13.5px!important}
 .ri-inherit .m{font-size:var(--ri-fs-xs);color:var(--ri-muted)}
 .ri-inherit ol{margin:6px 0 0 18px;padding:0;font-size:var(--ri-fs-s);color:#334155}
 .ri-inherit li{margin:2px 0}
+/* ---- v101 Ask: the answer card (interpretation → number → query → basis) --------------------- */
+.ri-answer{border:1px solid #c7d2fe;border-left:4px solid var(--ri-accent);border-radius:var(--ri-r);
+  background:#fff;padding:12px 16px;margin:8px 0 6px}
+.ri-answer.refused{border-color:var(--ri-line);border-left-color:#94a3b8}
+.ri-answer .q{font-size:var(--ri-fs-xs);color:var(--ri-muted);font-style:italic}
+.ri-answer .i{font-size:var(--ri-fs-s);color:#334155;margin:4px 0 6px}
+.ri-answer .h{font-size:26px;font-weight:800;color:var(--ri-ink);line-height:1.15}
+.ri-answer .n{font-size:var(--ri-fs-xs);color:var(--ri-muted);font-weight:600;margin-left:9px}
+.ri-answer .p{font-size:var(--ri-fs-s);color:#334155;margin:5px 0}
+.ri-answer .b{font-size:10.5px;color:var(--ri-muted);margin-top:7px;border-top:1px dashed var(--ri-line);
+  padding-top:5px}
+.ri-cite{font-size:11px;color:#475569;margin:1px 0 0 2px}
 </style>
 """
 

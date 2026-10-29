@@ -24,12 +24,14 @@ import graph
 import graph_views
 import shell
 import story
+import ask
+import ask_view
 import workspace
 import realtime
 
 
 _RELOAD_TARGETS = (viz, journey, collab, analytics, learn, E, DE, personas, DV, workspace,
-                   command_center, shell, realtime, graph, graph_views, story)
+                   command_center, shell, realtime, graph, graph_views, story, ask, ask_view)
 
 
 def _refresh_modules():
@@ -106,6 +108,7 @@ for _mod in (E, DE, journey, collab, analytics, realtime):
 learn.DB = _DB_PATH          # learn records live outside the session copy on purpose (durable)
 graph.DB = _DB_PATH          # the views read the graph, not the flat tables
 story.DB = _DB_PATH          # one definition for every number the story layer states
+ask.DB = _DB_PATH            # the Ask box executes against this session's copy
 with st.spinner("Building the connection graph for this session…"):
     _GRAPH_INFO = graph.ensure(_DB_PATH)   # idempotent projection — an older database gains the graph
 _DEMO_SESSION = store.is_demo()
@@ -554,6 +557,7 @@ def render_incidents(you_role):
     viz.page_head("Incidents",
                   f"<b>{n_open}</b> open · <b>{n_risk}</b> at SLA risk · <b>{n_cross}</b> cross-domain "
                   f"· {len(rows)} total")
+    ask_view.render("ask_inc", "Ask — how many incidents were reported yesterday")
 
     # Filters must survive a trip into an incident and back: Streamlit drops a widget's state when the
     # widget is not rendered, so the values are mirrored in plain session keys and restored here.
@@ -710,6 +714,13 @@ def render_analytics():
     viz.page_head("Analytics — resolution performance",
                   "Every figure is measured from stored lifecycle timestamps; each panel states its "
                   "provenance and its sample size.")
+    ask_view.render("ask_an", "Ask — what is our median resolution time this week")
+    _wk = (dt.datetime.now() - dt.timedelta(days=6)).replace(hour=0, minute=0, second=0,
+                                                             microsecond=0)
+    _created = analytics.created_between(_wk.isoformat(timespec="seconds"), None)
+    st.caption(f'Definitions on this page: {_created["n"]} incidents created in the last 7 days of '
+               f'{_created["checked"]} on record · MTTR from verified closures only · handoffs from '
+               f'delegations. The Ask box answers with these same functions.')
     m = analytics.mttr()
     st_d = analytics.stage_durations()
     ola = analytics.ola_vs_actual()

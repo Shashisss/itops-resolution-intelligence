@@ -388,6 +388,110 @@ def sla_load():
             "breaches": sum(b["breaches"] for b in rows)}
 
 
+# ---------------------------------------------------------------- v101: windowed views (used by Ask)
+# The Ask box may only answer with the same computations these pages use, so the definitions live
+# here and both callers share them. Each returns the SQL that was actually executed, with its
+# parameters, so an answer card can show it without rebuilding it.
+_STATUS_SQL = {"all": "", "open": "a.status = 'open'", "closed": "a.status = 'closed'",
+               "failed": "COALESCE(r.verdict, '') = 'Recovery failed'"}
+
+
+def created_between(start, end, status="all"):
+    """Incidents created in [start, end) — IT and DataOps — optionally filtered by a status bucket.
+
+    `failed` means the verified recovery failed; an incident without a resolution record is not a
+    failure, it is unknown, so it is excluded rather than counted."""
+    where, params = [], {}
+    if start:
+        where.append("a.created_at >= :start")
+        params["start"] = start
+    if end:
+        where.append("a.created_at < :end")
+        params["end"] = end
+    if _STATUS_SQL.get(status):
+        where.append(_STATUS_SQL[status])
+    sql = ("WITH all_inc AS (\n"
+           "  SELECT id, created_at, status FROM incidents\n"
+           "  UNION ALL\n"
+           "  SELECT id, created_at, status FROM dop_incidents\n"
+           ")\n"
+           "SELECT a.id, a.created_at, a.status, COALESCE(r.verdict, '') AS verdict\n"
+           "FROM all_inc a LEFT JOIN resolution_state r ON r.ref_id = a.id"
+           + ("\nWHERE " + " AND ".join(where) if where else ""))
+    con = _connect()
+    try:
+        rows = [dict(r) for r in con.execute(sql, params)]
+    finally:
+        con.close()
+    total = len(incidents())
+    return {"n": len(rows), "rows": rows, "checked": total, "sql": sql,
+            "params": params, "status": status}
+
+
+def mttr_between(start=None, end=None):
+    """MTTR for closures in [start, end) — the same filter as mttr(), restricted by closed_at.
+
+    `mttr()` with no arguments must stay identical: the test suite asserts the two agree."""
+    where = "r.verdict = 'Verified' AND r.closed_at IS NOT NULL"
+    params = {}
+    if start:
+        where += " AND r.closed_at >= :start"
+        params["start"] = start
+    if end:
+        where += " AND r.closed_at < :end"
+        params["end"] = end
+    sql = ("SELECT r.ref_id, r.closed_at, i.created_at\n"
+           "FROM resolution_state r\n"
+           "JOIN (SELECT id, created_at FROM incidents\n"
+           "      UNION ALL SELECT id, created_at FROM dop_incidents) i ON i.id = r.ref_id\n"
+           f"WHERE {where}")
+    con = _connect()
+    try:
+        rows = [dict(r) for r in con.execute(sql, params)]
+    finally:
+        con.close()
+    values = []
+    for row in rows:
+        mins = _minutes(row["closed_at"], row["created_at"])
+        if mins is not None:
+            values.append(mins)
+    return {"median_min": _median(values), "p90_min": _pct(values, 0.9), "n": len(values),
+            "values": values, "sql": sql, "params": params}
+
+
+def held_by_domain(start, end, now=None):
+    """Total minutes incidents spent waiting on each domain, for requests raised in [start, end).
+
+    The clock is the request's own: raised → done (or now, when still open). A domain's total is the
+    sum of the clocks of the requests addressed to its teams — the same delegation rows the
+    coordination figures above use."""
+    now = now or dt.datetime.now().replace(microsecond=0).isoformat(timespec="seconds")
+    sql = ("SELECT d.to_ AS team, COUNT(*) AS requests,\n"
+           "       ROUND(SUM((julianday(COALESCE(d.done_at, :now)) - julianday(d.ts)) * 1440), 1) AS minutes\n"
+           "FROM delegations d\n"
+           "WHERE d.ts IS NOT NULL AND d.ts >= :start AND d.ts < :end\n"
+           "GROUP BY d.to_ ORDER BY minutes DESC")
+    con = _connect()
+    try:
+        rows = [dict(r) for r in con.execute(sql, {"now": now, "start": start, "end": end})]
+    finally:
+        con.close()
+    teams = {r["team"]: r for r in rows if r.get("team")}
+    domains = {}
+    for team, r in teams.items():
+        dom = "Data Platform" if team in DATA_TEAMS else "IT Ops"
+        d = domains.setdefault(dom, {"domain": dom, "minutes": 0.0, "requests": 0})
+        d["minutes"] = round(d["minutes"] + (r["minutes"] or 0), 1)
+        d["requests"] += r["requests"]
+    ranked = sorted(domains.values(), key=lambda d: d["minutes"], reverse=True)
+    return {"rows": ranked, "teams": rows, "n": sum(r["requests"] for r in rows),
+            "sql": sql, "params": {"now": now, "start": start, "end": end}}
+
+
+DATA_TEAMS = {"Data Platform", "Data Engineer", "Data Owner", "Finance Data",
+              "Analytics Engineering", "Data Consumer"}
+
+
 def learning():
     """Learning metrics: cause-confirmation accuracy, reuse, and the size of the record set.
 
