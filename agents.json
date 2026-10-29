@@ -1,0 +1,97 @@
+{
+  "_comment": "Static per-incident agent definitions (v102). Narrative only — every number in the panel is computed from the incident record at render time by agents.facts(). No agent runs, nothing is sent.",
+  "incidents": {
+    "INC-8841": {
+      "orchestrator": {
+        "decision": "Route to Data Platform; keep Platform Engineering on the thread.",
+        "facts": ["freshness", "error_rate", "upstream"]
+      },
+      "specialist": {
+        "agent": "RCA specialist",
+        "did": "Ranked both domains' causes and kept the database-saturation lead as secondary."
+      },
+      "handoff": {
+        "to": "Data Platform",
+        "ask": "Confirm contract v4 is deployed and replay the payments_bronze_ingest run."
+      },
+      "rung": "draft"
+    },
+    "INC-8850": {
+      "orchestrator": {
+        "decision": "Keep it inside Orders Team; no upstream data signal is recorded yet.",
+        "facts": ["sla", "owner"]
+      },
+      "specialist": {
+        "agent": "RCA specialist",
+        "did": "Ranked the release change above the latency metrics and left the cache lead open."
+      },
+      "handoff": {
+        "to": "Orders Team",
+        "ask": "Confirm release 24.10 is rolled back on the orders API."
+      },
+      "rung": "suggest"
+    },
+    "INC-8802": {
+      "orchestrator": {
+        "decision": "Closed on the verified record — no routing and no handoff.",
+        "facts": ["sla"]
+      },
+      "specialist": {
+        "agent": "RCA specialist",
+        "did": "Recorded the confirmed cause and the steps that worked for the Learn record."
+      },
+      "handoff": {
+        "to": "Checkout Team",
+        "ask": "None — the incident is closed; the runbook carries forward instead."
+      },
+      "rung": "suggest"
+    },
+    "DOP-1001": {
+      "orchestrator": {
+        "decision": "Data Platform owns both ends of this pipeline; escalate to the ingest owner.",
+        "facts": ["freshness", "upstream"]
+      },
+      "specialist": {
+        "agent": "RCA specialist",
+        "did": "Ranked the core_ledger schema change above the freshness breach."
+      },
+      "handoff": {
+        "to": "Data Engineer",
+        "ask": "Confirm the core_ledger schema change and replay P-PAY-ING from the last good offset."
+      },
+      "rung": "suggest"
+    }
+  },
+  "agents": [
+    {
+      "name": "RCA specialist",
+      "status": "RCA live",
+      "allowed": "Ranks causes from stored signals; reads only — cannot execute or close."
+    },
+    {
+      "name": "Detection triage",
+      "status": "design",
+      "allowed": "Groups alerts into one incident; cannot assign an owner."
+    },
+    {
+      "name": "Data quality",
+      "status": "design",
+      "allowed": "Checks freshness and contract rules; read-only."
+    },
+    {
+      "name": "Runbook",
+      "status": "design",
+      "allowed": "Proposes the next step; cannot apply a fix."
+    },
+    {
+      "name": "Comms",
+      "status": "design",
+      "allowed": "Drafts an update for a human to send."
+    },
+    {
+      "name": "Verification",
+      "status": "design",
+      "allowed": "Re-runs checks and records a verdict; never closes."
+    }
+  ]
+}

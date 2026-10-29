@@ -122,8 +122,8 @@ def impact(inc):
         name = svc[0]["name"] if svc else biz
         if kpi:
             k = kpi[0]
-            return {"text": f'{name} · {k["metric"].replace("_", " ")} {k["current"]:g}{k["unit"]} '
-                            f'vs {k["baseline"]:g}{k["unit"]}',
+            return {"text": f'{name} · {k["metric"].replace("_pct", "").replace("_", " ")} '
+                            f'{k["current"]:g}{k["unit"]} vs {k["baseline"]:g}{k["unit"]}',
                     "service": name, "kpi": k}
         return {"text": name, "service": name, "kpi": None}
     if inc.get("dataset_id"):

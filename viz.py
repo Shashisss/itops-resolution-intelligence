@@ -323,6 +323,26 @@ div[class*="st-key-nav_"] button p{font-size:13.5px!important}
 .ri-answer .b{font-size:10.5px;color:var(--ri-muted);margin-top:7px;border-top:1px dashed var(--ri-line);
   padding-top:5px}
 .ri-cite{font-size:11px;color:#475569;margin:1px 0 0 2px}
+/* ---- v102 Who's on it: static agent panel ----------------------------------------------- */
+.ri-agents .hd{display:flex;align-items:center;gap:8px;font-size:15.5px;font-weight:750;
+  color:var(--ri-ink);margin:6px 0 4px}
+.ri-simchip{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.06em;
+  border:1px solid #f59e0b;color:#92400e;background:#fffbeb;border-radius:999px;padding:2px 8px}
+.ri-ablock{border:1px solid var(--ri-line);border-left:3px solid var(--ri-accent);border-radius:10px;
+  padding:9px 13px;margin:6px 0;background:#fff}
+.ri-ablock.draft{border-left-color:#0d9488;background:#f8fafc}
+.ri-ablock .t{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ri-muted);
+  font-weight:800}
+.ri-ablock .d{font-size:13.5px;color:var(--ri-ink);font-weight:650;margin:3px 0 4px}
+.ri-ablock .s{font-size:12px;color:#475569}
+.ri-ablock .m{font-size:11px;color:var(--ri-muted);margin-top:4px}
+.ri-factchip{display:inline-block;font-size:11px;color:#334155;background:#f8fafc;
+  border:1px solid var(--ri-line);border-radius:999px;padding:2px 8px;margin:3px 4px 0 0}
+.ri-rung .p{display:inline-block;font-size:11.5px;font-weight:700;border:1px solid var(--ri-line);
+  border-radius:999px;padding:3px 10px;margin-right:6px;color:#64748b}
+.ri-rung .p.on{background:var(--ri-accent);border-color:var(--ri-accent);color:#fff}
+.ri-notsent{font-size:10.5px;font-weight:750;color:#92400e;border:1px dashed #fcd34d;
+  background:#fffbeb;border-radius:6px;padding:1px 7px;margin-left:6px}
 </style>
 """
 
@@ -1148,3 +1168,47 @@ def closure_gate(state, on_close, actor="Incident Manager", expanded=False, asks
                     pass
         st.caption("Closure is gated on the authoritative verification record — a fix applied is not a "
                    "closure. Execution and independent verification live in **Act & verify (guided)**.")
+
+
+# ------------------------------------------------------------------ Who's on it (v102)
+def agent_panel_head(p):
+    """Heading + orchestrator + specialist. The simulated chip is part of the heading, visible."""
+    facts = "".join(f'<span class="ri-factchip">{html.escape(f["text"])}</span>'
+                    for f in p["orchestrator"]["facts"])
+    s = p["specialist"]
+    sig = s["signal"]
+    signal = ""
+    if sig.get("score") is not None:
+        signal = (f'<span class="ri-factchip" title="{html.escape(sig["label"])}">'
+                  f'{sig["score"]:.2f} {html.escape(str(sig["basis"]))} signal</span>')
+    st.markdown(
+        f'<div class="ri-agents"><div class="hd">Who’s on it'
+        f'<span class="ri-simchip">SIMULATED</span></div>'
+        f'<div class="ri-ablock"><div class="t">Orchestrator · routing decision</div>'
+        f'<div class="d">{html.escape(p["orchestrator"]["decision"])}</div>'
+        f'<div class="s">{facts}</div></div>'
+        f'<div class="ri-ablock"><div class="t">Specialist · {html.escape(s["agent"])}</div>'
+        f'<div class="s">{html.escape(s["did"])}</div>'
+        f'<div class="m">Reviewed <b>{s["reviewed"]}</b> signals · ranked <b>{s["ranked"]}</b> '
+        f'leads · set aside <b>{s["rejected"]}</b> low-confidence lead(s) {signal}</div></div>',
+        unsafe_allow_html=True)
+
+
+def agent_panel_tail(p):
+    """Handoff draft and the autonomy rung. The controls beside it are rendered by the caller."""
+    h = p["handoff"]
+    rung = "".join(
+        f'<span class="p{" on" if r == p["rung"] else ""}">{html.escape(r)}'
+        f'{" · highlighted" if r == p["rung"] else ""}</span>'
+        for r in ("suggest", "draft", "act with approval"))
+    st.markdown(
+        f'<div class="ri-ablock draft"><div class="t">Handoff · draft ask'
+        f'<span class="ri-notsent">NOT SENT</span></div>'
+        f'<div class="d">{html.escape(h["to"])} — {html.escape(h["ask"])}</div>'
+        f'<div class="m"><b>Stage</b> {html.escape(str(h["stage"]))} · '
+        f'<b>Impact</b> {html.escape(str(h["impact"]))} · '
+        f'<b>Evidence</b> {html.escape(str(h["evidence"]))}</div></div>'
+        f'<div class="ri-ablock"><div class="t">Autonomy rung</div>'
+        f'<div class="ri-rung">{rung}</div>'
+        f'<div class="m">Static definition — no agent is running and nothing is sent.</div></div>'
+        f'</div>', unsafe_allow_html=True)

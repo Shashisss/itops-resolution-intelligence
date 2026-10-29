@@ -4,7 +4,7 @@ Two layers, both runnable without a browser.
 
 ```bash
 python3 -m pip install -r requirements-dev.txt
-python3 -m pytest tests -q          # 84 tests, ~25s
+python3 -m pytest tests -q          # 131 tests, ~30s
 python3 scripts/smoke.py            # deployment smoke test, ~5s
 ```
 
@@ -13,6 +13,33 @@ app headless through Streamlit's own harness, opens an incident, follows the URL
 list and asserts the URL was cleared. It exits non-zero on the first failure.
 
 ## What is covered
+
+### `tests/test_agents.py` — the v102 agent panel, against a throwaway copy of the database
+
+| Test | Asserts |
+|---|---|
+| `test_each_defined_incident_renders_the_panel` | all four defined incidents render the panel, with the visible SIMULATED chip, NOT SENT and exactly one highlighted rung |
+| `test_undefined_incident_shows_a_neutral_empty_state` | an undefined incident invents nothing |
+| `test_panel_numbers_equal_the_record` | wait, holder, SLA, domains, handoffs, stage and signal weight equal the record |
+| `test_inc_8841_shows_the_ledger_signal_at_0_72_inferred` | the ledger signal is 0.72 inferred on INC-8841 |
+| `test_a_changed_record_changes_the_panel` | moving a request's clock changes the panel's waiting figure |
+| `test_facts_are_rendered_into_the_panel_text` | evidence chips come from the record, not the JSON |
+| `test_only_defined_incidents_have_a_panel` | four definitions, and at least one incident left undefined |
+| `test_agents_page_lists_six_rows_one_live` | six rows, one live, each states what it may do |
+
+### `tests/test_ask.py` — the v101 Ask box
+
+| Test | Asserts |
+|---|---|
+| `test_supported_question_parses_and_answers` (19 cases) | intent, answer and n for every supported question, each number against an independent SQL count |
+| `test_unsupported_question_refuses_without_a_number` (7 cases) | refusal, no number, three examples offered |
+| `test_count_uses_the_analytics_definition` | the Ask count is `analytics.created_between` |
+| `test_median_uses_the_analytics_mttr_definition` | the Ask median is `analytics.mttr_between` |
+| `test_the_query_shown_is_the_query_executed` | the displayed SQL runs and returns exactly the printed n |
+| `test_no_answer_comes_from_prose` | every answer carries a number or cited events |
+| `test_summary_tells_the_thread_in_order` | raise → signals → holder → unblocked → end, citations in order |
+| `test_held_longest_names_the_domain_and_its_minutes` | the domain and minutes match `analytics.held_by_domain` |
+| `test_ask_box_renders_on_incidents_and_analytics` | the box is present on both pages |
 
 ### `tests/test_story.py` — the v100 story layer, against a throwaway copy of the database
 

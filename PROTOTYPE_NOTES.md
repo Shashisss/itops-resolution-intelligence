@@ -1,6 +1,6 @@
 # PROTOTYPE NOTES — Resolution Intelligence POC
 
-Build v101 · sample data · simulated actions. This is a proof of concept, **not** production.
+Build v102 · sample data · simulated actions. This is a proof of concept, **not** production.
 
 ## Persistence boundary — what survives what
 
@@ -87,6 +87,35 @@ Relationships are **structured records** in `thread_edges` (source, target, rela
 observed/inferred kind, evidence source, timestamp, rule-based confidence). UI code no longer
 builds edges by hand; `journey.thread_edges_for()` resolves a thread via the correlation model.
 Inferred relationships are labelled as hypotheses, not proven facts.
+
+## Who's on it — the agent panel (v102)
+
+`agents.json` (committed at the repo root) is a **static** per-incident definition: the routing
+decision, the specialist that acted, the draft ask and the autonomy rung. There is no agent runtime,
+no model call and no orchestration engine; the Agents page says so in its header.
+
+The numbers are not in the file. `agents.facts()` computes every one of them from the record at
+render time — waiting clock and holder (`story.waiting`), SLA (`story.sla`), domains and handoffs
+(`story.cross`), freshness (`journey.freshness`), the breaching metric (`metrics`), the upstream link
+(`journey.correlation_for`), the signals reviewed (`thread_edges`), the leads ranked and set aside
+(`engine.causes` / `dataops_engine.causes`), and the signal weight. That is why the panel cannot
+contradict the screen beside it: change the record and the panel changes with it (test-asserted).
+
+Signal weight has one definition: `agents.SIGNAL_SCORE` maps the recorded basis and confidence to a
+number — observed 0.95/0.90/0.85, inferred 0.85/0.72/0.55. On INC-8841 the ledger link is recorded
+inferred/medium, so the panel reads **0.72 inferred**.
+
+Craft rules specific to this panel:
+
+- a visible `SIMULATED` chip in the heading, never a tooltip;
+- the handoff is labelled **NOT SENT**, and Approve / Edit / Reject are **disabled**, with a caption
+  saying they are inert — a control that does nothing must not look active;
+- an incident with no definition gets a neutral empty state that changes nothing above it;
+- one highlight only: the rung the incident is actually on.
+
+Four incidents are defined (INC-8841, INC-8850, INC-8802, DOP-1001). DOP-1002 is deliberately
+undefined so the empty state is demonstrable. `tests/test_agents.py` renders each one and compares
+the panel's numbers to the record.
 
 ## Ask — grounded questions (v101)
 

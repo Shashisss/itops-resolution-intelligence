@@ -26,12 +26,13 @@ import shell
 import story
 import ask
 import ask_view
+import agents
 import workspace
 import realtime
 
 
 _RELOAD_TARGETS = (viz, journey, collab, analytics, learn, E, DE, personas, DV, workspace,
-                   command_center, shell, realtime, graph, graph_views, story, ask, ask_view)
+                   command_center, shell, realtime, graph, graph_views, story, ask, ask_view, agents)
 
 
 def _refresh_modules():
@@ -354,6 +355,29 @@ def _collab_bar(dom, ref, you_role):
                     st.rerun()
 
 
+def _agent_panel(dom, ref, inc):
+    """Who's on it — static definition, live numbers. Undefined incidents get a neutral empty state
+    rather than an invented panel."""
+    p = agents.panel(inc)
+    if not p:
+        viz.section("Who's on it", "no agent definition for this incident")
+        st.caption("Nothing is defined for this incident — the record above is unchanged. The panel "
+                   "is a static per-incident definition and never invents a team.")
+        return
+    viz.agent_panel_head(p)
+    c = st.columns([1.5, 4.5], vertical_alignment="center")
+    c[0].button("See the ranked list →", key=f"agents_ranked_{ref}", width="stretch",
+                on_click=_go_stage, args=(dom, ref, "Correlate"),
+                help="Lands on the Correlate section, where the ranked leads are rendered.")
+    viz.agent_panel_tail(p)
+    controls = st.columns([1, 1, 1, 3.6], vertical_alignment="center")
+    for i, label in enumerate(("Approve", "Edit", "Reject")):
+        controls[i].button(label, key=f"agents_{label.lower()}_{ref}", width="stretch",
+                           disabled=True)
+    controls[3].caption("Inert in this POC — the draft is never sent, so these stay disabled "
+                        "rather than pretending to work.")
+
+
 def _core_strip(dom, ref, inc):
     """The first three seconds of the incident: who holds it, the SLA clock, how far the work has
     crossed. One definition each (story.py), one line each, no decoration — the handoff path and
@@ -528,6 +552,7 @@ def render_workspace_page(dom, ref, you_role):
     _ws_panel_css(ref)
     _collab_bar(dom, ref, you_role)
     _accel_strip(inc)
+    _agent_panel(dom, ref, inc)
     with st.container(border=True, key=f"ws_panel_{ref}"):
         with st.container(key=f"ws_lens_{ref}"):
             _render_incident_detail(dom, ref, you_role)
@@ -973,6 +998,32 @@ def render_learn():
                     st.caption("The incident this record came from is archived — the record is what survives.")
 
 
+def render_agents():
+    """The fleet on one page: one agent is live, five are design. No orchestration engine."""
+    viz.page_head("Agents — who acted, and what they may do",
+                  "One agent is live (RCA ranking over stored signals). The other five are design "
+                  "rows, labelled as such. No agent executes a change, sends a message or closes an "
+                  "incident.")
+    rows = agents.agents()
+    live = sum(1 for a in rows if "live" in str(a.get("status")).lower())
+    viz.kpi_row([
+        ("Agents defined", str(len(rows)), "static rows — not a running fleet", "#4f46e5"),
+        ("Live", str(live), "RCA ranking · reads stored signals", "#16a34a"),
+        ("Design", str(len(rows) - live), "no code path, stated as design", "#64748b"),
+    ])
+    for a in rows:
+        is_live = "live" in str(a.get("status")).lower()
+        chip = (f'<span class="ri-simchip" style="border-color:#86efac;color:#166534;'
+                f'background:#f0fdf4">{a["status"]}</span>' if is_live else
+                f'<span class="ri-simchip" style="border-color:#cbd5e1;color:#64748b;'
+                f'background:#f8fafc">{a["status"]}</span>')
+        st.markdown(
+            f'<div class="ri-ablock"><div class="d">{a["name"]} {chip}</div>'
+            f'<div class="s">{a["allowed"]}</div></div>', unsafe_allow_html=True)
+    st.caption("This page is a definition list, not a control plane. The incident panel names the "
+               "agent that acted and the evidence it used.")
+
+
 # ================================================================= Activity & audit (page)
 def activity_section(ref=None, heading=True):
     """Activity & audit as a section of the incident screen (v99 folded the page in here).
@@ -1033,6 +1084,8 @@ elif nav == "Incidents":
     render_incidents(you_role)
 elif nav == "Learn":
     render_learn()
+elif nav == "Agents":
+    render_agents()
 elif nav == "Analytics":
     render_analytics()
 

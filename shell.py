@@ -16,6 +16,7 @@ NAV_ITEMS = [
     ("Incident", "◉", "The open incident — thread, actions, close gate and learn in one scroll."),
     ("Learn", "◎", "Reusable records — what worked, and incidents with the same signature."),
     ("Analytics", "↗", "MTTR, recurrence, verification outcomes, operational trends."),
+    ("Agents", "◇", "One live RCA agent and five design rows — what each may do."),
 ]
 NAV = [n for n, _, _ in NAV_ITEMS]
 
