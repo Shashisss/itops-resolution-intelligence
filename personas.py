@@ -15,7 +15,8 @@ import collab
 import graph_views
 import shell
 
-SLA_HOURS = {"P1": 4, "P2": 8, "P3": 24, "P4": 72}
+import story  # noqa: E402  — one definition of the SLA clock, shared with the hero strip
+SLA_HOURS = story.SLA_HOURS
 STAGES = ["Detected", "Triaged", "Diagnosed", "Change raised", "Fix in progress", "Fix applied", "Verified", "Closed"]
 PERSONAS = ["CIO", "CSM", "Service Desk", "L1 Engineer", "L2 / L3 Engineer", "Developer", "Incident Manager"]
 IT_STEP_HELP = {
@@ -48,14 +49,9 @@ SLA_ASSUMPTION = ("Priority-based estimate: clock from incident creation, target
 
 # ---------------------------------------------------------------- helpers
 def _sla_detail(inc):
-    target = SLA_HOURS.get(inc["priority"], 8)
-    try:
-        elapsed = (dt.datetime.now() - dt.datetime.fromisoformat(inc["created_at"])).total_seconds() / 3600
-    except Exception:
-        elapsed = 0.0
-    rem = target - elapsed
-    txt = "BREACHED" if rem <= 0 else f"{int(rem)}h {int((rem % 1) * 60)}m left"
-    return txt, rem, target, elapsed
+    """The SLA clock, from story.sla() — the same function the hero strip prints."""
+    s = story.sla(inc)
+    return s["text"], (s["remaining_min"] or 0) / 60, s["target_hours"], s["elapsed_hours"]
 
 
 def _kpi(ctx, biz):

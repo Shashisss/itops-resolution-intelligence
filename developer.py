@@ -6,7 +6,8 @@ import duckdb
 import engine as E
 
 DB_HIST = "data/history.duckdb"
-SLA_HOURS = {"P1": 4, "P2": 8, "P3": 24, "P4": 72}
+import story  # one definition of the SLA clock
+SLA_HOURS = story.SLA_HOURS
 
 
 def _kpi_now():

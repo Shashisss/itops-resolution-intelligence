@@ -23,12 +23,13 @@ import learn
 import graph
 import graph_views
 import shell
+import story
 import workspace
 import realtime
 
 
 _RELOAD_TARGETS = (viz, journey, collab, analytics, learn, E, DE, personas, DV, workspace,
-                   command_center, shell, realtime, graph, graph_views)
+                   command_center, shell, realtime, graph, graph_views, story)
 
 
 def _refresh_modules():
@@ -104,7 +105,9 @@ for _mod in (E, DE, journey, collab, analytics, realtime):
     _mod.DB = _DB_PATH
 learn.DB = _DB_PATH          # learn records live outside the session copy on purpose (durable)
 graph.DB = _DB_PATH          # the views read the graph, not the flat tables
-_GRAPH_INFO = graph.ensure(_DB_PATH)   # idempotent projection — an older database gains the graph
+story.DB = _DB_PATH          # one definition for every number the story layer states
+with st.spinner("Building the connection graph for this session…"):
+    _GRAPH_INFO = graph.ensure(_DB_PATH)   # idempotent projection — an older database gains the graph
 _DEMO_SESSION = store.is_demo()
 
 st.set_page_config(page_title="Resolution Intelligence — POC", page_icon="assets/icon.png",
@@ -172,22 +175,15 @@ def _find_dop(ref):
 
 
 def _sla_risk(i):
-    target = personas.SLA_HOURS.get(i["priority"], 8)
-    try:
-        elapsed = (dt.datetime.now() - dt.datetime.fromisoformat(i["created_at"])).total_seconds() / 3600
-    except Exception:
-        elapsed = 0.0
-    return (target - elapsed) < target * 0.5
+    s = story.sla(i)
+    if s["closed"] or s["target_hours"] is None:
+        return False
+    return (s["remaining_min"] or 0) < s["target_hours"] * 60 * 0.5
 
 
 def _sla_txt(i):
-    target = personas.SLA_HOURS.get(i["priority"], 8)
-    try:
-        elapsed = (dt.datetime.now() - dt.datetime.fromisoformat(i["created_at"])).total_seconds() / 3600
-    except Exception:
-        elapsed = 0.0
-    rem = target - elapsed
-    return "BREACHED" if rem <= 0 else f"{int(rem)}h {int((rem % 1) * 60)}m left"
+    """The SLA clock — story.sla() is the only definition of it (hero strip, identity bar, list)."""
+    return story.sla(i)["text"]
 
 
 # ================================================================= The incident (one scroll)
@@ -266,19 +262,9 @@ def _collab_bar(dom, ref, you_role):
     inc = _find_dop(ref) if dom == "DataOps" else _find_it(ref)
     if inc is None:
         return
-    asks = [d for d in collab.delegations(ref) if d["status"] != "done"]
-    waiting = None
-    if asks:
-        oldest = min(asks, key=lambda d: d["ts"] or "")
-        try:
-            mins = int((dt.datetime.now() - dt.datetime.fromisoformat(oldest["ts"])).total_seconds() / 60)
-        except Exception:
-            mins = 0
-        age = f"{mins} min" if mins < 90 else f"{mins // 60}h {mins % 60:02d}m"
-        waiting = f'Waiting {age} · {oldest["to_"]}'
     c1, c2, c3 = st.columns([6.4, 1.25, 0.95], vertical_alignment="center")
     with c1:
-        viz.collab_chips(_participants(inc), waiting)
+        viz.collab_chips(_participants(inc))   # who is on it; the waiting clock is in the hero
     with c2:
         with st.popover("Collaborate", type="primary", width="stretch"):
             st.markdown("**Bring someone in**")
@@ -317,108 +303,77 @@ def _collab_bar(dom, ref, you_role):
             st.caption("Stable link to this thread.")
             st.code(f'?inc={ref}', language=None)
 
-    def _age_min(d):
-        try:
-            return int((dt.datetime.now() - dt.datetime.fromisoformat(d["ts"])).total_seconds() / 60)
-        except Exception:
-            return 0
-
-    if asks:
-        with st.expander(f"Open requests · {len(asks)}"
-                         + (" · overdue" if any(_age_min(d) > 30 for d in asks) else ""),
-                         expanded=False):
-            for d in sorted(asks, key=lambda d: d["ts"] or "", reverse=True):
-                age = _age_min(d)
-                late = collab.is_overdue(d, 30)      # default response expectation until per-request SLAs land
-                state = {"assigned": "sent · not delivered", "accepted": "acknowledged",
-                         "reopened": "reopened"}.get(d["status"], d["status"])
-                tone = "#b91c1c" if late or d["status"] == "reopened" else (
-                    "#166534" if d["status"] == "accepted" else "#92400e")
-                actor = d.get("actor") or "unknown"
-                when = str(d.get("changed_at") or d.get("ts") or "")
-                when_show = when[11:16] if len(when) >= 16 else when
-                cols = st.columns([5.1, 0.8, 0.8, 0.8], vertical_alignment="center")
-                cols[0].markdown(
-                    f'**{d["to_"]}** · {d["action"]}  \n'
-                    f'<span style="color:{tone};font-size:11.5px;font-weight:650">'
-                    f'{"OVERDUE · " if late else ""}{state}</span>'
-                    f'<span style="color:#64748b;font-size:11.5px"> · by {actor} · {when_show} · '
-                    f'asked {age} min ago · {d.get("channel") or "App"} (recorded, simulated)</span>',
-                    unsafe_allow_html=True)
-                if cols[1].button("Ack", key=f"ask_ack_{d['id']}", width="stretch",
-                                  disabled=d["status"] == "accepted"):
-                    collab.set_delegation_status(d["id"], "accepted", actor=d["to_"])
-                    collab.add_comment(ref, d["to_"], "Person",
-                                       f'Acknowledged: {d["action"]} (simulated)')
-                    st.session_state["flash"] = f'Acknowledged by {d["to_"]} on the thread (simulated).'
-                    st.rerun()
-                if cols[2].button("Done", key=f"ask_done_{d['id']}", width="stretch"):
-                    collab.set_delegation_status(d["id"], "done", actor=d["to_"])
-                    collab.add_comment(ref, d["to_"], "Person", f'Done: {d["action"]} (simulated)')
-                    st.session_state["flash"] = f'Marked done — {d["to_"]} replied on the thread (simulated).'
-                    st.rerun()
-                if cols[3].button("Chase", key=f"ask_chase_{d['id']}", width="stretch"):
+    cards = story.requests(ref)
+    open_cards = [c for c in cards if c["status"] != "done"]
+    done_cards = [c for c in cards if c["status"] == "done"]
+    impact_txt = story.impact(inc)["text"]
+    ev = story.evidence(inc)
+    if open_cards:
+        viz.section("Requests", "owner · deadline · state — and what travels with the ask")
+        for c in open_cards:
+            cols = st.columns([5.7, 1.15], vertical_alignment="center")
+            with cols[0]:
+                viz.request_card(c, (c["stage"], impact_txt, ev[-1] if ev else "—"), key=c["id"])
+            with cols[1]:
+                if st.button("Chase", key=f"ask_chase_{c['id']}", width="stretch", type="primary"):
                     collab.add_comment(ref, you_role, "Person",
-                                       f'Chased {d["to_"]} for: {d["action"]} (simulated)')
-                    st.session_state["flash"] = f'Reminder logged to {d["to_"]} (simulated).'
+                                       f'Chased {c["owner"]} for: {c["ask"]} (simulated)')
+                    st.session_state["flash"] = f'Reminder logged to {c["owner"]} (simulated).'
                     st.rerun()
-            done = [d for d in collab.delegations(ref) if d["status"] == "done"][:4]
-            if done:
-                st.caption("Completed")
-                for d in done:
-                    c = st.columns([6, 1], vertical_alignment="center")
-                    c[0].markdown(f'~~{d["to_"]} · {d["action"]}~~', unsafe_allow_html=True)
-                    if c[1].button("Reopen", key=f"ask_reopen_{d['id']}", width="stretch"):
-                        collab.set_delegation_status(d["id"], "reopened", actor=you_role)
-                        collab.add_comment(ref, you_role, "Person",
-                                           f'Reopened the request to {d["to_"]}: {d["action"]} (simulated)')
-                        st.session_state["flash"] = f'Reopened the request to {d["to_"]} (simulated).'
+                if c["status"] == "assigned":
+                    if st.button("Acknowledge", key=f"ask_ack_{c['id']}", width="stretch",
+                                 type="tertiary", help=f'As {c["owner"]} (simulated)'):
+                        collab.set_delegation_status(c["id"], "accepted", actor=c["owner"])
+                        collab.add_comment(ref, c["owner"], "Person",
+                                           f'Acknowledged: {c["ask"]} (simulated)')
+                        st.session_state["flash"] = f'Acknowledged by {c["owner"]} on the thread (simulated).'
+                        st.rerun()
+                elif c["status"] in ("accepted", "reopened"):
+                    if st.button("Answered", key=f"ask_done_{c['id']}", width="stretch",
+                                 type="tertiary", help=f'As {c["owner"]} (simulated)'):
+                        collab.set_delegation_status(c["id"], "done", actor=c["owner"])
+                        collab.add_comment(ref, c["owner"], "Person", f'Done: {c["ask"]} (simulated)')
+                        st.session_state["flash"] = f'Marked answered — {c["owner"]} replied (simulated).'
                         st.rerun()
     else:
-        st.caption("No open requests on this incident — use **Collaborate** to ask someone, with a deadline.")
+        st.caption("No open request — nobody is holding this. Use **Collaborate** to ask someone, "
+                   "with a deadline.")
+    if done_cards:
+        with st.expander(f"Answered · {len(done_cards)}", expanded=False):
+            for d in [x for x in collab.delegations(ref) if x["status"] == "done"]:
+                c = st.columns([6, 1], vertical_alignment="center")
+                c[0].markdown(f'~~{d["to_"]} · {d["action"]}~~', unsafe_allow_html=True)
+                if c[1].button("Reopen", key=f"ask_reopen_{d['id']}", width="stretch"):
+                    collab.set_delegation_status(d["id"], "reopened", actor=you_role)
+                    collab.add_comment(ref, you_role, "Person",
+                                       f'Reopened the request to {d["to_"]}: {d["action"]} (simulated)')
+                    st.session_state["flash"] = f'Reopened the request to {d["to_"]} (simulated).'
+                    st.rerun()
 
 
 def _core_strip(dom, ref, inc):
-    """The first thing readable on any incident: cross-domain, wait + SLA, and the open request.
-
-    Collaboration and speed are the story; this strip is where they are stated before any evidence.
-    """
+    """The first three seconds of the incident: who holds it, the SLA clock, how far the work has
+    crossed. One definition each (story.py), one line each, no decoration — the handoff path and
+    the measured acceleration sit directly under it so the numbers and the picture agree."""
+    h = story.hero(inc)
+    viz.hero_strip(h["facts"])
+    viz.domain_chain(h["cross"]["nodes"])
     corr = journey.correlation_for(ref)
-    asks = [d for d in collab.delegations(ref) if d["status"] != "done"]
-
-    def _age(d):
-        try:
-            return int((dt.datetime.now() - dt.datetime.fromisoformat(d["ts"])).total_seconds() / 60)
-        except Exception:
-            return 0
-
-    oldest = min(asks, key=lambda d: d["ts"] or "") if asks else None
-    late = [d for d in asks if collab.is_overdue(d, 30)]
-    wait_txt = "nobody"
-    if oldest:
-        m = _age(oldest)
-        wait_txt = (f'{m} min' if m < 90 else f'{m // 60}h {m % 60:02d}m') + f' · {oldest["to_"]}'
-    sla_txt = _sla_txt(inc)
-    cross_txt = f'⇄ {corr["other_id"]} · {corr["other_domain"]}' if corr else "—"
-    viz.fact_cards([
-        ("Cross-domain", cross_txt, "#7c3aed" if corr else "#94a3b8"),
-        ("Waiting on", wait_txt, "#b45309" if oldest else "#94a3b8"),
-        ("SLA remaining", sla_txt, "#dc2626" if sla_txt == "BREACHED" else "#0891b2"),
-        ("Open requests", f'{len(asks)}' + (f' · {len(late)} overdue' if late else ""),
-         "#dc2626" if late else "#0d9488"),
-    ])
-    if oldest:
-        tone = "#b91c1c" if oldest in late else "#92400e"
-        st.markdown(
-            f'<div style="margin:2px 0 6px;font-size:13px"><b>Open request</b> — '
-            f'{oldest["to_"]} · {oldest["action"]} · asked {_age(oldest)} min ago · '
-            f'<span style="color:{tone};font-weight:700">'
-            f'{"OVERDUE" if oldest in late else oldest["status"]}</span></div>',
-            unsafe_allow_html=True)
-    else:
-        st.caption("No open request on this incident — use Collaborate to ask someone, with a deadline.")
     if corr:
         st.caption(f'Shared cause with {corr["other_domain"]} {corr["other_id"]}: {corr["shared_cause"]}')
+
+
+def _accel_strip(inc):
+    """Acceleration, measured — never estimated. A number the record cannot support is an em dash."""
+    a = story.acceleration(inc)
+    viz.accel_row([
+        ("Time to next action", story.fmt_minutes(a["time_to_next_action_min"]),
+         f'from the alarm to the first recorded action — {a["time_to_next_action_what"]}'
+         if a["time_to_next_action_min"] is not None else "no action recorded yet"),
+        ("Unblocked by evidence", story.fmt_minutes(a["unblocked_by_evidence_min"]),
+         f'{a["holder"]} asked → {a["unblocked_by_evidence_what"]}'
+         if a["unblocked_by_evidence_min"] is not None else "no evidence recorded after the request"),
+    ])
 
 
 def _ws_panel_css(ref):
@@ -569,6 +524,7 @@ def render_workspace_page(dom, ref, you_role):
     # container, and every stage section carries a scroll margin so an action can land on it.
     _ws_panel_css(ref)
     _collab_bar(dom, ref, you_role)
+    _accel_strip(inc)
     with st.container(border=True, key=f"ws_panel_{ref}"):
         with st.container(key=f"ws_lens_{ref}"):
             _render_incident_detail(dom, ref, you_role)
@@ -976,6 +932,13 @@ def render_learn():
         groups.setdefault(r.get("signature") or "unclassified", []).append(r)
     for sig, rows in sorted(groups.items(), key=lambda kv: kv[1][0].get("saved_at") or "", reverse=True):
         st.markdown(f'**Signature `{sig}`** · {len(rows)} record(s) — same component and cause class')
+        latest = sorted(rows, key=lambda r: r.get("saved_at") or "", reverse=True)[0]
+        viz.inherit_block(story.inheritance(latest))
+        _row, _dom = learn.incident_row(latest["ref"])
+        if _row and st.button(f'Open {latest["ref"]} — the incident this came from',
+                              key=f'inherit_open_{latest["ref"]}'):
+            _open(_dom, latest["ref"])
+            st.rerun()
         for r in rows:
             title = f'{r["ref"]} · {r["title"]} · {r.get("outcome")} · {r.get("saved_at")}'
             with st.expander(title, expanded=False):
@@ -1065,5 +1028,8 @@ elif nav == "Analytics":
 
 if not st.session_state.get("open_incident"):
     st.divider()
-    st.caption(f"Sample data · simulated actions · {build.label()} — proof of concept, not production. "
-               "See PROTOTYPE_NOTES.md for persistence limits and TESTS.md for the test suite.")
+    _bi = build.info()
+    st.caption(f'Sample data · simulated actions · build {_bi["build"]} · commit {_bi["sha"]}'
+               + (f' · {_bi["time"]}' if _bi["time"] else '')
+               + " — proof of concept, not production. See PROTOTYPE_NOTES.md for persistence "
+                 "limits and TESTS.md for the test suite.")

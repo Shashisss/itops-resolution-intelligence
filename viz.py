@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Visual layer — animated steppers, arrow flows, node graphs and status badges (HTML/CSS + Graphviz)."""
+import html
+import re
+
 import altair as alt
 import pandas as pd
 import streamlit as st
@@ -248,6 +251,65 @@ div[class*="st-key-attn-"] button .stMarkdownEllipsis{width:100%!important;text-
 div[class*="st-key-boardcard-"] button .stMarkdownEllipsis p,
 div[class*="st-key-attn-"] button .stMarkdownEllipsis p{width:100%!important;text-align:left!important}
 div[class*="st-key-nav_"] button p{font-size:13.5px!important}
+/* ---- v100 story layer: one type scale, one spacing grid, one accent ------------------------- */
+:root{--ri-fs-xs:11px;--ri-fs-s:12.5px;--ri-fs-m:14px;--ri-fs-l:19px;--ri-fs-xl:30px;
+  --ri-sp-1:4px;--ri-sp-2:8px;--ri-sp-3:14px;--ri-sp-4:22px}
+.ri-hero3{display:grid;grid-template-columns:minmax(0,1.28fr) minmax(0,0.72fr) minmax(0,1fr);
+  gap:var(--ri-sp-3);margin:var(--ri-sp-2) 0 var(--ri-sp-3);padding:0 0 var(--ri-sp-2)}
+.ri-hero3 .f{min-width:0}
+.ri-hero3 .k{font-size:var(--ri-fs-xs);letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ri-muted);font-weight:700}
+.ri-hero3 .v{font-size:clamp(20px,1.75vw,26px);line-height:1.15;font-weight:800;letter-spacing:-.02em;
+  margin:2px 0 3px;overflow-wrap:normal;word-break:normal}
+.ri-hero3 .n{font-size:var(--ri-fs-s);color:var(--ri-muted);overflow-wrap:anywhere}
+@media (max-width:900px){.ri-hero3{grid-template-columns:1fr;gap:var(--ri-sp-2)}}
+.ri-chain{display:flex;align-items:stretch;gap:var(--ri-sp-2);flex-wrap:wrap;
+  margin:var(--ri-sp-1) 0 var(--ri-sp-3)}
+.ri-hop{flex:0 1 auto;min-width:158px;border:1px solid var(--ri-line);border-radius:var(--ri-r);
+  background:#fff;padding:9px 13px}
+.ri-hop .d{font-size:var(--ri-fs-xs);text-transform:uppercase;letter-spacing:.05em;
+  color:var(--ri-muted);font-weight:700}
+.ri-hop .l{font-size:var(--ri-fs-m);font-weight:750;color:var(--ri-ink);margin:1px 0 2px;
+  overflow-wrap:anywhere}
+.ri-hop .e{font-size:var(--ri-fs-xs);color:var(--ri-muted)}
+.ri-hop .s{display:block;font-size:var(--ri-fs-xs);color:#b45309;font-weight:650;margin-top:2px}
+.ri-hop.holder{border-color:var(--ri-accent);box-shadow:inset 0 0 0 1px var(--ri-accent);
+  background:#eef2ff}
+.ri-hop.holder .l{color:#3730a3}
+.ri-hop .now{display:inline-block;font-size:10.5px;font-weight:750;color:#fff;background:var(--ri-accent);
+  border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:1px}
+.ri-hoplink{align-self:center;color:#94a3b8;font-size:18px;line-height:1;padding:0 2px}
+.ri-askcard{border:1px solid var(--ri-line);border-radius:var(--ri-r);padding:10px 14px;
+  background:#fff}
+.ri-askcard .top{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+.ri-askcard .who{font-weight:750;font-size:var(--ri-fs-m);color:var(--ri-ink)}
+.ri-askcard .what{font-size:var(--ri-fs-s);color:#334155}
+.ri-askcard .meta{font-size:var(--ri-fs-xs);color:var(--ri-muted);margin-top:4px}
+.ri-askcard .travel{font-size:var(--ri-fs-xs);color:#475569;margin-top:5px;
+  border-top:1px dashed var(--ri-line);padding-top:5px}
+.ri-st{display:inline-block;font-size:10.5px;font-weight:750;letter-spacing:.03em;
+  text-transform:uppercase;border-radius:999px;padding:2px 8px;border:1px solid}
+.ri-st.sent{color:#475569;border-color:#94a3b8;border-style:dashed;background:#f8fafc}
+.ri-st.acknowledged{color:#0f766e;border-color:#5eead4;background:#f0fdfa}
+.ri-st.overdue{color:#b91c1c;border-color:#fca5a5;background:#fef2f2}
+.ri-st.answered{color:#166534;border-color:#86efac;background:#f0fdf4}
+.ri-st.reopened{color:#b45309;border-color:#fcd34d;background:#fffbeb}
+.ri-unsent{display:inline-block;font-size:10px;font-weight:700;color:#64748b;border:1px dashed #cbd5e1;
+  border-radius:6px;padding:1px 6px;margin-left:6px}
+.ri-accel{display:flex;flex-wrap:wrap;gap:var(--ri-sp-4);margin:var(--ri-sp-1) 0 var(--ri-sp-3)}
+.ri-accel .f{min-width:210px}
+.ri-accel .k{font-size:var(--ri-fs-xs);text-transform:uppercase;letter-spacing:.05em;
+  color:var(--ri-muted);font-weight:700}
+.ri-accel .v{font-size:var(--ri-fs-l);font-weight:800;color:var(--ri-ink);margin:1px 0 2px}
+.ri-accel .n{font-size:var(--ri-fs-xs);color:var(--ri-muted);max-width:44ch}
+.ri-inherit{border:1px solid #c7d2fe;background:#eef2ff;border-radius:var(--ri-r);
+  padding:12px 16px;margin:6px 0 10px}
+.ri-inherit .t{font-size:var(--ri-fs-xs);font-weight:800;color:#3730a3;text-transform:uppercase;
+  letter-spacing:.05em}
+.ri-inherit .c{font-size:var(--ri-fs-m);font-weight:700;color:var(--ri-ink);margin:4px 0 2px}
+.ri-inherit .m{font-size:var(--ri-fs-xs);color:var(--ri-muted)}
+.ri-inherit ol{margin:6px 0 0 18px;padding:0;font-size:var(--ri-fs-s);color:#334155}
+.ri-inherit li{margin:2px 0}
 </style>
 """
 
@@ -502,6 +564,97 @@ def fact_cards(items):
 
 
 _DOM = {"DataOps": "#0d9488", "IT Ops": "#4f46e5"}
+
+
+# ------------------------------------------------------------------ the story layer (v100)
+def hero_strip(facts):
+    """Three facts, one line each, large, no decoration — the first three seconds of the incident.
+
+    `facts` is story.hero()["facts"]: label, value, note, tone. A value the record cannot support
+    arrives already as an em dash with a note saying why, so nothing here has to invent one."""
+    cells = []
+    for f in facts:
+        cells.append(
+            f'<div class="f"><div class="k">{html.escape(str(f["label"]))}</div>'
+            f'<div class="v" style="color:{f.get("tone") or "#0f172a"}">'
+            f'{html.escape(str(f["value"]))}</div>'
+            f'<div class="n">{html.escape(str(f.get("note") or ""))}</div></div>')
+    st.markdown(f'<div class="ri-hero3">{"".join(cells)}</div>', unsafe_allow_html=True)
+
+
+def domain_chain(nodes):
+    """A handoff you can see: domain chips joined by arrows, the current holder highlighted, and
+    the time each hop has taken printed on the hop itself (not summarised into a badge)."""
+    if not nodes:
+        st.caption("No handoff recorded — this incident has stayed in one domain.")
+        return
+    parts = []
+    for i, n in enumerate(nodes):
+        if i:
+            parts.append('<div class="ri-hoplink" aria-hidden="true">→</div>')
+        now = '<span class="now">now</span>' if n.get("holder") else ""
+        stale = (f'<span class="s">{html.escape(str(n["stale"]))}</span>'
+                 if n.get("stale") else "")
+        parts.append(
+            f'<div class="ri-hop{" holder" if n.get("holder") else ""}"'
+            f' title="{html.escape(str(n.get("hint") or ""))}">'
+            f'<div class="d">{html.escape(str(n.get("domain") or n.get("kind") or ""))}</div>'
+            f'<div class="l">{html.escape(str(n.get("label") or ""))}{now}</div>'
+            f'<div class="e">{html.escape(str(n.get("clock") or ""))}</div>{stale}</div>')
+    st.markdown(f'<div class="ri-chain">{"".join(parts)}</div>', unsafe_allow_html=True)
+
+
+def request_card(r, travels, key):
+    """One ask as a card: owner, ask, state, deadline — and what travels with it.
+
+    The card body is plain HTML so it reads as one object; the single action (Chase) is a real
+    Streamlit button beside it. `r` is a story.requests() row, `travels` the (stage, impact,
+    evidence) it carries. `key` makes the button unique per request."""
+    state = html.escape(str(r["state"]))
+    if r.get("overdue"):
+        when = f'asked {r["age_min"]}m ago · {r["over_by"]}m over a {r["deadline_min"]}m deadline'
+    else:
+        when = f'asked {r["age_min"]}m ago · {r["deadline_min"]}m deadline'
+    unsent = ('<span class="ri-unsent" title="No connector is configured — this is recorded, '
+              'not delivered">not sent · simulated</span>') if not r.get("delivered") else ""
+    stage, impact, evidence = travels
+    st.markdown(
+        f'<div class="ri-askcard"><div class="top">'
+        f'<span class="who">{html.escape(str(r["owner"]))}</span>'
+        f'<span class="what">{html.escape(str(r["ask"]))}</span>'
+        f'<span class="ri-st {state}">{state}</span>{unsent}</div>'
+        f'<div class="meta">{html.escape(when)} · asked by {html.escape(str(r["asked_by"]))} · '
+        f'{html.escape(str(r["channel"]))} (recorded only)</div>'
+        f'<div class="travel"><b>Travels with the ask</b> — stage {html.escape(str(stage))} · '
+        f'{html.escape(str(impact))} · evidence {html.escape(str(evidence))}</div></div>',
+        unsafe_allow_html=True)
+
+
+def accel_row(items):
+    """Two measured durations — or an em dash with the reason. items: (label, value, note)."""
+    cells = []
+    for label, value, note in items:
+        dash = value in (None, "", "—")
+        cells.append(
+            f'<div class="f"><div class="k">{html.escape(str(label))}</div>'
+            f'<div class="v" style="color:{"#94a3b8" if dash else "#0f172a"}">'
+            f'{html.escape("—" if dash else str(value))}</div>'
+            f'<div class="n">{html.escape(str(note or ""))}</div></div>')
+    st.markdown(f'<div class="ri-accel">{"".join(cells)}</div>', unsafe_allow_html=True)
+
+
+def inherit_block(inheritance):
+    """What the next incident with this signature starts with — cause and runbook, before the record."""
+    steps = "".join(f'<li>{html.escape(str(s))}</li>' for s in inheritance.get("runbook") or [])
+    st.markdown(
+        f'<div class="ri-inherit">'
+        f'<div class="t">The next incident with this signature starts with this</div>'
+        f'<div class="c">{html.escape(str(inheritance.get("root_cause") or "—"))}</div>'
+        f'<div class="m">signature <b>{html.escape(str(inheritance.get("signature")))}</b>'
+        f' · from {html.escape(str(inheritance.get("ref")))}'
+        f' · {len(inheritance.get("runbook") or [])} step(s) that worked</div>'
+        f'{"<ol>" + steps + "</ol>" if steps else ""}</div>',
+        unsafe_allow_html=True)
 
 
 def causal(steps):

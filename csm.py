@@ -8,7 +8,8 @@ import nlg
 DB_HIST = "data/history.duckdb"
 KEYWORDS = {"payment": "its_payment_api", "checkout": "app_checkout",
             "database": "db_payments", "db": "db_payments", "api": "its_payment_api"}
-SLA_HOURS = {"P1": 4, "P2": 8, "P3": 24, "P4": 72}
+import story  # one definition of the SLA clock
+SLA_HOURS = story.SLA_HOURS
 
 
 def _sla(inc):

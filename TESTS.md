@@ -4,7 +4,7 @@ Two layers, both runnable without a browser.
 
 ```bash
 python3 -m pip install -r requirements-dev.txt
-python3 -m pytest tests -q          # 71 tests, ~20s
+python3 -m pytest tests -q          # 84 tests, ~25s
 python3 scripts/smoke.py            # deployment smoke test, ~5s
 ```
 
@@ -13,6 +13,24 @@ app headless through Streamlit's own harness, opens an incident, follows the URL
 list and asserts the URL was cleared. It exits non-zero on the first failure.
 
 ## What is covered
+
+### `tests/test_story.py` — the v100 story layer, against a throwaway copy of the database
+
+| Test | Asserts |
+|---|---|
+| `test_hero_waiting_is_the_oldest_open_request` | the hero's waiting clock and name are that request's own |
+| `test_hero_sla_matches_the_priority_clock` | the SLA figure is the priority target minus elapsed |
+| `test_hero_cross_domain_counts_match_the_record` | 3 domains = distinct chain domains; 2 handoffs = stored requests |
+| `test_hero_strip_on_screen_matches_the_module` | the rendered strip prints exactly what `story.hero()` computes |
+| `test_hero_is_honest_when_nothing_is_open` | a closed incident says closed, not a running clock |
+| `test_chain_marks_the_current_holder_and_times_each_hop` | one holder, highlighted, with its own clock |
+| `test_a_closed_incident_clock_stops_at_closure` | closure stops the clock (40m, not 6d) |
+| `test_request_card_state_follows_the_recorded_transition` | sent → acknowledged → answered, never a claimed delivery |
+| `test_request_card_states_are_designed` | every state has a designed label and colour |
+| `test_acceleration_values_come_from_timestamps` | 4m and 18m are recomputed from the rows |
+| `test_acceleration_is_an_em_dash_when_the_record_cannot_support_it` | unsupported → `—` on screen, not a guess |
+| `test_inheritance_names_the_cause_and_the_runbook` | Learn inheritance carries cause + steps |
+| `test_incident_page_has_no_placeholder_copy` | no TODO/lorem/coming-soon on screen |
 
 ### `tests/test_navigation.py` — end-to-end, drives the real `app.py` via `streamlit.testing.v1.AppTest`
 

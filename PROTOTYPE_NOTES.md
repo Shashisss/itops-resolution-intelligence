@@ -1,6 +1,6 @@
 # PROTOTYPE NOTES — Resolution Intelligence POC
 
-Build v99 · sample data · simulated actions. This is a proof of concept, **not** production.
+Build v100 · sample data · simulated actions. This is a proof of concept, **not** production.
 
 ## Persistence boundary — what survives what
 
@@ -87,6 +87,33 @@ Relationships are **structured records** in `thread_edges` (source, target, rela
 observed/inferred kind, evidence source, timestamp, rule-based confidence). UI code no longer
 builds edges by hand; `journey.thread_edges_for()` resolves a thread via the correlation model.
 Inferred relationships are labelled as hypotheses, not proven facts.
+
+## The story layer (v100) — one definition per claim
+
+Three ideas have to be unmistakable on every incident screen: **cross-domain**, **collaboration**
+and **accelerated resolution**. Every number that states one of them is computed once, in `story.py`,
+from stored timestamps and row counts — and the UI prints it, it does not recompute it.
+
+| Claim | Definition | Where it is computed |
+|---|---|---|
+| `Waiting 53m · Data Platform` | now − `delegations.ts` of the **oldest open request**; the name is its `to_` | `story.waiting()` |
+| `7h 2m left` | `SLA_HOURS[priority]` − (now − `incidents.created_at`); `SLA_HOURS` is defined once and re-exported by personas/csm/developer | `story.sla()` |
+| `3 domains · 2 handoffs` | distinct `domain` labels on the handoff chain; `COUNT(delegations)` | `story.cross()` |
+| Handoff chain | origin service/dataset → the current holder (oldest open request's `to_`) → the correlated incident; each hop prints its own clock | `story.chain()` |
+| `Time to next action` | first recorded action (delegation or repair) − `incidents.created_at` | `story.acceleration()` |
+| `Unblocked by evidence` | first alert/ticket/repair recorded **after** the request was raised − the request's `ts` | `story.acceleration()` |
+| Learn inheritance | the signature's newest record: confirmed cause + the steps that worked | `story.inheritance()` |
+
+If the record cannot support a number, `story` returns `None` and the UI prints an **em dash** with
+the reason ("no action recorded yet"). No saving is ever estimated. A closed incident's clock stops
+at `resolution_state.closed_at`, so a six-day-old closure reads `held 40m`, not `held 6d`.
+
+**Craft tokens (v100).** One type scale (`--ri-fs-xs…xl`), one spacing grid (`--ri-sp-1…4`) and one
+interaction accent (`--ri-accent`) live in `viz.CSS`; semantic state colours (red/amber/green) stay
+for state only. Every state is designed: empty ("No open request — nobody is holding this"), stale
+(the chain prints `60m stale · 15m SLA`), closed ("closed on the verified record"), and error (the
+reload-failure banner). Focus rings are global (`:focus-visible`). The footer states build, commit
+and that the data is sample data. Checked at 1366×768 (projector) and at 390px (phone).
 
 ## The graph store (v99)
 
