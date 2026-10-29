@@ -8,6 +8,7 @@ import dataops_engine as DE
 import engine as E
 import journey
 import runclock
+import sections
 import shell
 import viz
 import collab
@@ -64,14 +65,10 @@ def context_header(inc, data):
         ola_txt = f'{ola["restore_min"]}m · ' + ("BREACHED" if rem <= 0 else f'{int(rem)}m left')
     # v103: the owner/wait/SLA facts belong to the hero strip only. One small line for what the
     # hero does not carry — the internal OLA, the blocker and the dataset.
-    st.caption(f'Blocker: {inc["blocker"] or "—"} · Dataset: {name} '
-               f'({data["datasets"][ds]["layer"]}) · OLA {ola_txt}')
-    with st.expander("🧾 Record, sources & assumptions", expanded=False):
-        con = next((c for c in data["contracts"] if c["dataset_id"] == ds), None)
-        if con:
-            st.markdown(f'**Data contract:** {con["name"]} {con["version"]} · owner {con["owner"]}')
+    _blk = (inc["blocker"] or "—").rstrip(".")
+    st.caption(f'{_blk[:52]}{"…" if len(_blk) > 52 else ""} · {name} · OLA {ola_txt}')
+    if cons:
         st.caption(f'Downstream consumers: {len(cons)}')
-        st.caption("Detection is rule-based (freshness SLA, DQ thresholds, run status) — not autonomous/learned.")
     # v103: verdict lives in the identity bar and the rail, not a third time under the stepper.
 
 
@@ -267,8 +264,6 @@ def pipeline_view(inc, data):
         with st.expander("🎯 Pipeline RCA — hypotheses", expanded=True):
             hypotheses(inc, data, limit=None)
         journey.render_correlation(inc["id"])
-        st.markdown("**Connections** — the graph behind this incident")
-        graph_views.connections_panel(inc["id"], key="dop_conn_" + inc["id"])
 
     def act():
         with st.expander("Recommended repair (policy-governed)", expanded=True):
@@ -299,15 +294,10 @@ def pipeline_view(inc, data):
         import learn
         learn.panel(inc, "DataOps", actor=st.session_state.get("you_role", "Data Owner"))
 
-    sections = {"Detect": detect, "Triage": triage, "Investigate": investigate,
-                "Correlate": correlate, "Act": act, "Verify": lambda: verify_panel(inc, data),
-                "Close": close, "Learn": learn_stage}
-    for stage in journey.LIFECYCLE:
-        with st.container(key=f"dop_step_{inc['id']}_anchor_{stage}"):
-            viz.stage_head(stage, DOP_STEP_HELP.get(stage))
-            if DOP_HANDOFFS.get(stage):
-                viz.handshake(DOP_HANDOFFS[stage])
-            sections[stage]()
+    stage_fns = {"Detect": detect, "Triage": triage, "Investigate": investigate,
+                 "Correlate": correlate, "Act": act, "Verify": lambda: verify_panel(inc, data),
+                 "Close": close, "Learn": learn_stage}
+    sections.accordion_stages(inc, stage_fns, DOP_STEP_HELP, DOP_HANDOFFS, "dop_step")
 
 
 def data_engineer_view(inc, data):

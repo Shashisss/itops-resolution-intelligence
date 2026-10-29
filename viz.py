@@ -9,8 +9,8 @@ import streamlit as st
 
 CSS = """
 <style>
-.ri-flow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:4px 0 12px}
-.ri-step{padding:7px 13px;border-radius:10px;font-weight:600;font-size:13px;color:#fff;background:#cbd5e1}
+.ri-flow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 4px}
+.ri-step{padding:4px 11px;border-radius:9px;font-weight:600;font-size:12.5px;color:#fff;background:#cbd5e1}
 .ri-step.done{background:#16a34a}
 .ri-step.current{background:#4f46e5;animation:ripulse 1.6s infinite}
 .ri-step.todo{background:#e5e7eb;color:#6b7280}
@@ -206,7 +206,7 @@ input:focus-visible,textarea:focus-visible,button:focus-visible,[role=button]:fo
 div:has(> [class*="st-key-ws_head_"]){display:block!important;position:-webkit-sticky;position:sticky;
   top:var(--ri-head,0px);z-index:99999;background:#fff;margin-bottom:2px;
   border-bottom:1px solid #eef2f7;box-shadow:0 6px 12px rgba(15,23,42,.05)}
-div[class*="st-key-ws_head_"]{background:#fff;padding:4px 0 6px;min-height:52px;
+div[class*="st-key-ws_head_"]{background:#fff;padding:2px 0 2px;min-height:42px;
   border-bottom:none!important}
 div[class*="st-key-ws_head_"] [data-testid="stHorizontalBlock"]{align-items:center}
 .ri-wsid{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
@@ -216,7 +216,7 @@ div[class*="st-key-ws_head_"] [data-testid="stHorizontalBlock"]{align-items:cent
 .ri-wsid .meta b{color:#0f172a}
 .ri-wait{margin-left:4px;font-size:11.5px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;
   border-radius:999px;padding:3px 9px;font-weight:650}
-.ri-shead{display:flex;align-items:baseline;gap:10px;margin:14px 0 6px}
+.ri-shead{display:flex;align-items:baseline;gap:10px;margin:2px 0 2px}
 .ri-shead .t{font-size:15.5px;font-weight:750;color:#0f172a;letter-spacing:-.01em}
 .ri-hint{font-size:12px;color:#64748b}
 .ri-ask{display:flex;gap:10px;align-items:flex-start;border:1px solid #e5e7eb;border-left:4px solid #4f46e5;
@@ -255,7 +255,7 @@ div[class*="st-key-nav_"] button p{font-size:13.5px!important}
 :root{--ri-fs-xs:11px;--ri-fs-s:12.5px;--ri-fs-m:14px;--ri-fs-l:19px;--ri-fs-xl:30px;
   --ri-sp-1:4px;--ri-sp-2:8px;--ri-sp-3:14px;--ri-sp-4:22px}
 .ri-hero3{display:grid;grid-template-columns:minmax(0,1.28fr) minmax(0,0.72fr) minmax(0,1fr);
-  gap:var(--ri-sp-3);margin:var(--ri-sp-2) 0 var(--ri-sp-3);padding:0 0 var(--ri-sp-2)}
+  gap:var(--ri-sp-3);margin:0 0 2px;padding:0}
 .ri-hero3 .f{min-width:0}
 .ri-hero3 .k{font-size:var(--ri-fs-xs);letter-spacing:.06em;text-transform:uppercase;
   color:var(--ri-muted);font-weight:700}
@@ -263,10 +263,10 @@ div[class*="st-key-nav_"] button p{font-size:13.5px!important}
   letter-spacing:-.02em;margin:2px 0 3px;overflow-wrap:normal;word-break:normal}
 .ri-hero3 .n{font-size:var(--ri-fs-s);color:var(--ri-muted);overflow-wrap:anywhere}
 @media (max-width:900px){.ri-hero3{grid-template-columns:1fr;gap:var(--ri-sp-2)}}
-.ri-chain{display:flex;align-items:stretch;gap:var(--ri-sp-2);flex-wrap:wrap;
-  margin:var(--ri-sp-1) 0 var(--ri-sp-3)}
-.ri-hop{flex:0 1 auto;min-width:158px;border:1px solid var(--ri-line);border-radius:var(--ri-r);
-  background:#fff;padding:9px 13px}
+.ri-chain{display:flex;align-items:stretch;gap:6px;flex-wrap:wrap;
+  margin:0 0 2px}
+.ri-hop{flex:0 1 auto;min-width:150px;border:1px solid var(--ri-line);border-radius:10px;
+  background:#fff;padding:5px 11px}
 .ri-hop .d{font-size:var(--ri-fs-xs);text-transform:uppercase;letter-spacing:.05em;
   color:var(--ri-muted);font-weight:700}
 .ri-hop .l{font-size:var(--ri-fs-m);font-weight:750;color:var(--ri-ink);margin:1px 0 2px;
@@ -279,7 +279,7 @@ div[class*="st-key-nav_"] button p{font-size:13.5px!important}
 .ri-hop .now{display:inline-block;font-size:10.5px;font-weight:750;color:#fff;background:var(--ri-accent);
   border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:1px}
 .ri-hoplink{align-self:center;color:#94a3b8;font-size:18px;line-height:1;padding:0 2px}
-.ri-askcard{border:1px solid var(--ri-line);border-radius:var(--ri-r);padding:10px 14px;
+.ri-askcard{border:1px solid var(--ri-line);border-radius:10px;padding:5px 12px;
   background:#fff}
 .ri-askcard .top{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
 .ri-askcard .who{font-weight:750;font-size:var(--ri-fs-m);color:var(--ri-ink)}
@@ -296,6 +296,7 @@ div[class*="st-key-nav_"] button p{font-size:13.5px!important}
 .ri-st.reopened{color:#b45309;border-color:#fcd34d;background:#fffbeb}
 .ri-unsent{display:inline-block;font-size:10px;font-weight:700;color:#64748b;border:1px dashed #cbd5e1;
   border-radius:6px;padding:1px 6px;margin-left:6px}
+.ri-accel-inline{font-size:12px;margin:2px 0 4px;line-height:1.5}
 .ri-accel{display:flex;flex-wrap:wrap;gap:var(--ri-sp-4);margin:var(--ri-sp-1) 0 var(--ri-sp-3)}
 .ri-accel .f{min-width:210px}
 .ri-accel .k{font-size:var(--ri-fs-xs);text-transform:uppercase;letter-spacing:.05em;
@@ -342,6 +343,28 @@ div[class*="st-key-nav_"] button p{font-size:13.5px!important}
 .ri-rung .p.on{background:var(--ri-accent);border-color:var(--ri-accent);color:#fff}
 .ri-notsent{font-size:10.5px;font-weight:750;color:#92400e;border:1px dashed #fcd34d;
   background:#fffbeb;border-radius:6px;padding:1px 7px;margin-left:6px}
+/* ---- v106 progressive disclosure: accordion headers, preview drawer ----------------------- */
+div[class*="st-key-acc_"] button{width:100%!important;justify-content:flex-start!important;
+  text-align:left!important;background:#fff!important;border:1px solid var(--ri-line)!important;
+  border-left:3px solid #cbd5e1!important;border-radius:8px!important;padding:0 10px!important;min-height:22px!important;
+  font-weight:600!important;font-size:12px!important;color:#0f172a!important;box-shadow:none!important}
+div[class*="st-key-acc_"] button:hover{background:#f8fafc!important;border-left-color:var(--ri-accent)!important}
+div[class*="st-key-acc_"] button p{font-size:12px!important;line-height:1.15!important;text-align:left!important;
+  width:100%!important;white-space:normal!important}
+div[class*="st-key-acc_"] button>div{width:100%!important;justify-content:flex-start!important}
+.ri-drawer{border:1px solid #c7d2fe;border-radius:var(--ri-r);background:#fff;padding:14px 16px}
+.ri-drawer .id{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:800;font-size:17px}
+.ri-drawer .t{font-size:13.5px;color:#0f172a;font-weight:650;margin:2px 0 8px}
+.ri-drawer .f{border-top:1px solid var(--ri-line);padding:6px 0}
+.ri-drawer .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--ri-muted);font-weight:700}
+.ri-drawer .v{font-size:15px;font-weight:750;color:var(--ri-ink)}
+.ri-drawer .n{font-size:11.5px;color:var(--ri-muted)}
+/* v106: the accordion is a list, not a stack of cards — tight gaps, one line each */
+div[class*="st-key-acc_group_"] [data-testid="stVerticalBlock"]{gap:2px!important}
+div[class*="st-key-acc_group_"] [data-testid="stVerticalBlockBorderWrapper"]{padding:2px 0!important}
+/* v106: one tight stack on the incident screen — the page is a list, not a deck of cards */
+[data-testid="stMainBlockContainer"] > div > [data-testid="stVerticalBlock"]{gap:6px!important}
+div[class*="st-key-ws_panel_"]{padding:2px 8px!important}
 </style>
 """
 
@@ -663,16 +686,15 @@ def request_card(r, travels, key):
 
 
 def accel_row(items):
-    """Two measured durations — or an em dash with the reason. items: (label, value, note)."""
-    cells = []
+    """Measured durations on one compact line — an em dash with the reason when unsupported."""
+    bits = []
     for label, value, note in items:
         dash = value in (None, "", "—")
-        cells.append(
-            f'<div class="f"><div class="k">{html.escape(str(label))}</div>'
-            f'<div class="v" style="color:{"#94a3b8" if dash else "#0f172a"}">'
-            f'{html.escape("—" if dash else str(value))}</div>'
-            f'<div class="n">{html.escape(str(note or ""))}</div></div>')
-    st.markdown(f'<div class="ri-accel">{"".join(cells)}</div>', unsafe_allow_html=True)
+        bits.append(f'<b>{html.escape(str(label))}</b> '
+                    f'<span style="font-weight:800;color:{"#94a3b8" if dash else "#0f172a"}">'
+                    f'{html.escape("—" if dash else str(value))}</span> '
+                    f'<span style="color:#64748b">{html.escape(str(note or ""))}</span>')
+    st.markdown(f'<div class="ri-accel-inline">{"  ·  ".join(bits)}</div>', unsafe_allow_html=True)
 
 
 def inherit_block(inheritance):
@@ -980,19 +1002,23 @@ def board_card(inc, domain, verdict, on_click, args, stage=None, sla=None, open_
               on_click=on_click, args=args)
 
 
-def list_row(inc, domain, verdict, on_click, args, stage=None, sla=None, waiting=None, linked=False):
-    """One clickable incident row — dense like a table, but the whole row is the button, so a click
-    anywhere opens the workspace (a dataframe only opens on its checkbox, which nobody finds)."""
+def list_row(inc, domain, verdict, on_click, args, stage=None, sla=None, waiting=None, linked=False,
+             secondary=None):
+    """One clickable incident row — dense like a table, but the whole row is the button.
+
+    v106: the second line answers the queue questions before the click — who holds it and for how
+    long, the SLA left, whether it crosses domains, and the next action. Richer row, not more
+    columns. Selecting it opens the summary drawer."""
     pri = inc.get("priority", "P3")
     dot = {"P1": "🔴", "P2": "🟠", "P3": "🔵", "P4": "⚪"}.get(pri, "⚪")
     status = (inc.get("status") or "open").title()
-    meta = " · ".join([b for b in (domain, stage, inc.get("owner_team"), status) if b])
+    meta = secondary or " · ".join([b for b in (domain, stage, inc.get("owner_team"), status) if b])
     tail = []
     if waiting:
         tail.append(f'waiting **{waiting}**')
     if sla and status.lower() != "closed":
         tail.append(sla)
-    if tail:
+    if tail and not secondary:
         meta += "  ·  " + "  ·  ".join(tail)
     mark = "⇄ " if linked else ""
     label = f'{dot} **{mark}{inc["id"]}**  {inc["title"]}  \n{meta}'
@@ -1211,3 +1237,41 @@ def agent_panel_tail(p):
         f'<div class="ri-rung">{rung}</div>'
         f'<div class="m">Static definition — no agent is running and nothing is sent.</div></div>'
         f'</div>', unsafe_allow_html=True)
+
+
+# ------------------------------------------------------------------ progressive disclosure (v106)
+def _toggle_section(ref, key):
+    """Accordion: one open section per incident. Clicking the open header closes it."""
+    cur = st.session_state.get(f"open_{ref}")
+    st.session_state[f"open_{ref}"] = None if cur == key else key
+
+
+def accordion_header(ref, key, title, detail="", badge="", tone="", is_open=False):
+    """A section header that states what is inside, before it is opened.
+
+    The badge (OVERDUE / UNVERIFIED / BLOCKED / READY) is part of the label, never hidden — a
+    collapsed section must not conceal a critical fact."""
+    arrow = "▾" if is_open else "▸"
+    bits = [b for b in (badge, detail) if b]
+    label = f'{arrow}  {title}' + (f'  ·  {bits[0]}' if bits else "")
+    if len(bits) > 1:
+        label += "  ·  " + "  ·  ".join(bits[1:])
+    st.button(label, key=f"acc_{ref}_{key}", width="stretch",
+              on_click=_toggle_section, args=(ref, key))
+
+
+def drawer(inc, domain, verdict, facts, next_actor, blocker, on_open):
+    """Right-hand summary: the hero facts for one incident, and one way in."""
+    rows = "".join(
+        f'<div class="f"><div class="k">{html.escape(k)}</div>'
+        f'<div class="v">{html.escape(str(v))}</div>'
+        f'<div class="n">{html.escape(str(n or ""))}</div></div>'
+        for k, v, n in facts)
+    st.markdown(
+        f'<div class="ri-drawer"><div class="id">{html.escape(inc["id"])}</div>'
+        f'<div class="t">{html.escape(inc.get("title") or "")}</div>'
+        f'<div class="f"><div class="k">Verdict</div><div class="v">{html.escape(verdict)}</div>'
+        f'<div class="n">{html.escape(domain)} · {html.escape(inc.get("priority") or "")}</div></div>'
+        f'{rows}</div>', unsafe_allow_html=True)
+    st.button("Open incident", type="primary", width="stretch",
+              key=f"drawer_open_{inc['id']}", on_click=on_open, args=(domain, inc["id"]))

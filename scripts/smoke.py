@@ -61,11 +61,19 @@ def main():
     rows = [b for b in at.button if "INC-8841" in (b.label or "")]
     if not rows:
         fail("incident list did not render (no INC-8841 row)")
-    rows[0].click().run()
+    rows[0].click().run()                     # v106: the row opens the summary drawer
+    if at.exception:
+        fail(f"drawer raised: {at.exception}")
+    if not at.session_state.get("board_preview"):
+        fail("clicking a row did not open the summary drawer")
+    opener = next((b for b in at.button if (b.label or "") == "Open incident"), None)
+    if opener is None:
+        fail("the drawer offers no 'Open incident' button")
+    opener.click().run()
     if at.exception:
         fail(f"workspace raised: {at.exception}")
     if at.session_state.get("open_incident", {}).get("ref") != "INC-8841":
-        fail("clicking a row did not open INC-8841")
+        fail("'Open incident' did not open INC-8841")
     if at.query_params.get("inc") != "INC-8841":
         fail("workspace did not put the incident in the URL")
     print("ok    incident opens with a shareable URL")

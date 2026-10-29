@@ -53,6 +53,7 @@ def _inc(db, ref):
 def _panel_markdown(ref):
     at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=180)
     at.query_params["inc"] = ref
+    at.query_params["expand"] = "agents"      # v106: the panel is a folded section
     at.run()
     assert not at.exception, [e.value for e in at.exception]
     return at, "\n".join(m.value for m in at.markdown)

@@ -49,11 +49,19 @@ def test_list_renders_every_incident():
     assert len([l for l in labels if "·" in l]) >= 5
 
 
+def open_row(at, ref):
+    """v106: selecting a row opens the summary drawer; 'Open incident' is the deliberate second step."""
+    find_button(at, ref).click().run()
+    find_button(at, "Open incident").click().run()
+    return at
+
+
 def test_open_incident_shows_workspace_and_url():
     at = start()
-    find_button(at, "INC-8841").click().run()
+    open_row(at, "INC-8841")
     assert not at.exception, at.exception
     text = " ".join(str(x.value) for x in at.markdown)
+    text += " " + " ".join(str(b.label) for b in at.button)
     assert "Cross-domain" in text and "SLA remaining" in text, "the core strip must be readable first"
     assert "Connections" in text, "the graph panel is part of the incident screen"
     assert at.session_state["open_incident"]["ref"] == "INC-8841"
@@ -62,7 +70,7 @@ def test_open_incident_shows_workspace_and_url():
 
 def test_all_incidents_returns_to_list_and_clears_url():
     at = start()
-    find_button(at, "INC-8841").click().run()
+    open_row(at, "INC-8841")
     assert at.session_state["open_incident"]["ref"] == "INC-8841"
     find_button(at, "All incidents").click().run()
     assert not at.session_state.get("open_incident"), "workspace should be closed"
@@ -73,7 +81,7 @@ def test_filters_survive_opening_and_closing_an_incident():
     at = start()
     at.selectbox(key="board_dom").set_value("DataOps").run()
     assert at.session_state["board_dom"] == "DataOps"
-    find_button(at, "DOP-1001").click().run()
+    open_row(at, "DOP-1001")
     find_button(at, "All incidents").click().run()
     assert at.selectbox(key="board_dom").value == "DataOps", "filter reset when leaving the workspace"
     assert at.session_state.get("board_dom") == "DataOps"
@@ -81,7 +89,7 @@ def test_filters_survive_opening_and_closing_an_incident():
 
 def test_previous_and_next_move_between_incidents():
     at = start()
-    find_button(at, "INC-8841").click().run()
+    open_row(at, "INC-8841")
     first = at.session_state["open_incident"]["ref"]
     find_button(at, "Next →").click().run()
     second = at.session_state["open_incident"]["ref"]
@@ -145,7 +153,7 @@ def test_empty_search_says_so_and_can_be_cleared():
 
 def test_sidebar_incidents_returns_from_a_workspace():
     at = start()
-    find_button(at, "INC-8841").click().run()
+    open_row(at, "INC-8841")
     assert at.session_state["open_incident"]["ref"] == "INC-8841"
     at.button(key="nav_Incidents").click().run()
     assert not at.session_state.get("open_incident"), "sidebar Incidents must leave the workspace"

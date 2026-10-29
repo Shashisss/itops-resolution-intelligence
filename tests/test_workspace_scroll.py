@@ -32,8 +32,10 @@ def find_button(at, needle):
 
 
 def open_incident(ref="INC-8841"):
+    """v106: a row opens the drawer; the drawer's button opens the workspace."""
     at = start()
     find_button(at, ref).click().run()
+    find_button(at, "Open incident").click().run()
     return at
 
 
@@ -117,7 +119,7 @@ def test_dataops_workspace_is_the_same_one_scroll_with_the_same_anchors():
     anchored section in one scroll, and a stage action still lands on its own section."""
     at = open_incident("DOP-1001")
     assert not at.exception, at.exception
-    text = all_markdown(at)
+    text = all_markdown(at) + " " + " ".join(str(b.label) for b in at.button)
     assert "Connections" in text, "the incident screen carries the connections section"
     assert "Close & Learn" in text, "the phase name appears in the stage headers"
     assert not any(r.key == "ws_mode_DOP-1001" for r in at.radio), "the lens switch is gone"

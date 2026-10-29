@@ -16,7 +16,8 @@ import collab
 import graph_views
 import shell
 
-import story  # noqa: E402  — one definition of the SLA clock, shared with the hero strip
+import story  # noqa: E402
+import sections  # noqa: E402  — one definition of the SLA clock, shared with the hero strip
 SLA_HOURS = story.SLA_HOURS
 STAGES = ["Detected", "Triaged", "Diagnosed", "Change raised", "Fix in progress", "Fix applied", "Verified", "Closed"]
 PERSONAS = ["CIO", "CSM", "Service Desk", "L1 Engineer", "L2 / L3 Engineer", "Developer", "Incident Manager"]
@@ -83,23 +84,16 @@ def context_header(inc, ctx):
     if ola:
         el_min = (runclock.now() - dt.datetime.fromisoformat(inc["created_at"])).total_seconds() / 60
         rem_ola = ola["restore_min"] - el_min
-        ola_txt = (f'{inc["owner_team"]} · {ola["restore_min"]}m restore · '
+        ola_txt = (f'{ola["restore_min"]}m restore · '
                    + ("BREACHED" if rem_ola <= 0 else f'{int(rem_ola)}m left'))
     # v103: no second card row. Owner, wait and SLA live in the hero strip at the top of the
     # incident; what is left here is what the hero does not state — the internal OLA, the blocker
     # and the service — as one small line, not four large tiles.
-    st.caption(f'Blocker: {inc["blocker"] or "—"} · Service: {services[biz]["name"] if biz else "—"} '
-               f'· OLA {ola_txt}')
-    with st.expander("🧾 Record, sources & assumptions", expanded=False):
-        tk = next((t for t in ctx["tickets"] if t["incident_id"] == inc["id"]), None)
-        if tk:
-            st.markdown(f'**Jira defect:** {tk["id"]} ({tk["status"]}) · {tk["assignee"]}')
-        st.caption("Sources: ServiceNow · Jira · Observability · CMDB")
-        st.caption(f'SLA — {SLA_ASSUMPTION}')
-        if k:
-            st.caption(f'Business KPI: {k["metric"].replace("_"," ")} {k["current"]:.0f}{k["unit"]}')
-        else:
-            st.caption("No business KPI mapped — impact shown at service level.")
+    _blk = (inc["blocker"] or "—").rstrip(".")
+    st.caption(f'{_blk[:52]}{"…" if len(_blk) > 52 else ""} · '
+               f'{services[biz]["name"] if biz else "—"} · OLA {ola_txt}')
+    if k:
+        st.caption(f'Business KPI: {k["metric"].replace("_"," ")} {k["current"]:.0f}{k["unit"]}')
     # v103: the verdict already sits in the pinned identity bar and the rail — no third badge here.
 
 
@@ -354,15 +348,12 @@ def incident_sections(inc, ctx):
 
 
 def incident_view(inc, ctx):
-    """One scroll: identity and carried context, then every stage as a section."""
+    """Progressive disclosure (v106): the current stage is open, the rest are one click away.
+
+    Every collapsed header states its own state, clock and most important fact — a folded section
+    never hides a blocked close or an unverified recovery."""
     context_header(inc, ctx)
-    sections = incident_sections(inc, ctx)
-    for stage in journey.LIFECYCLE:
-        with st.container(key=f"it_step_{inc['id']}_anchor_{stage}"):
-            viz.stage_head(stage, IT_STEP_HELP.get(stage))
-            if IT_HANDOFFS.get(stage):
-                viz.handshake(IT_HANDOFFS[stage])
-            sections[stage]()
+    sections.accordion_stages(inc, incident_sections(inc, ctx), IT_STEP_HELP, IT_HANDOFFS, "it_step")
 
 
 def csm_view(inc, ctx):

@@ -47,9 +47,11 @@ def db(tmp_path, monkeypatch):
     return dst
 
 
-def run_app():
+def run_app(step=None):
     at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=120)
     at.query_params["inc"] = REF
+    if step:
+        at.query_params["step"] = step     # v106 deep link opens the section
     at.run()
     assert not at.exception, at.exception
     return at
@@ -71,7 +73,7 @@ def status(db):
 
 def test_recovery_failed_keeps_the_incident_open_and_explains(db):
     journey.set_resolution(REF, "Recovery failed", action_id=None, checks=ALL_FAIL)
-    at = run_app()
+    at = run_app("Close")
     text = page_text(at)
     assert "Recovery failed" in text
     assert "closure requires" in text.lower() or "Closure blocked" in text
@@ -83,7 +85,7 @@ def test_recovery_failed_keeps_the_incident_open_and_explains(db):
 def test_open_request_blocks_a_verified_closure_and_says_so(db):
     journey.set_resolution(REF, "Verified", action_id=None, checks=PASSING)
     collab.add_delegation(REF, "Incident Manager", "Data Platform", "confirm contract v4")
-    at = run_app()
+    at = run_app("Close")
     text = page_text(at)
     assert "open collaboration request" in text, text[-500:]
     assert not any((b.label or "") == "Close incident" for b in at.button), \
@@ -93,7 +95,7 @@ def test_open_request_blocks_a_verified_closure_and_says_so(db):
 
 def test_verified_and_clear_offers_closure(db):
     journey.set_resolution(REF, "Verified", action_id=None, checks=PASSING)
-    at = run_app()
+    at = run_app("Close")
     assert any((b.label or "") == "Close incident" for b in at.button), \
         "with no blockers the gate must offer closure"
     assert status(db) == "open"

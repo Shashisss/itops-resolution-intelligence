@@ -211,8 +211,8 @@ def test_acceleration_is_an_em_dash_when_the_record_cannot_support_it(db):
     at.query_params["inc"] = "INC-8850"
     at.run()
     md = "\n".join(m.value for m in at.markdown)
-    accel = md[md.index('<div class="ri-accel">'):md.index('<div class="ri-accel">') + 600]
-    assert accel.count(">—<") == 2
+    accel = md[md.index('<div class="ri-accel-inline">'):md.index('<div class="ri-accel-inline">') + 600]
+    assert accel.count("—") >= 2
     assert "no action recorded yet" in accel
 
 

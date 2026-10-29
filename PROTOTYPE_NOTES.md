@@ -1,6 +1,6 @@
 # PROTOTYPE NOTES — Resolution Intelligence POC
 
-Build v105 · sample data · simulated actions. This is a proof of concept, **not** production.
+Build v106 · sample data · simulated actions. This is a proof of concept, **not** production.
 
 ## Persistence boundary — what survives what
 
@@ -87,6 +87,27 @@ Relationships are **structured records** in `thread_edges` (source, target, rela
 observed/inferred kind, evidence source, timestamp, rule-based confidence). UI code no longer
 builds edges by hand; `journey.thread_edges_for()` resolves a thread via the correlation model.
 Inferred relationships are labelled as hypotheses, not proven facts.
+
+## Progressive disclosure (v106)
+
+The incident screen is an accordion. On load only the **current stage's content** is open — and it
+is rendered first, so it is on screen without scrolling past the stages that precede it. Every other
+stage, plus the agent panel, Connections, Evidence carried over, Activity & audit and Record/sources,
+is one click away, and opening one closes the others (a single `open_<ref>` key per incident, so the
+page height stays predictable).
+
+A collapsed header is never a blank line. Each carries: the stage name, its state, its clock against
+the stage OLA, and the single fact that matters most — and any critical state is in the header
+itself, in words: `Close · BLOCKED`, `Verify · UNVERIFIED`, `Act · OVERDUE`.
+
+Deep links: `?step=Correlate` opens a stage, `?expand=connections|evidence|activity|record|agents`
+opens a folded section, applied once so the reader can then open something else.
+
+The Incidents list answers the queue questions in the row itself: who holds it and for how long, the
+SLA left, cross-domain or single, and the next action. Selecting a row opens a right-hand summary
+drawer (waiting, SLA, domains/handoffs, blocker, next actor) with one button — **Open incident**.
+
+Measured at 1366×768: 1187px total with every section collapsed.
 
 ## One clock per render (v105)
 
