@@ -198,3 +198,13 @@ def test_ask_box_renders_on_incidents_and_analytics():
     at2.run()
     assert not at2.exception, [e.value for e in at2.exception]
     assert any(t.label.startswith("Ask — what is our median") for t in at2.text_input)
+
+
+def test_a_shareable_link_answers_the_question_on_load(db):
+    """?ask=… answers immediately, so a demo URL can demonstrate a question."""
+    at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=180)
+    at.query_params["ask"] = "summarise INC-8841"
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    md = "\n".join(m.value for m in at.markdown)
+    assert "ri-answer" in md and "Who held it" in md

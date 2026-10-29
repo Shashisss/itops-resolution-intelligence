@@ -33,6 +33,17 @@ def _submit(prefix):
 def render(prefix="ask", label="Ask the record"):
     """Ask box + answer card + follow-up chips. `prefix` keeps two instances on different pages
     from sharing one widget key."""
+    # A shareable link: ?ask=summarise+INC-8841 answers on load, so a demo URL demonstrates a question.
+    try:
+        url_q = st.query_params.get("ask")
+    except Exception:
+        url_q = None
+    if url_q and st.session_state.get(f"{prefix}_url_asked") != url_q:
+        st.session_state[f"{prefix}_url_asked"] = url_q
+        st.session_state[f"{prefix}_q"] = url_q
+        st.session_state[f"{prefix}_answer"] = ask.answer(url_q)
+        st.session_state[f"{prefix}_question"] = url_q
+
     pending = st.session_state.pop(f"{prefix}_pending", None)
     if pending:
         st.session_state[f"{prefix}_q"] = pending
