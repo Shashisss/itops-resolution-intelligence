@@ -9,6 +9,7 @@ import json
 import pandas as pd
 import streamlit as st
 import viz
+import runclock
 
 DB = os.environ.get("RI_DB", "data/ops.db")
 CONF_RANK = {"high": 3, "medium": 2, "low": 1}
@@ -97,7 +98,7 @@ def freshness(dataset_id):
     if not r:
         return None
     try:
-        lag = int((dt.datetime.now() - dt.datetime.fromisoformat(r["last_updated"])).total_seconds() / 60)
+        lag = int((runclock.now() - dt.datetime.fromisoformat(r["last_updated"])).total_seconds() / 60)
     except Exception:
         return None
     return {"dataset_id": dataset_id, "name": r["name"] or dataset_id, "lag_min": lag,

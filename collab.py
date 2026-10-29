@@ -4,6 +4,8 @@ import os
 import sqlite3
 import datetime as dt
 
+import runclock
+
 DB = os.environ.get("RI_DB", "data/ops.db")
 
 
@@ -129,7 +131,7 @@ def age_minutes(d, now=None):
         raised = dt.datetime.fromisoformat(str(d.get("ts")))
     except Exception:
         return 0
-    ref = now or dt.datetime.now()
+    ref = now or runclock.now()
     return max(0, int((ref - raised).total_seconds() / 60))
 
 

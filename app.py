@@ -29,6 +29,7 @@ import ask_view
 import agents
 import workspace
 import realtime
+import runclock
 
 
 _RELOAD_TARGETS = (viz, journey, collab, analytics, learn, E, DE, personas, DV, workspace,
@@ -100,6 +101,7 @@ import build  # noqa: E402
 import store  # noqa: E402
 build.info.cache_clear()   # a hot reload swaps app.py without restarting the process
 clock.align()
+runclock.begin()   # one clock for this render — no 60m beside 61m for the same fact
 
 # Every browser session gets its own copy of the demo database: actions, verifications and closures
 # are real inside the session and gone after a refresh. Set RI_DEMO_MODE=0 to persist.

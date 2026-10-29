@@ -3,6 +3,8 @@
 Separate data model from IT Ops. Deterministic graph + rule-based reasoning."""
 import sqlite3
 import datetime as dt
+
+import runclock
 import networkx as nx
 
 DB = "data/ops.db"
@@ -58,7 +60,7 @@ def confirm_cause(inc_id, key):
 
 def _lag_min(f):
     try:
-        return int((dt.datetime.now() - dt.datetime.fromisoformat(f["last_updated"])).total_seconds() / 60)
+        return int((runclock.now() - dt.datetime.fromisoformat(f["last_updated"])).total_seconds() / 60)
     except Exception:
         return 0
 

@@ -78,6 +78,21 @@ def test_hero_cross_domain_counts_match_the_record(db):
     assert c["handoffs"] == len(collab.delegations(inc["id"]))
     assert c["text"] == f'{c["domains"]} domains · {c["handoffs"]} handoffs'
     assert c["domains"] >= 2, "INC-8841 is the cross-domain story — it must show more than one"
+def test_freshness_is_one_number_across_the_page(db):
+    """The panel, the thread edge and the handoff prose must not print 60m beside 61m.
+
+    They are one measure — now − dop_freshness.last_updated — so one clock per render, one number."""
+    import re
+    at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=180)
+    at.query_params["inc"] = "INC-8841"
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    md = "\n".join([m.value for m in at.markdown] + [c.value for c in at.caption])
+    seen = set(re.findall(r"freshness (\d+)m", md))
+    seen |= set(re.findall(r"(\d+)m stale", md))
+    seen |= set(re.findall(r"data_age (\d+)", md))
+    assert seen, "the page must state the freshness somewhere"
+    assert len(seen) == 1, f"freshness printed as several numbers: {sorted(seen)}"
 
 
 def test_wait_sla_and_owner_are_stated_once(db):

@@ -20,6 +20,7 @@ import sqlite3
 
 import collab
 import journey
+import runclock
 
 DB = "data/ops.db"
 
@@ -47,7 +48,7 @@ def _dt(value):
 
 
 def _now():
-    return dt.datetime.now()
+    return runclock.now()
 
 
 def minutes_between(start, end=None):

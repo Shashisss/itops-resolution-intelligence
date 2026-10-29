@@ -10,6 +10,7 @@ import engine as E
 import csm
 import developer
 import journey
+import runclock
 import viz
 import collab
 import graph_views
@@ -80,7 +81,7 @@ def context_header(inc, ctx):
     ola = next((o for o in E.load_olas() if o["team"] == inc["owner_team"]), None)
     ola_txt = "not defined"
     if ola:
-        el_min = (dt.datetime.now() - dt.datetime.fromisoformat(inc["created_at"])).total_seconds() / 60
+        el_min = (runclock.now() - dt.datetime.fromisoformat(inc["created_at"])).total_seconds() / 60
         rem_ola = ola["restore_min"] - el_min
         ola_txt = (f'{inc["owner_team"]} · {ola["restore_min"]}m restore · '
                    + ("BREACHED" if rem_ola <= 0 else f'{int(rem_ola)}m left'))

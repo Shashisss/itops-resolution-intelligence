@@ -7,6 +7,7 @@ import streamlit as st
 import dataops_engine as DE
 import engine as E
 import journey
+import runclock
 import shell
 import viz
 import collab
@@ -58,7 +59,7 @@ def context_header(inc, data):
     ola = next((o for o in E.load_olas() if o["team"] == _owner), None)
     ola_txt = "not defined"
     if ola:
-        el = (dt.datetime.now() - dt.datetime.fromisoformat(inc["created_at"])).total_seconds() / 60
+        el = (runclock.now() - dt.datetime.fromisoformat(inc["created_at"])).total_seconds() / 60
         rem = ola["restore_min"] - el
         ola_txt = f'{ola["restore_min"]}m · ' + ("BREACHED" if rem <= 0 else f'{int(rem)}m left')
     # v103: the owner/wait/SLA facts belong to the hero strip only. One small line for what the

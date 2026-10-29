@@ -1,6 +1,6 @@
 # PROTOTYPE NOTES — Resolution Intelligence POC
 
-Build v103 · sample data · simulated actions. This is a proof of concept, **not** production.
+Build v105 · sample data · simulated actions. This is a proof of concept, **not** production.
 
 ## Persistence boundary — what survives what
 
@@ -87,6 +87,18 @@ Relationships are **structured records** in `thread_edges` (source, target, rela
 observed/inferred kind, evidence source, timestamp, rule-based confidence). UI code no longer
 builds edges by hand; `journey.thread_edges_for()` resolves a thread via the correlation model.
 Inferred relationships are labelled as hypotheses, not proven facts.
+
+## One clock per render (v105)
+
+Every relative time is "now minus a stored timestamp". Computed per call, two of those inside one
+render can straddle a minute boundary and print `60m` in the thread beside `61m` in the agent panel
+for the same fact. `runclock.begin()` fixes one `now` at the top of each script run; `story`,
+`journey.freshness`, `collab.age_minutes`, `dataops_engine._lag_min` and the OLA elapsed time all
+read from it. One definition — now − `dop_freshness.last_updated` — one number, everywhere.
+
+Outside a run (tests, scripts) `runclock.now()` is the real clock, so the functions stay pure.
+`tests/test_story.py::test_freshness_is_one_number_across_the_page` renders the incident and asserts
+every freshness figure on the page is the same integer.
 
 ## One statement per fact (v103)
 
