@@ -80,6 +80,26 @@ def test_hero_cross_domain_counts_match_the_record(db):
     assert c["domains"] >= 2, "INC-8841 is the cross-domain story — it must show more than one"
 
 
+def test_wait_sla_and_owner_are_stated_once(db):
+    """v103: owner, wait and SLA remaining live in the hero strip and nowhere else on the scroll.
+
+    The old second block under the phase stepper repeated Owner and SLA in large type; the handoff
+    prose and the pinned bar repeated the clock again. One instance each, and no card row at all."""
+    import re
+    inc = _inc(db)
+    at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=180)
+    at.query_params["inc"] = "INC-8841"
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    md = "\n".join([m.value for m in at.markdown] + [c.value for c in at.caption])
+    waits = re.findall(r"Waiting \d+m · Data Platform", md)
+    slas = re.findall(r"\d+h \d+m left", md)
+    assert len(waits) == 1, f"the wait appears {len(waits)} times: {waits}"
+    assert len(slas) == 1, f"the SLA clock appears {len(slas)} times: {slas}"
+    assert ">Owner<" not in md and ">SLA<" not in md, \
+        "the duplicate Owner/SLA fact-card row under the stepper is gone"
+
+
 def test_hero_strip_on_screen_matches_the_module(db, monkeypatch):
     """The rendered page prints the same three claims story.hero() computes — no second definition.
 
@@ -118,7 +138,7 @@ def test_chain_marks_the_current_holder_and_times_each_hop(db):
     assert [n["holder"] for n in nodes].count(True) == 1
     holder = next(n for n in nodes if n["holder"])
     assert holder["label"] == "Data Platform"
-    assert holder["clock"].startswith("waiting ")
+    assert holder["clock"] == "current holder", "the wait is the hero's fact; the hop only says who holds it"
     assert nodes[0]["clock"].endswith("before handoff")
     assert nodes[-1]["label"] == "DOP-1001", "the upstream incident is the last hop"
 

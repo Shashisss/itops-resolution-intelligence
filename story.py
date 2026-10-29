@@ -221,9 +221,8 @@ def chain(inc):
         nodes.append({"id": f'team:{holder["to_"]}', "label": holder["to_"], "kind": "team",
                       "domain": dom, "holder": True, "since": holder["ts"],
                       "elapsed_min": minutes_between(holder["ts"], end),
-                      "clock": (f'held {fmt_minutes(minutes_between(holder["ts"], end))}'
-                                if end else
-                                f'waiting {fmt_minutes(collab.age_minutes(holder))}'),
+                      # the wait itself is the hero's fact; the chip only says who holds it now
+                      "clock": "current holder",
                       "hint": "holds the work now"})
     else:
         owner = inc.get("owner_team")
@@ -270,7 +269,7 @@ def hero(inc):
         "waiting": w, "sla": s, "cross": c,
         "facts": [
             {"label": "Open request", "value": w["text"], "note":
-                ("overdue · deadline " + fmt_minutes(w["deadline_min"])) if w.get("overdue")
+                (fmt_minutes(w["deadline_min"]) + " deadline") if w.get("overdue")
                 else (("closed — no request open" if s["closed"]
                        else "nobody is holding it — ask someone") if w["empty"]
                       else f'deadline {fmt_minutes(w["deadline_min"])}'),

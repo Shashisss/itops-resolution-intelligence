@@ -376,17 +376,19 @@ def render_resolution(inc_id, applied, sla_txt, owner, verdict="", extra=""):
     if not applied:
         return
     st.markdown("**Resolution record**")
+    # v103: the clock lives in the hero. The record states the *outcome*, not the number again.
+    outcome = "breached" if str(sla_txt).strip().upper() == "BREACHED" else "within SLA"
     if verdict == "Verified":
-        st.success(f'Incident **{inc_id}** independently **verified and closed** · SLA outcome: **{sla_txt}** '
+        st.success(f'Incident **{inc_id}** independently **verified and closed** · SLA {outcome} '
                    f'· owner: {owner}.')
         st.markdown(f'**Learning:** evidence captured → runbook / known-error updated.{(" " + extra) if extra else ""}')
     elif verdict == "Mitigated":
-        st.warning(f'Fix applied but **NOT verified** — incident **{inc_id}** remains **OPEN** · SLA {sla_txt} · '
+        st.warning(f'Fix applied but **NOT verified** — incident **{inc_id}** remains **OPEN** · SLA {outcome} · '
                    f'owner {owner}. Partial recovery only — further action required.')
     elif verdict == "Inconclusive":
         return "Inconclusive — the checks could not be decided; treat as NOT verified."
     elif verdict == "Recovery failed":
-        st.error(f'Recovery **FAILED** — incident **{inc_id}** remains **OPEN** · SLA {sla_txt} · owner {owner}. '
+        st.error(f'Recovery **FAILED** — incident **{inc_id}** remains **OPEN** · SLA {outcome} · owner {owner}. '
                  f'Escalate.')
     else:
         st.info(f'Incident **{inc_id}** — status: {verdict or "investigating"} (not closed).')

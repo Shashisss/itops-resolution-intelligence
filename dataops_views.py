@@ -61,21 +61,17 @@ def context_header(inc, data):
         el = (dt.datetime.now() - dt.datetime.fromisoformat(inc["created_at"])).total_seconds() / 60
         rem = ola["restore_min"] - el
         ola_txt = f'{ola["restore_min"]}m · ' + ("BREACHED" if rem <= 0 else f'{int(rem)}m left')
-    viz.fact_cards([
-        ("Stage", journey.lifecycle_stage(inc), "#4f46e5"),
-        ("Pipeline owner", _owner, "#0d9488"),
-        ("Freshness", fresh_txt, "#dc2626" if breach else "#16a34a"),
-        ("OLA", ola_txt, "#0891b2"),
-    ])
-    st.caption(f'Blocker: {inc["blocker"] or "—"} · Priority: {inc["priority"]} · '
-               f'Dataset: {name} ({data["datasets"][ds]["layer"]})')
+    # v103: the owner/wait/SLA facts belong to the hero strip only. One small line for what the
+    # hero does not carry — the internal OLA, the blocker and the dataset.
+    st.caption(f'Blocker: {inc["blocker"] or "—"} · Dataset: {name} '
+               f'({data["datasets"][ds]["layer"]}) · OLA {ola_txt}')
     with st.expander("🧾 Record, sources & assumptions", expanded=False):
         con = next((c for c in data["contracts"] if c["dataset_id"] == ds), None)
         if con:
             st.markdown(f'**Data contract:** {con["name"]} {con["version"]} · owner {con["owner"]}')
         st.caption(f'Downstream consumers: {len(cons)}')
         st.caption("Detection is rule-based (freshness SLA, DQ thresholds, run status) — not autonomous/learned.")
-    journey.render_verdict(journey.current_verdict(inc))
+    # v103: verdict lives in the identity bar and the rail, not a third time under the stepper.
 
 
 def handoff(text):
@@ -210,9 +206,6 @@ def verify_panel(inc, data):
 def pipeline_view(inc, data):
     """One scroll: the pipeline incident with every stage as a section, all anchors kept."""
     context_header(inc, data)
-    fresh_txt0, _, _, _ = _fresh(data, inc["dataset_id"])
-    viz.status_bar(f'{inc["id"]} · {inc["priority"]} · owner {inc["owner_team"]} · '
-                   f'freshness {fresh_txt0} · {journey.current_verdict(inc)}')
 
     def detect():
         with st.expander("Detection", expanded=True):
@@ -234,10 +227,6 @@ def pipeline_view(inc, data):
         fresh_txt, breach, lag, sla = _fresh(data, inc["dataset_id"])
         ds = data["datasets"].get(inc["dataset_id"], {}).get("name", inc["dataset_id"])
         ola = next((o for o in DE.load_olas() if o["team"] == inc["owner_team"]), None) if hasattr(DE, "load_olas") else None
-        viz.fact_cards([("Severity", inc["priority"], "#dc2626"),
-                        ("Owner", inc["owner_team"], "#0d9488"),
-                        ("Freshness", fresh_txt, "#d97706"),
-                        ("OLA", f'{ola["restore_min"]}m restore' if ola else "team OLA", "#0891b2")])
         rec = DE.recommend(inc, DE.causes(inc, data), data)
         st.markdown(f'**Routing** — next engineer **{rec["actor"]}** · repair *{rec["action"]}* · '
                     f'gate **{rec["mode"]}**')

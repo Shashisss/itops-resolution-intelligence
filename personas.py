@@ -84,14 +84,11 @@ def context_header(inc, ctx):
         rem_ola = ola["restore_min"] - el_min
         ola_txt = (f'{inc["owner_team"]} · {ola["restore_min"]}m restore · '
                    + ("BREACHED" if rem_ola <= 0 else f'{int(rem_ola)}m left'))
-    viz.fact_cards([
-        ("Stage", journey.lifecycle_stage(inc), "#4f46e5"),
-        ("Owner", inc["owner_team"], "#0d9488"),
-        ("SLA", sla_txt, "#d97706"),
-        ("OLA", ola_txt, "#0891b2"),
-    ])
-    st.caption(f'Blocker: {inc["blocker"] or "—"} · Priority: {inc["priority"]} · '
-               f'Service: {services[biz]["name"] if biz else "—"}')
+    # v103: no second card row. Owner, wait and SLA live in the hero strip at the top of the
+    # incident; what is left here is what the hero does not state — the internal OLA, the blocker
+    # and the service — as one small line, not four large tiles.
+    st.caption(f'Blocker: {inc["blocker"] or "—"} · Service: {services[biz]["name"] if biz else "—"} '
+               f'· OLA {ola_txt}')
     with st.expander("🧾 Record, sources & assumptions", expanded=False):
         tk = next((t for t in ctx["tickets"] if t["incident_id"] == inc["id"]), None)
         if tk:
@@ -102,7 +99,7 @@ def context_header(inc, ctx):
             st.caption(f'Business KPI: {k["metric"].replace("_"," ")} {k["current"]:.0f}{k["unit"]}')
         else:
             st.caption("No business KPI mapped — impact shown at service level.")
-    journey.render_verdict(journey.current_verdict(inc))
+    # v103: the verdict already sits in the pinned identity bar and the rail — no third badge here.
 
 
 def handoff(text):
@@ -114,7 +111,7 @@ def handoff(text):
 def _carried(inc, ctx, biz, sla_txt):
     k = _kpi(ctx, biz)
     bits = [f'incident **{inc["id"]}**', f'service **{ctx["services"][inc["service_id"]]["name"]}**',
-            f'owner **{inc["owner_team"]}**', f'blocker **{inc["blocker"] or "—"}**', f'SLA **{sla_txt}**']
+            f'owner **{inc["owner_team"]}**', f'blocker **{inc["blocker"] or "—"}**']
     if k:
         bits.append(f'business KPI **{k["metric"].replace("_"," ")} {k["current"]:.0f}{k["unit"]}**')
     tk = next((t for t in ctx["tickets"] if t["incident_id"] == inc["id"]), None)
@@ -276,11 +273,6 @@ def incident_sections(inc, ctx):
         biz = E.business_service(G, E.dependency_paths(G, inc["service_id"])[0], services)
         sla_txt, _, _, _ = _sla_detail(inc)
         ola = next((o for o in E.load_olas() if o["team"] == inc["owner_team"]), None)
-        sev = viz.SEV_LABEL.get(inc["priority"], ("", "Minor"))[1]
-        viz.fact_cards([("Severity", f'{inc["priority"]} · {sev}', "#dc2626"),
-                        ("Owner", inc["owner_team"], "#0d9488"),
-                        ("SLA", sla_txt, "#d97706"),
-                        ("OLA", f'{ola["restore_min"]}m restore' if ola else "not defined", "#0891b2")])
         rec = E.recommend(inc, E.causes(inc, G, changes, metrics, services))
         st.markdown(f'**Routing** — next actor **{rec["actor"]}** · action *{rec["action"]}* · '
                     f'gate **{rec["mode"]}**')
@@ -363,8 +355,6 @@ def incident_sections(inc, ctx):
 def incident_view(inc, ctx):
     """One scroll: identity and carried context, then every stage as a section."""
     context_header(inc, ctx)
-    viz.status_bar(f'{inc["id"]} · {inc["priority"]} · owner {inc["owner_team"]} · '
-                   f'SLA {_sla_detail(inc)[0]} · {journey.current_verdict(inc)}')
     sections = incident_sections(inc, ctx)
     for stage in journey.LIFECYCLE:
         with st.container(key=f"it_step_{inc['id']}_anchor_{stage}"):

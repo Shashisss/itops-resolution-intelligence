@@ -518,7 +518,7 @@ def render_workspace_page(dom, ref, you_role):
             st.markdown(
                 f'<div class="ri-wsid"><span class="id">{inc["id"]}</span>'
                 f'<span class="chip" style="background:{tone}1a;color:{tone}">{verdict}</span>'
-                f'<span class="meta">{sev} · <b>{nxt["stage"]}</b> · <b>{sla}</b></span></div>',
+                f'<span class="meta">{sev} · <b>{nxt["stage"]}</b></span></div>',
                 unsafe_allow_html=True)
         if action_label:
             if action_stage == "Close" and gate["eligible"]:

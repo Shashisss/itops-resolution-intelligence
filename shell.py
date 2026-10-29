@@ -161,8 +161,8 @@ def incident_context(inc_id, verdict, tone, sev, stage, sla):
         f'<div class="ri-sbctx"><div class="l">Open incident</div>'
         f'<div class="id">{inc_id}</div>'
         f'<div class="chip" style="background:{tone}1a;color:{tone}">{verdict}</div>'
-        f'<div class="meta">{sev} · {stage}</div>'
-        f'<div class="meta"><b>{sla}</b></div></div>', unsafe_allow_html=True)
+        f'<div class="meta">{sev} · {stage}</div></div>', unsafe_allow_html=True)
+    # v103: the SLA clock is stated once, in the hero strip. The rail carries identity, not a clock.
 
 
 def sidebar(default_role="CSM", stats=None, build=None, demo=False):

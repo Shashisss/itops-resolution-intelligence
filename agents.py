@@ -92,9 +92,11 @@ def _breaching_metric(inc):
 def _lead_counts(inc):
     """Signals reviewed, leads ranked, low-confidence leads set aside — all from the thread.
 
-    reviewed = signal rows on this incident; ranked = RCA leads the ranking produced; rejected =
-    leads whose recorded confidence is low (set aside, not deleted)."""
-    reviewed = len(_rows("SELECT id FROM thread_edges WHERE thread_ref=?", (inc["id"],)))
+    reviewed = alert/ticket/change rows on this incident's timeline; ranked = RCA leads the ranking
+    produced; rejected = leads whose recorded confidence is low (set aside, not deleted)."""
+    # one definition for both domains: the signals the record itself carries
+    reviewed = len(_rows("SELECT id FROM timeline WHERE ref_id=? AND kind IN ('alert','ticket','change')",
+                         (inc["id"],)))
     leads = []
     try:
         if inc["id"].startswith("DOP"):

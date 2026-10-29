@@ -1,6 +1,6 @@
 # PROTOTYPE NOTES — Resolution Intelligence POC
 
-Build v102 · sample data · simulated actions. This is a proof of concept, **not** production.
+Build v103 · sample data · simulated actions. This is a proof of concept, **not** production.
 
 ## Persistence boundary — what survives what
 
@@ -87,6 +87,22 @@ Relationships are **structured records** in `thread_edges` (source, target, rela
 observed/inferred kind, evidence source, timestamp, rule-based confidence). UI code no longer
 builds edges by hand; `journey.thread_edges_for()` resolves a thread via the correlation model.
 Inferred relationships are labelled as hypotheses, not proven facts.
+
+## One statement per fact (v103)
+
+The incident screen states each of its three headline facts in exactly one place — the hero strip:
+who holds the work and for how long, the SLA clock left, and how far it has crossed. Everything
+below the phase stepper is reserved for facts the hero does not carry.
+
+Removed in v103: the second Owner/SLA/OLA/Stage card row under the stepper (both domains), the
+Severity/Owner/SLA/OLA card row inside Triage, the dark status bar that repeated id/owner/SLA/verdict,
+the third verdict badge, the SLA in the pinned bar and the sidebar rail, and the "asked 53m ago" that
+restated the hero's wait on every request card.
+
+What replaced the duplicate block: one small line — blocker · service (or dataset) · internal OLA —
+which is the only one of those facts the hero does not show. Where there was nothing unique to say,
+there is whitespace. `tests/test_story.py::test_wait_sla_and_owner_are_stated_once` renders the page
+and counts the occurrences: the wait and the SLA clock must each appear once.
 
 ## Who's on it — the agent panel (v102)
 

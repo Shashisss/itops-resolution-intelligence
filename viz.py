@@ -645,9 +645,9 @@ def request_card(r, travels, key):
     evidence) it carries. `key` makes the button unique per request."""
     state = html.escape(str(r["state"]))
     if r.get("overdue"):
-        when = f'asked {r["age_min"]}m ago · {r["over_by"]}m over a {r["deadline_min"]}m deadline'
+        when = f'{r["over_by"]}m over a {r["deadline_min"]}m deadline'
     else:
-        when = f'asked {r["age_min"]}m ago · {r["deadline_min"]}m deadline'
+        when = f'{r["deadline_min"]}m deadline, not yet due'
     unsent = ('<span class="ri-unsent" title="No connector is configured — this is recorded, '
               'not delivered">not sent · simulated</span>') if not r.get("delivered") else ""
     stage, impact, evidence = travels
