@@ -372,8 +372,9 @@ c.executemany("INSERT INTO delegations(ref_id,frm,to_,action,status,ts,channel,s
     ("INC-8841", "Incident Manager", "Checkout Team",
      "Draft the customer note for the 14:02 window · expected in 30 min", "assigned", M(2), "App",
      "Act", "Incident Manager", M(2), None, "trace + 1 evidence"),
+    # 120-minute deadline: old enough to sit on page 2, but sending it must read SENT, not OVERDUE
     ("INC-8841", "Incident Manager", "Data Platform",
-     "Confirm the replay scope before the batch window · expected in 30 min", "assigned", M(60), "App",
+     "Confirm the replay scope before the batch window · expected in 120 min", "assigned", M(60), "App",
      "Act", "Incident Manager", M(60), None, "trace + graph"),
 ])
 # The initial insertion is itself the first recorded transition: the requester is the actor.

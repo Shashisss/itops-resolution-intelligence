@@ -10,13 +10,16 @@ Exit code 1 if any screen fails.
 """
 import asyncio
 import json
+import os
 import sys
 import urllib.request
 
 import websockets
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8501"
-CDP = "http://127.0.0.1:9222"
+# Any CDP endpoint works: :9222 is the managed browser, a separate headless instance can be pointed
+# at the deployed app with CDP=http://127.0.0.1:9333 and left to the person's own tabs.
+CDP = os.environ.get("CDP", "http://127.0.0.1:9222")
 
 JS = r"""
 (async () => {
