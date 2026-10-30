@@ -11,15 +11,55 @@ Exit code 1 if any screen fails.
 import asyncio
 import json
 import os
+import shutil
+import subprocess
 import sys
+import time
 import urllib.request
 
 import websockets
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8501"
-# Any CDP endpoint works: :9222 is the managed browser, a separate headless instance can be pointed
-# at the deployed app with CDP=http://127.0.0.1:9333 and left to the person's own tabs.
-CDP = os.environ.get("CDP", "http://127.0.0.1:9222")
+
+# This audit never drives the browser the person is using. :9222 is theirs — a run that opens tabs
+# there fills their window and starves their own CDP calls. Instead the audit starts its own
+# headless Chrome on its own port, uses it, and shuts it down. Set CDP_URL only to point at another
+# throwaway instance; there is no default that reaches the shared one.
+CDP_PORT = int(os.environ.get("CDP_PORT", "9333"))
+CDP = os.environ.get("CDP_URL", f"http://127.0.0.1:{CDP_PORT}")
+_CHROME_DIR = f"/tmp/ri-audit-chrome-{CDP_PORT}"
+_CHROME = next((p for p in ("/usr/bin/google-chrome", "/usr/bin/chromium",
+                            "/usr/bin/chromium-browser") if os.path.exists(p)), None)
+
+
+def _cdp_alive(url, timeout=2):
+    try:
+        urllib.request.urlopen(f"{url}/json/version", timeout=timeout).read()
+        return True
+    except Exception:
+        return False
+
+
+def _start_chrome():
+    """Launch a private headless Chrome for this run. Returns the process, or None if one was
+    already listening on the port (then it is not ours to kill)."""
+    if _cdp_alive(CDP):
+        return None
+    if not _CHROME:
+        sys.exit(f"FAIL  no Chrome binary found to run the audit against {CDP}")
+    proc = subprocess.Popen([_CHROME, "--headless=new", f"--remote-debugging-port={CDP_PORT}",
+                             "--remote-debugging-address=127.0.0.1", "--no-sandbox", "--disable-gpu",
+                             "--disable-dev-shm-usage", "--renderer-process-limit=1",
+                             f"--user-data-dir={_CHROME_DIR}", "--window-size=1400,900",
+                             "about:blank"],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            start_new_session=True)
+    for _ in range(40):
+        if _cdp_alive(CDP):
+            return proc
+        time.sleep(0.5)
+    proc.terminate()
+    sys.exit(f"FAIL  headless Chrome did not answer on {CDP}")
 
 JS = r"""
 (async () => {
@@ -206,6 +246,21 @@ async def run(screen, url, script=None):
 
 
 async def main():
+    proc = _start_chrome()
+    print(f"# audit endpoint {CDP} ({'started by this run' if proc else 'already running'})")
+    try:
+        return await _run_all()
+    finally:
+        if proc is not None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except Exception:
+                proc.kill()
+            shutil.rmtree(_CHROME_DIR, ignore_errors=True)
+
+
+async def _run_all():
     screens = [("incident INC-8841", f"{BASE}/?inc=INC-8841"),
                ("incident DOP-1001", f"{BASE}/?inc=DOP-1001")]
     failures = 0

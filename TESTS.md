@@ -5,7 +5,7 @@ Two layers, both runnable without a browser.
 ```bash
 python3 -m pip install -r requirements-dev.txt
 python3 -m pytest tests -q          # 177 tests, ~34s
-python3 scripts/layout_check.py http://localhost:8501   # layout audit, needs Chrome on :9222
+python3 scripts/layout_check.py http://localhost:8501   # layout audit — launches its own headless Chrome
 python3 scripts/smoke.py            # deployment smoke test, ~5s
 ```
 
@@ -16,8 +16,11 @@ list and asserts the URL was cleared. It exits non-zero on the first failure.
 ## Layout audit (`scripts/layout_check.py`)
 
 Playwright is **not installed** in this container (the npm package is absent and installing browsers
-needs network). The audit is the same idea over the Chrome DevTools Protocol against the headless
-Chrome already running on :9222: it loads each screen, then asserts in-page that
+needs network). The audit is the same idea over the Chrome DevTools Protocol. It starts its **own**
+headless Chrome on `CDP_PORT` (default 9333) and shuts it down afterwards — it never drives the
+browser the person is using on :9222, where a run of tabs would starve their own CDP calls. Point
+`CDP_URL` at another throwaway instance if you need to. It loads each screen, then asserts in-page
+that
 
 1. no two sibling cards/tiles overlap (intersection > 1px on both axes),
 2. nothing overflows horizontally and the incident document does not scroll (`scrollHeight <=
@@ -31,7 +34,7 @@ Chrome already running on :9222: it loads each screen, then asserts in-page that
 Screens: incident × six tabs for INC-8841 and DOP-1001, the incidents list. One line of PASS/FAIL
 per screen; exit code 1 on any failure.
 
-Result at v121: 14 screens checked, 14 PASS on the deployed app.
+Result at v122: 14 screens checked, 14 PASS on the deployed app (own headless Chrome).
 
 ## `tests/test_incident_actions.py` — the Requests tab (v110)
 
