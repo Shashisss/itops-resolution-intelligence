@@ -351,12 +351,6 @@ c.executemany("INSERT INTO delegations(ref_id,frm,to_,action,status,ts,channel,s
      "Send the customer-facing note for the 14:02 window · expected in 15 min", "assigned", M(24), "App", "Act"),
     ("INC-8841", "Incident Manager", "Checkout Team",
      "Confirm the 14:02 deploy window with Checkout · expected in 30 min", "done", M(4), "Teams", "Act"),
-    ("DOP-1001", "Data Owner", "Data Engineer",
-     "Reconcile schema (contract v4) + replay", "assigned", M(14), "Jira", "Act"),
-    # INC-8850 deliberately has no handoff yet: it is the incident used to demonstrate the full
-    # progression confirm cause → bring in owner → execute → verify → close.
-    ("DOP-1002", "Data Owner", "Data Engineer",
-     "Reconcile order_channel schema", "assigned", M(15), "Teams", "Act"),
 ])
 # Every ask that is already on the thread was handed over when it was recorded: sent_at = ts.
 # Only an ask created in the UI starts unsent (NOT SENT until Send is pressed).
@@ -369,14 +363,27 @@ c.execute("UPDATE delegations SET travels = CASE channel WHEN 'Jira' THEN 'ticke
 # purpose: an unsent ask has no sent_at, and that is what makes it unsent.
 c.executemany("INSERT INTO delegations(ref_id,frm,to_,action,status,ts,channel,stage,actor,"
               "changed_at,sent_at,travels) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", [
-    ("INC-8841", "Incident Manager", "Checkout Team",
-     "Draft the customer note for the 14:02 window · expected in 30 min", "assigned", M(2), "App",
-     "Act", "Incident Manager", M(2), None, "trace + 1 evidence"),
     # 120-minute deadline: old enough to sit on page 2, but sending it must read SENT, not OVERDUE
     ("INC-8841", "Incident Manager", "Data Platform",
      "Confirm the replay scope before the batch window · expected in 240 min", "assigned", M(60), "App",
      "Act", "Incident Manager", M(60), None, "trace + graph"),
+    ("INC-8841", "Incident Manager", "Checkout Team",
+     "Draft the customer note for the 14:02 window · expected in 30 min", "assigned", M(2), "App",
+     "Act", "Incident Manager", M(2), None, "trace + 1 evidence"),
 ])
+# v118: the DOP asks are ordinary handed-over requests, inserted after the unsent pair so the
+# INC-8841 ids run 1..16 without gaps — every action link carries ?target=<id>, and a numbering
+# that depends on insert order elsewhere is a link that can point at the wrong request.
+c.executemany("INSERT INTO delegations(ref_id,frm,to_,action,status,ts,channel,stage) VALUES(?,?,?,?,?,?,?,?)", [
+    ("DOP-1001", "Data Owner", "Data Engineer",
+     "Reconcile schema (contract v4) + replay", "assigned", M(14), "Jira", "Act"),
+    # INC-8850 deliberately has no handoff yet: it is the incident used to demonstrate the full
+    # progression confirm cause → bring in owner → execute → verify → close.
+    ("DOP-1002", "Data Owner", "Data Engineer",
+     "Reconcile order_channel schema", "assigned", M(15), "Teams", "Act"),
+])
+c.execute("UPDATE delegations SET sent_at = ts WHERE sent_at IS NULL AND ref_id LIKE 'DOP-%'")
+c.execute("UPDATE delegations SET travels = 'ticket + evidence' WHERE travels IS NULL AND channel = 'Jira'")
 # The initial insertion is itself the first recorded transition: the requester is the actor.
 c.execute("UPDATE delegations SET actor=frm, changed_at=ts WHERE actor IS NULL")
 c.execute("INSERT INTO delegation_events(delegation_id,status,actor,changed_at) "
