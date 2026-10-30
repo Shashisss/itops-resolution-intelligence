@@ -784,6 +784,73 @@ def reopen_incident(inc_id, actor, reason=""):
     return True, f"Reopened by {actor} at {now[11:16]} — back on the open queue."
 
 
+# ---------------------------------------------------------------- ownership (v124)
+def _inc_table(inc_id):
+    con = sqlite3.connect(DB)
+    con.row_factory = sqlite3.Row
+    row = None
+    table = None
+    for t in ("incidents", "dop_incidents"):
+        r = con.execute(f"SELECT * FROM {t} WHERE id=?", (inc_id,)).fetchone()
+        if r is not None:
+            table = t
+            row = dict(r)
+            break
+    con.close()
+    return table, row
+
+
+def assign_owner(inc_id, target, actor):
+    """Bring someone in: they own the thread, the previous holder is on it, the clock restarts.
+
+    Three facts move together or the screen lies: the incident's owner, the open request (the new
+    owner now holds it, so 'Waiting on' is theirs and the ask clock starts now), and the audit
+    record (who did it, when). The previous holder keeps their asks on the thread as done."""
+    import collab
+    target = str(target or "").strip()
+    actor = str(actor or "").strip() or "Incident Manager"
+    if not target:
+        raise ValueError("no one to bring in")
+    table, inc = _inc_table(inc_id)
+    if table is None:
+        raise ValueError("incident not found")
+    old = (inc.get("owner_team") or "").strip()
+    if old == target:
+        raise ValueError(f"{target} already owns this incident")
+    now = dt.datetime.now().replace(microsecond=0).isoformat(timespec="seconds")
+    con = sqlite3.connect(DB)
+    con.execute(f"UPDATE {table} SET owner_team=? WHERE id=?", (target, inc_id))
+    con.commit()
+    con.close()
+    # The handover re-bases the thread: any request that is still open was for the previous holder
+    # (or someone else's part of it), so it is closed as superseded — otherwise "Waiting on" would
+    # keep naming a team that no longer holds this incident and the ask clock would be theirs.
+    superseded = [d for d in collab.delegations(inc_id) if d["status"] != "done"]
+    for d in superseded:
+        collab.set_delegation_status(d["id"], "done", actor)
+    collab.add_delegation(inc_id, actor, target, f"Take ownership of {inc_id} · expected in 30 min",
+                          status="assigned", channel="Portal",
+                          stage=lifecycle_stage(inc), actor=actor,
+                          travels="thread + evidence", delivered=True)
+    add_event(inc_id, "itops" if table == "incidents" else "dataops", "detect",
+              f"Brought in {target} by {actor} at {now[11:16]}"
+              + (f" — {old} handed over" if old else "")
+              + (f"; {len(superseded)} open request(s) closed as superseded" if superseded else ""))
+    collab.add_comment(inc_id, actor, "Person",
+                       f"[Simulated] Brought in {target}"
+                       + (f"; {old} handed the thread over" if old else "") + ".", channel="Portal")
+    return {"owner": target, "previous": old, "at": now[11:16]}
+
+
+def previous_owner(inc_id):
+    """Who handed the thread over, read from the handover event. ("", "") when never reassigned."""
+    for ev in reversed(timeline(inc_id)):
+        m = re.search(r"Brought in .+? — (.+?) handed over", ev.get("detail") or "")
+        if m:
+            return m.group(1).strip()
+    return ""
+
+
 def closed_by(inc_id):
     """Who closed it and when, read from the closure event the gate writes. ('—', '') if none."""
     for ev in reversed(timeline(inc_id)):

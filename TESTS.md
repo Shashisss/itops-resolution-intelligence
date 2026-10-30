@@ -4,7 +4,7 @@ Two layers, both runnable without a browser.
 
 ```bash
 python3 -m pip install -r requirements-dev.txt
-python3 -m pytest tests -q          # 178 tests, ~40s
+python3 -m pytest tests -q          # 187 tests, ~43s
 python3 scripts/layout_check.py http://localhost:8501   # layout audit — launches its own headless Chrome
 python3 scripts/smoke.py            # deployment smoke test, ~5s
 ```
@@ -34,7 +34,7 @@ that
 Screens: incident × six tabs for INC-8841 and DOP-1001, the incidents list. One line of PASS/FAIL
 per screen; exit code 1 on any failure.
 
-Result at v123: 14 screens checked, 14 PASS on the deployed app (own headless Chrome).
+Result at v124: 14 screens checked, 14 PASS on the deployed app (own headless Chrome).
 
 ## `tests/test_incident_actions.py` — the Requests tab (v110)
 
@@ -59,6 +59,22 @@ re-rendered document are both read back.
 | `test_a_stale_target_changes_nothing_and_says_so` | unknown target → stated refusal, record untouched |
 | `test_an_ask_without_an_owner_creates_nothing` | empty form → nothing created, reason shown |
 | `test_actions_land_back_on_the_same_tab_and_page` | tab/full/page survive the action, `action` is consumed |
+
+## `tests/test_share_comment_assign.py` — share, comments, bring in (v124)
+
+9 tests.
+
+| Test | Asserts |
+|---|---|
+| `test_the_share_pane_states_the_summary_and_the_deep_link` | id, title, state, owner, holder, wait, SLA, blocker, next action and the deep link, in a selectable block with a Copy control and no modal |
+| `test_share_records_it_in_the_audit_with_actor_and_time` | the share lands in the timeline and as a Portal comment |
+| `test_a_comment_is_posted_and_rendered_with_author_channel_and_time` | posted, then on screen with author, channel and HH:MM |
+| `test_an_empty_comment_is_rejected_out_loud` | whitespace-only → visible refusal, nothing written |
+| `test_comments_are_newest_last` | the thread reads in order |
+| `test_bring_in_lists_the_records_teams_and_posts_the_assign` | the picker lists teams from the record as assign links, no modal |
+| `test_assigning_changes_owner_keeps_the_old_one_and_restarts_the_clock` | owner changed, previous holder still on the thread, ask clock restarted, audit entry |
+| `test_the_waiting_tile_follows_the_new_owner` | the "Waiting on" tile names the new owner |
+| `test_assigning_the_current_owner_is_refused` | assigning the current owner refuses and changes nothing |
 
 ## `tests/test_remediation_learn.py` — apply, verify, learn, reopen (v121)
 

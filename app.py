@@ -241,6 +241,20 @@ def _target_ask(ref, target):
     return None
 
 
+def _base_url():
+    """This deployment's address, for the deep link in the share block.
+
+    Streamlit gives no direct URL, but the request carries it: proxy headers first, then Host. The
+    fallback is the local port, so a copy never silently loses the address."""
+    try:
+        h = {str(k).lower(): str(v) for k, v in st.context.headers.items()}
+    except Exception:  # noqa: BLE001
+        h = {}
+    host = h.get("x-forwarded-host") or h.get("host") or "localhost:8501"
+    proto = h.get("x-forwarded-proto") or ("https" if "streamlit.app" in host else "http")
+    return f"{proto}://{host}".rstrip("/")
+
+
 def _incident_leads(dom, inc):
     """The ranked hypotheses for this incident, computed once per render.
 
@@ -433,6 +447,29 @@ def _run_incident_action(dom, ref, you_role, act, target=None):
             return
         learn.save(inc, dom, fields, actor=you_role)
         st.session_state["flash"] = f'Learning saved by {you_role} — root cause recorded.'
+    elif act == "share":
+        when = dt.datetime.now().strftime("%H:%M")
+        journey.add_event(ref, "dataops" if dom == "DataOps" else "itops", "detect",
+                          f"Shared by {you_role} at {when} (portal summary)")
+        collab.add_comment(ref, you_role, "Person",
+                           "[Simulated] Shared this incident as a portal summary.", channel="Portal")
+        st.session_state["flash"] = f"Share recorded in the audit by {you_role} at {when}."
+    elif act == "comment":
+        text = str(st.query_params.get("text") or "").strip()
+        if not text:
+            st.session_state["flash"] = "A comment needs text — nothing was posted."
+            return
+        collab.add_comment(ref, you_role, "Person", text, channel="Portal")
+        st.session_state["flash"] = f"Comment posted by {you_role}."
+    elif act == "assign":
+        target = str(st.query_params.get("target") or "").strip()
+        try:
+            out = journey.assign_owner(ref, target, you_role)
+            st.session_state["flash"] = (
+                f'Brought in {out["owner"]} at {out["at"]}'
+                + (f' — {out["previous"]} handed the thread over.' if out["previous"] else "."))
+        except ValueError as exc:
+            st.session_state["flash"] = f"Not assigned: {exc}"
     elif act == "reopen":
         ok, msg = journey.reopen_incident(ref, you_role, str(st.query_params.get("why") or ""))
         st.session_state["flash"] = msg
@@ -616,7 +653,7 @@ def render_workspace_page(dom, ref, you_role):
     if _act:
         _run_incident_action(dom, ref, you_role, _act, target=st.query_params.get("target"))
         for _k in ("action", "target", "to", "act", "due", "travels", "new", "learn",
-                   "root_cause", "summary", "steps", "outcome", "why"):
+                   "root_cause", "summary", "steps", "outcome", "why", "text"):
             try:
                 del st.query_params[_k]
             except Exception:
@@ -636,8 +673,15 @@ def render_workspace_page(dom, ref, you_role):
     _initial = next((t for t in incident_html.TAB_NAMES if t.lower() == _tab), "Timeline")
     # The Requests tab's view lives in the URL (full / page / new) so an action lands back on the
     # page it was taken from instead of resetting the tab.
+    if _act == "assign":
+        try:
+            del st.query_params["assign"]
+        except Exception:
+            pass
     _view = {"full": _flag("full"), "page": _num("page", 1), "new": _flag("new"),
-             "learn": _flag("learn"), "plan": _remediation_plan(dom, inc)}
+             "learn": _flag("learn"), "plan": _remediation_plan(dom, inc),
+             "share": _flag("share"), "assign": _flag("assign"),
+             "base": _base_url(), "you": you_role}
     _leads, _headline = _incident_leads(dom, inc)
     st.query_params["inc"] = ref
     _html = incident_html.build(inc, dom, queue=queue, initial_tab=_initial, view=_view,

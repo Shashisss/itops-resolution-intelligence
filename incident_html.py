@@ -88,6 +88,8 @@ def facts(inc):
         "score": score,
         "asked": oldest,
         "owns": inc.get("owner_team") or "—",
+        "blocker": inc.get("blocker") or "",
+        "previous_owner": journey.previous_owner(inc["id"]),
         "service": _service_name(inc),
         "dataset": (f["name"] if f else (inc.get("dataset_id") or "dataset")),
         "evidence": story.evidence(inc, limit=99),
@@ -129,10 +131,13 @@ def _service_name(inc):
 
 
 # ---------------------------------------------------------------- fragments
-def _header(F, queue):
+def _header(F, queue, view=None):
+    view = view or {}
+    share = (f'<a class="back" href="?inc={esc(F["id"])}&amp;tab={_q(view.get("tab") or "Timeline")}'
+             f'&amp;share=1&amp;action=share" target="_top">Share</a>')
     return f'''<div class="hdr">
   <div class="bc"><a class="back" href="?inc={esc(F["id"])}&action=back" target="_top">← All incidents</a>
-    <span>Incidents / {esc(F["id"])}</span></div>
+    <span>Incidents / {esc(F["id"])}</span>{share}</div>
   <div class="row">
     <span class="t">{esc(F["title"])}</span>
     <span class="r">
@@ -264,21 +269,37 @@ def _meaning(F, action, headline=None):
 </div>'''
 
 
-def _who(F):
+def _who(F, view=None):
+    view = view or {}
     rows = []
     for name, role, extra in _people(F):
         initials = "".join(w[0] for w in str(name).split()[:2]).upper() or "•"
         rows.append(f'<div class="who"><span class="av">{esc(initials)}</span>'
                     f'<span><b>{esc(name)}</b><i>{esc(role)}</i></span>'
                     f'<em>{esc(extra)}</em></div>')
-    return f'<div class="card who-card"><h2>Who is on it</h2>{"".join(rows)}</div>'
+    bring = (f'<a class="morex" href="?inc={esc(F["id"])}&amp;tab={_q(view.get("tab") or "Timeline")}'
+             f'&amp;assign=1" target="_top">Bring in…</a>')
+    return (f'<div class="card who-card"><h2>Who is on it {bring}</h2>{"".join(rows)}</div>')
 
 
 def _people(F):
+    """Owner, whoever holds the open request, then anyone else engaged — so a previous holder
+    stays visible on the thread after someone new is brought in."""
     out = [(F["owns"], "owner", "")]
     if F["asked"]:
         out.append((F["asked"]["to_"], "asked",
                     story.fmt_minutes(collab.age_minutes(F["asked"]))))
+    seen = {n for n, _r, _e in out}
+    if F.get("previous_owner") and F["previous_owner"] not in seen:
+        out.append((F["previous_owner"], "on the thread", ""))
+        seen.add(F["previous_owner"])
+    for d in collab.delegations(F["id"]):
+        who = d.get("to_") or ""
+        if who and who not in seen:
+            out.append((who, "on the thread", ""))
+            seen.add(who)
+        if len(out) >= 3:
+            break
     return out[:3]
 
 
@@ -553,17 +574,74 @@ def _rca_pane(ref, F, leads, view):
     return "".join(_lead_html(l, ref) for l in shown) + more + f'<div class="rf">{esc(foot)}</div>'
 
 
-# ---------------------------------------------------------------- tabs
-def _panes(F, dom, view=None):
+# ---------------------------------------------------------------- share / bring in (v124)
+def _share_text(F, view):
+    link = f'{(view.get("base") or "").rstrip("/")}/?inc={F["id"]}'
+    return "\n".join([
+        f'{F["id"]} · {F["title"]}',
+        f'state {F["stage"]} · owner {F["owns"]} · holder {F["holder"]} · waiting {F["wait_txt"]}',
+        f'SLA {F["clock"]} · blocker {F["blocker"] or "—"}',
+        f'next {F["next"].get("label") or "—"}',
+        f'link {link}',
+    ])
+
+
+def _share_pane(F, view):
+    """The shareable summary, in place: selectable text, a Copy button, the deep link. No modal —
+    and a plain selectable block, so a blocked clipboard is an annoyance, not a dead end."""
     ref = F["id"]
-    view = view or {}
-    events = story._rows("SELECT kind, detail, ts FROM timeline WHERE ref_id=? ORDER BY ts DESC LIMIT 6",
+    text = _share_text(F, view)
+    lines = "".join(f'<div class="shl">{esc(l)}</div>' for l in text.split("\n"))
+    return (f'<div class="share?"><div class="shhead"><b>Share</b>'
+            f'<span class="muted">read-only · deep link included</span>'
+            f'<a class="morex" href="?inc={esc(ref)}&amp;tab={_q(view.get("tab") or "Timeline")}"'
+            f' target="_top">Close</a></div>'
+            f'<pre class="sharetext" id="sharetext">{esc(text)}</pre>'
+            f'<div class="shact"><button class="shbtn" type="button" data-copy="sharetext">Copy</button>'
+            f'<span class="shmsg" id="shmsg">or select the text above and copy</span></div></div>')
+
+
+def _assign_pane(F, view, owners):
+    """Who can be brought in — the record's own teams and roles, as links."""
+    ref = F["id"]
+    tab = view.get("tab") or "Timeline"
+    rows = "".join(
+        f'<a class="pk" href="?inc={esc(ref)}&amp;tab={_q(tab)}&amp;action=assign&amp;target={_q(o)}"'
+        f' target="_top">{esc(o)}</a>' for o in (owners or [])[:7])
+    return (f'<div class="pick"><div class="pkhead">Bring in someone — now held by '
+            f'<b>{esc(F["owns"])}</b></div>{rows}'
+            f'<a class="morex" href="?inc={esc(ref)}&amp;tab={_q(tab)}" target="_top">Cancel</a></div>')
+
+
+def _timeline_pane(F, ref, view):
+    """The thread as recorded, plus the composer — the comment appears where it was written."""
+    events = story._rows("SELECT kind, detail, ts FROM timeline WHERE ref_id=? ORDER BY ts DESC LIMIT 4",
                          (ref,))
     tl = "".join(
         f'<div class="ev"><span class="ts">{esc(str(e["ts"])[11:16])}</span>'
         f'<span class="tag {_tone(e["kind"])}">{esc(str(e["kind"]).upper())}</span>'
         f'<span>{esc(e["detail"])}</span></div>' for e in reversed(events))
+    rows = collab.comments(ref)[-2:]
+    said = "".join(
+        f'<div class="ev cmtline"><span class="ts">{esc(str(c.get("ts") or "")[11:16])}</span>'
+        f'<b>{esc(c.get("author") or "—")}</b>'
+        f'<span class="chan">{esc(c.get("channel") or "App")}</span>'
+        f'<span>{esc(c.get("text") or "")}</span></div>' for c in rows)
+    form = (f'<form class="askf cmt" method="get" action="" target="_top">'
+            f'<input type="hidden" name="inc" value="{esc(ref)}">'
+            f'<input type="hidden" name="tab" value="Timeline">'
+            f'<input type="hidden" name="action" value="comment">'
+            f'<label class="cmtl">Comment<input name="text" placeholder="add to the thread" '
+            f'maxlength="180"></label>'
+            f'<button type="button" data-ask>Send</button></form>')
+    return tl + said + form
 
+
+# ---------------------------------------------------------------- tabs
+def _panes(F, dom, view=None):
+    ref = F["id"]
+    view = view or {}
+    tl = _timeline_pane(F, ref, view)
     req = _requests_pane(F, ref, dict(view))
 
     ev = _rca_pane(ref, F, view.get("leads") or [], view)
@@ -765,6 +843,13 @@ def _tabs(F, dom, initial, view=None):
                                   "Connections & audit", "Act & verify", "Learn"]))
     panes = _panes(F, dom, view)
     def _pane(i, name):
+        # Share and Bring-in render in place of the active pane: same band, no modal.
+        if name == initial and view.get("share"):
+            return (f'<div class="pane{" on" if name == initial else ""}" id="p{i}">'
+                    f'{_share_pane(F, view)}</div>')
+        if name == initial and view.get("assign"):
+            return (f'<div class="pane{" on" if name == initial else ""}" id="p{i}">'
+                    f'{_assign_pane(F, view, view.get("owners"))}</div>')
         # Requests expands in place and pages there; the RCA pane lists every lead in place; the
         # four remaining panes keep their overlay.
         if name in ("Requests", "Evidence & RCA"):
@@ -860,6 +945,31 @@ html,body{margin:0;height:100%;overflow:hidden;background:#fff;
 .rrow .acts a{font-size:8.5px}
 .dots{border:none;background:none;padding:0 2px;font-size:11px;line-height:1;color:var(--accent);
  cursor:pointer;font-weight:800}
+.who-card h2{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.share{display:flex;flex-direction:column;gap:4px}
+.shhead{display:flex;align-items:baseline;gap:8px;font-size:10px}
+.shhead .morex{margin-left:auto}
+.sharetext{margin:0;padding:4px 7px;border:1px solid var(--line);border-radius:8px;background:var(--soft);
+ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:9.5px;line-height:1.35;
+ color:#0f172a;white-space:pre-wrap;overflow:hidden;user-select:all;-webkit-user-select:all;height:74px}
+.shact{display:flex;align-items:center;gap:8px}
+.shbtn{font:inherit;font-size:10px;font-weight:750;border-radius:7px;padding:2px 10px;border:1px solid var(--accent);
+ background:var(--accent);color:#fff;cursor:pointer}
+.shmsg{font-size:9px;color:var(--muted)}
+.pick{display:flex;flex-direction:column;gap:1px}
+.pkhead{font-size:10px;color:#334155;margin-bottom:2px}
+.pick .pk{display:block;text-decoration:none;color:var(--ink);font-size:10.5px;font-weight:650;
+ border:1px solid var(--line);border-radius:7px;padding:1px 8px;margin-bottom:1px;overflow:hidden;
+ text-overflow:ellipsis;white-space:nowrap}
+.pick .pk:hover{border-color:var(--accent);color:var(--accent)}
+.pick .morex{margin-top:2px}
+.cmtline .chan{font-size:8px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);
+ font-weight:800;flex:0 0 auto}
+.cmt{margin-top:2px;flex-direction:row;align-items:center;gap:6px}
+.cmt .cmtl{flex-direction:row;align-items:center;gap:5px;font-size:8.5px;text-transform:none;letter-spacing:0}
+.cmt input{height:20px;font-size:10.5px;width:230px}
+.cmt button{font:inherit;font-size:10px;font-weight:750;border-radius:7px;padding:2px 9px;
+ border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
 .reqfoot{display:flex;align-items:baseline;gap:10px;margin-top:1px}
 .reqfoot .morex:last-child{margin-left:auto}
 .pager{display:flex;align-items:center;gap:8px;font-size:9.5px;color:var(--muted);margin-top:2px}
@@ -974,6 +1084,27 @@ JS = """
     if(b) b.addEventListener('click',go);
     f.addEventListener('keydown',function(e){ if(e.key==='Enter'){ go(e); } });
   });
+  // Copy: clipboard API first, execCommand second, and if both are blocked the block stays
+  // selected and the message says so — copying is never a dead end.
+  document.querySelectorAll('[data-copy]').forEach(function(b){
+    b.addEventListener('click',function(){
+      var box=document.getElementById(b.getAttribute('data-copy'));
+      var msg=document.getElementById('shmsg');
+      var text=box?box.innerText:'';
+      function ok(){ b.textContent='Copied'; if(msg) msg.textContent='copied to clipboard'; }
+      function select(){ try{ var r=document.createRange(); r.selectNodeContents(box);
+        var sel=window.getSelection(); sel.removeAllRanges(); sel.addRange(r);}catch(e){}
+        b.textContent='Copy'; if(msg) msg.textContent='selected — press Ctrl/⌘+C'; }
+      function legacy(){
+        try{ var ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta);
+          ta.select(); var done=document.execCommand('copy'); document.body.removeChild(ta);
+          done?ok():select(); }catch(e){ select(); }
+      }
+      try{ if(navigator.clipboard&&navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(ok, legacy); return; } }catch(e){}
+      legacy();
+    });
+  });
   var ov=document.getElementById('ov'), body=document.getElementById('ovbody'), title=document.getElementById('ovtitle');
   document.querySelectorAll('.more').forEach(function(b){
     b.addEventListener('click',function(){
@@ -1006,6 +1137,7 @@ def build(inc, dom, queue="", initial_tab="Timeline", action=None, view=None, ow
     view.setdefault("page", 1)
     view.setdefault("new", False)
     view["leads"] = list(leads or [])
+    view["tab"] = initial_tab
     headline = headline or next((l for l in view["leads"] if l.get("decision") == "confirmed"), None)
     view["headline"] = headline
     if owners and not view.get("owners"):
@@ -1018,13 +1150,13 @@ def build(inc, dom, queue="", initial_tab="Timeline", action=None, view=None, ow
     if not F["gate"].get("closed") and F["asked"]:
         act_href = "chase"
     body = f'''<div class="main">
-  {_header(F, queue)}
+  {_header(F, queue, view)}
   {_tiles(F)}
   <section class="hero">
     {_graph(F)}
     <div class="right">
       {_meaning(F, act_href, headline)}
-      {_who(F)}
+      {_who(F, view)}
     </div>
   </section>
   <div class="tabbar">{bar}</div>

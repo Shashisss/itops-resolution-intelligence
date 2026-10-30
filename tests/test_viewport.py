@@ -116,11 +116,16 @@ RESTORED_CONTROLS = [
     ("rca · reject lead", "action=reject-lead&amp;target=", lambda h: 'class="lead"' in h),
     ("rca · set aside", "action=set-aside&amp;target=", lambda h: 'class="lead"' in h),
     ("close gate", "Close incident", lambda h: True),
+    ("share (header)", "action=share", lambda h: True),
+    ("bring in (who card)", "assign=1", lambda h: True),
+    ("comment composer", 'name="action" value="comment"', lambda h: True),
 ]
 
 # Every action verb the document is allowed to carry in v111.
 KNOWN_VERBS = {"back", "chase", "confirm", "ack", "done", "send", "ask",
-               "confirm-lead", "reject-lead", "set-aside", "close"}
+               "confirm-lead", "reject-lead", "set-aside", "close",
+               "approve", "apply", "verify", "learn-save", "reopen",
+               "share", "comment", "assign"}
 
 
 def test_every_restored_control_offers_its_action():
