@@ -1,6 +1,6 @@
 # PROTOTYPE NOTES — Resolution Intelligence POC
 
-Build v110 · sample data · simulated actions. This is a proof of concept, **not** production.
+Build v111 · sample data · simulated actions. This is a proof of concept, **not** production.
 
 ## Persistence boundary — what survives what
 
@@ -87,6 +87,30 @@ Relationships are **structured records** in `thread_edges` (source, target, rela
 observed/inferred kind, evidence source, timestamp, rule-based confidence). UI code no longer
 builds edges by hand; `journey.thread_edges_for()` resolves a thread via the correlation model.
 Inferred relationships are labelled as hypotheses, not proven facts.
+
+## v111 — hypotheses you can decide, and a gate that says what it wants
+
+Pass (a) of the functional restore. Layout untouched; the panes carry new content in the same
+164px band.
+
+- **Evidence & RCA** lists every ranked hypothesis in place: `#rank`, label, confidence %, the
+  evidence line from the record, and **Confirm / Reject / Set aside** per lead. The badge flips to
+  CONFIRMED / REJECTED / SET ASIDE with the actor and the time, and the rank does not move —
+  `journey.rank_stable()` ranks on evidence (`rank()` still lifts a confirmed lead for summaries,
+  which is right for a summary and wrong for a list you are working through).
+- **Confirming a lead is the confirmed cause**: it writes `confirmed_cause`/`confirmed_at`, so
+  "confirm cause", the next action and the rest of the thread agree. The "nobody has confirmed it
+  yet" sentence is replaced by who confirmed what and when. Rejecting the confirmed lead clears it.
+- **Close gate** shows the refusal as a list: one row per open requirement, what it needs, and the
+  tab that resolves it. The close control is not a link while the list is non-empty; when it empties
+  it becomes `?action=close` and closing records actor + time and takes the incident out of the open
+  queue.
+- **Tab headers are derived from the record**: `Requests · N OVERDUE`, `Evidence & RCA · 1 confirmed`
+  / `4 leads` / `2 decided`, `Act & verify · BLOCKED · 2` / `ready` / `closed`.
+- Deploy gate: every row above was clicked on the deployed build. The one thing that cannot be
+  clicked there yet is the close itself — no open incident has a Verified record until pass (b)
+  restores apply + verify, so the close link is always blocked on this build and the closing path is
+  covered by a test that builds an eligible record.
 
 ## v110 — the Requests tab works (milestone 1)
 

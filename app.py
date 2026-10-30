@@ -7,6 +7,7 @@ import os
 import datetime as dt
 import importlib
 import pathlib
+import sqlite3
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
@@ -224,6 +225,22 @@ def _target_ask(ref, target):
     return None
 
 
+def _incident_leads(dom, inc):
+    """The ranked hypotheses for this incident, computed once per render.
+
+    IT Ops reads the service graph, DataOps the pipeline tables; both are the same shape, and
+    ``journey.leads_for`` is where the stable rank and the recorded decision are attached."""
+    try:
+        if dom == "DataOps":
+            return journey.leads_for(inc, DE.causes(inc, _dop_data))
+        ctx = _it_ctx()
+        return journey.leads_for(inc, E.causes(inc, ctx["G"], ctx["changes"],
+                                               ctx["metrics"], ctx["services"]))
+    except Exception as exc:      # noqa: BLE001 — a missing signal must not take the screen down
+        st.session_state["_leads_error"] = f"{type(exc).__name__}: {exc}"
+        return [], None
+
+
 def _run_incident_action(dom, ref, you_role, act, target=None):
     """Actions arrive as ?action=… from the html block. Performed once, on the record."""
     inc = _find_dop(ref) if dom == "DataOps" else _find_it(ref)
@@ -242,9 +259,52 @@ def _run_incident_action(dom, ref, you_role, act, target=None):
         else:
             st.session_state["flash"] = "No open request to chase on this thread."
     elif act == "confirm":
-        collab.add_comment(ref, you_role, "Person",
-                           "Cause confirmation recorded on the thread (simulated).")
-        st.session_state["flash"] = "Cause confirmation recorded on the thread."
+        leads, headline = _incident_leads(dom, inc)
+        if headline:
+            collab.add_comment(ref, you_role, "Person",
+                               f'Cause confirmed: {headline.get("label")} — {headline.get("evidence")} '
+                               f'(ranked {headline.get("rank")} of {headline.get("total")}, '
+                               f'{headline.get("confidence")} confidence).')
+            st.session_state["flash"] = (
+                f'Cause confirmed by {you_role} — {headline.get("label")}, ranked '
+                f'{headline.get("rank")} of {headline.get("total")} ({headline.get("confidence")}).')
+        else:
+            collab.add_comment(ref, you_role, "Person",
+                               "Cause confirmation recorded on the thread (simulated). "
+                               "No lead is marked CONFIRMED yet, so this names no hypothesis.")
+            st.session_state["flash"] = ("Cause confirmation recorded on the thread — no lead is "
+                                         "CONFIRMED yet, so nothing is named as the cause.")
+    elif act in ("confirm-lead", "reject-lead", "set-aside"):
+        key = str(target or "").strip()
+        leads, _headline = _incident_leads(dom, inc)
+        lead = next((l for l in leads if str(l.get("key")) == key), None)
+        if lead is None:
+            st.session_state["flash"] = "That lead is no longer in the ranked list — nothing changed."
+            return
+        want = {"confirm-lead": "confirmed", "reject-lead": "rejected", "set-aside": "set_aside"}[act]
+        when = journey.set_lead_state(ref, key, want, you_role)
+        word = {"confirmed": "CONFIRMED", "rejected": "REJECTED", "set_aside": "SET ASIDE"}[want]
+        if want == "confirmed":
+            journey.set_confirmed_cause(ref, key, you_role)
+            note = " — the incident's confirmed cause now points at it."
+        elif want == "rejected":
+            con = sqlite3.connect(journey.DB)
+            row = con.execute("SELECT confirmed_cause FROM incidents WHERE id=? UNION ALL "
+                              "SELECT confirmed_cause FROM dop_incidents WHERE id=?",
+                              (ref, ref)).fetchone()
+            con.close()
+            if row and row[0] == key:
+                journey.clear_confirmed_cause(ref)
+                note = " — it was the confirmed cause, so the cause is now unconfirmed."
+            else:
+                note = ""
+        else:
+            note = " — parked, still listed and still ranked where it was."
+        journey.add_event(ref, "dataops" if dom == "DataOps" else "itops", "verify",
+                          f'{word.title()} by {you_role} at {when}: {lead.get("label")} '
+                          f'(ranked {lead.get("rank")} of {lead.get("total")})')
+        st.session_state["flash"] = (
+            f'{lead.get("label")} — {word} by {you_role} at {when}{note}')
     elif act in ("ack", "done", "send"):
         d = _target_ask(ref, target)
         if d is None:
@@ -482,9 +542,10 @@ def render_workspace_page(dom, ref, you_role):
     # The Requests tab's view lives in the URL (full / page / new) so an action lands back on the
     # page it was taken from instead of resetting the tab.
     _view = {"full": _flag("full"), "page": _num("page", 1), "new": _flag("new")}
+    _leads, _headline = _incident_leads(dom, inc)
     st.query_params["inc"] = ref
     _html = incident_html.build(inc, dom, queue=queue, initial_tab=_initial, view=_view,
-                                owners=_ask_targets(dom, inc))
+                                owners=_ask_targets(dom, inc), leads=_leads, headline=_headline)
     # a spacer clears Streamlit Cloud's own toolbar, which overlays the top of the content
     st.markdown('<div style="height:30px"></div>', unsafe_allow_html=True)
     components.html(_html, height=656, scrolling=False)

@@ -3,6 +3,7 @@
 INDEPENDENT verification, resolution record and cross-domain correlation.
 Used by both the IT Ops and DataOps domains."""
 import os
+import re
 import sqlite3
 import datetime as dt
 import json
@@ -321,6 +322,117 @@ def rank(hyps):
                                        CONF_RANK.get(h["confidence"], 0)), reverse=True)
 
 
+def rank_stable(hyps):
+    """Rank by evidence strength only — a human decision never reorders the evidence.
+
+    ``rank()`` lifts a confirmed hypothesis to the top, which is right for a summary and wrong for
+    this list: pressing Confirm on lead 3 must not move it, or the reader loses the place they were
+    reading. Confirming is a decision about a lead, not new evidence about it."""
+    return sorted(hyps, key=lambda h: (h["type"] == "upstream data",
+                                       CONF_RANK.get(h["confidence"], 0)), reverse=True)
+
+
+# ---------------------------------------------------------------- lead decisions (v111)
+LEAD_STATES = ("confirmed", "rejected", "set_aside")
+
+
+def _ensure_lead_table():
+    con = sqlite3.connect(DB)
+    con.execute("CREATE TABLE IF NOT EXISTS lead_state(id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "ref_id TEXT, lead_key TEXT, status TEXT, actor TEXT, changed_at TEXT)")
+    con.execute("CREATE UNIQUE INDEX IF NOT EXISTS lead_state_ref_key ON lead_state(ref_id, lead_key)")
+    con.commit()
+    con.close()
+
+
+def lead_decisions(ref_id):
+    """Every decision recorded on this thread's leads: key → {status, actor, changed_at}."""
+    _ensure_lead_table()
+    con = sqlite3.connect(DB)
+    con.row_factory = sqlite3.Row
+    rows = [dict(r) for r in con.execute("SELECT * FROM lead_state WHERE ref_id=?", (ref_id,))]
+    con.close()
+    return {r["lead_key"]: r for r in rows}
+
+
+def set_lead_state(ref_id, lead_key, status, actor):
+    """Record Confirm / Reject / Set aside on one lead, with who and when. Returns the timestamp."""
+    status = str(status or "").strip().lower()
+    if status not in LEAD_STATES:
+        raise ValueError(f"unknown lead state {status!r}")
+    actor = str(actor or "").strip()
+    if not actor:
+        raise ValueError("a lead decision requires an actor")
+    _ensure_lead_table()
+    now = dt.datetime.now().replace(microsecond=0).isoformat(timespec="seconds")
+    con = sqlite3.connect(DB)
+    con.execute("INSERT INTO lead_state(ref_id,lead_key,status,actor,changed_at) VALUES(?,?,?,?,?) "
+                "ON CONFLICT(ref_id,lead_key) DO UPDATE SET status=excluded.status, "
+                "actor=excluded.actor, changed_at=excluded.changed_at",
+                (ref_id, str(lead_key), status, actor, now))
+    con.commit()
+    con.close()
+    return now[11:16]
+
+
+def set_confirmed_cause(inc_id, lead_key, actor):
+    """Point the incident's confirmed cause at a lead, stamping when.
+
+    The key is the same one the RCA hypotheses are built from, so the rest of the app (next action,
+    the thread, the panel) agrees with what the reader confirmed — no second source of truth."""
+    _ensure_confirmed_at()
+    now = dt.datetime.now().replace(microsecond=0).isoformat(timespec="seconds")
+    con = sqlite3.connect(DB)
+    for table in ("incidents", "dop_incidents"):
+        try:
+            con.execute(f"UPDATE {table} SET confirmed_cause=?, confirmed_at=? WHERE id=?",
+                        (lead_key, now, inc_id))
+        except Exception:
+            pass
+    con.commit()
+    con.close()
+    return now[11:16]
+
+
+def clear_confirmed_cause(inc_id):
+    """A rejected cause cannot stay the confirmed one."""
+    con = sqlite3.connect(DB)
+    for table in ("incidents", "dop_incidents"):
+        try:
+            con.execute(f"UPDATE {table} SET confirmed_cause=NULL, confirmed_at=NULL WHERE id=?",
+                        (inc_id,))
+        except Exception:
+            pass
+    con.commit()
+    con.close()
+
+
+def leads_for(inc, hyps):
+    """Rank the hypotheses once and attach the recorded decision to each.
+
+    Returns (leads, headline): ``leads`` is stable-ranked, each with ``rank``, ``pct``, ``decision``
+    and the actor/time behind it; ``headline`` is the first confirmed lead, or None. This is the one
+    place the RCA pane, the "what this means" sentence and the tab header all read."""
+    decisions = lead_decisions(inc["id"])
+    pct = {"high": 85, "medium": 55, "low": 30}          # viz.CONF_PCT: the UI's confidence scale
+    out = []
+    for i, h in enumerate(rank_stable(hyps or []), 1):
+        d = decisions.get(h.get("key") or "") or {}
+        status = (d.get("status") or "").lower()
+        out.append({
+            **h,
+            "rank": i,
+            "total": len(hyps or []),
+            "pct": pct.get(h.get("confidence") or "", 30),
+            "decision": status or None,
+            "decided_by": d.get("actor") or "",
+            "decided_at": str(d.get("changed_at") or "")[11:16],
+        })
+    headline = next((l for l in out if l["decision"] == "confirmed"), None)
+    return out, headline
+
+
+
 def confidence_note(hyps):
     if not hyps:
         return ""
@@ -519,27 +631,47 @@ def closure_state(inc):
     """The single authority on whether an incident may be closed.
 
     Closure needs an independent verification that passed, no outstanding collaboration request, and
-    the incident not already closed. Everything else is a stated reason, never a silent block."""
+    the incident not already closed. Everything else is a stated reason, never a silent block.
+
+    ``blockers`` is the same gate as rows a reader can act on: what is missing, and which tab
+    resolves it. ``reasons`` stays for the callers that only need a sentence."""
     import collab
     rec = resolution_record(inc["id"])
     verdict = (rec or {}).get("verdict")
     closed = (inc.get("status") or "").lower() == "closed"
-    reasons = []
+    reasons, blockers = [], []
     asks = [d for d in collab.delegations(inc["id"]) if d["status"] != "done"]
     if closed:
         return {"eligible": False, "closed": True, "verdict": verdict or "Verified",
-                "reasons": [], "record": rec}
+                "reasons": [], "blockers": [], "record": rec}
     if not rec or not rec.get("checks"):
         reasons.append("No verification record yet — apply a remediation and let the independent checks run.")
+        blockers.append({"need": "No verification record — apply a remediation and let the independent "
+                                 "checks run", "tab": "Act & verify"})
     elif verdict != "Verified":
         reasons.append(f"Authoritative verdict is **{verdict}** — closure requires **Verified**.")
-        for c in (rec.get("checks") or []):
-            if not str(c.get("result", "")).startswith("✅"):
-                reasons.append(f'Failing check · {c.get("check") or c.get("metric") or "check"} → {c.get("result")}')
+        failing = [c for c in (rec.get("checks") or []) if not str(c.get("result", "")).startswith("✅")]
+        for c in failing:
+            reasons.append(f'Failing check · {c.get("check") or c.get("metric") or "check"} → {c.get("result")}')
+        blockers.append({"need": f"Verdict is {verdict}, not Verified"
+                                 + (f" — {len(failing)} check(s) failing" if failing else ""),
+                         "tab": "Act & verify"})
     if asks:
         reasons.append(f'{len(asks)} open collaboration request(s) — complete or withdraw them first.')
+        blockers.append({"need": f'{len(asks)} open collaboration request(s) — complete or withdraw them',
+                         "tab": "Requests"})
     return {"eligible": not reasons, "closed": False, "verdict": verdict or "Investigating",
-            "reasons": reasons, "record": rec}
+            "reasons": reasons, "blockers": blockers, "record": rec}
+
+
+def closed_by(inc_id):
+    """Who closed it and when, read from the closure event the gate writes. ('—', '') if none."""
+    for ev in reversed(timeline(inc_id)):
+        detail = ev.get("detail") or ""
+        m = re.search(r"closed by (.+?) at (\d{2}:\d{2})", detail)
+        if m:
+            return m.group(1), m.group(2)
+    return "—", ""
 
 
 def close_incident(inc_id, actor="Incident Manager"):
@@ -569,10 +701,10 @@ def close_incident(inc_id, actor="Incident Manager"):
     con.commit()
     con.close()
     add_event(inc_id, "itops" if table_hit == "incidents" else "dataops", "verify",
-              f"Closure gate passed — closed by {actor} on the verified record")
+              f"Closure gate passed — closed by {actor} at {now[11:16]} on the verified record")
     collab.add_comment(inc_id, actor, "Person",
                        "[Simulated] Closed on the authoritative verification record.", channel="App")
-    return True, "Incident closed on the verified record."
+    return True, f"Closed by {actor} at {now[11:16]} — left the open queue."
 
 
 # ---------------------------------------------------------------- next action (v83)

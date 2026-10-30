@@ -225,14 +225,22 @@ def _conn_line(ref):
         return "no connections recorded"
 
 
-def _meaning(F, action):
+def _meaning(F, action, headline=None):
     score = F["score"]
-    if score is None:
-        sentence = ("Observed links only on this thread — no inference has been recorded, so no "
-                    "confidence is claimed.")
+    if headline:
+        sentence = (f'Cause confirmed by {headline.get("decided_by")} at '
+                    f'{headline.get("decided_at")} — {headline.get("label")}, ranked '
+                    f'{headline.get("rank")} of {headline.get("total")} '
+                    f'({headline.get("confidence")} confidence).')
+        ask_btn = ""
     else:
-        sentence = (f'Upstream data is stale. Confidence {int(round(score * 100))}%, inferred — '
-                    f'nobody has confirmed it yet.')
+        if score is None:
+            sentence = ("Observed links only on this thread — no inference has been recorded, so no "
+                        "confidence is claimed.")
+        else:
+            sentence = (f'Upstream data is stale. Confidence {int(round(score * 100))}%, inferred — '
+                        f'nobody has confirmed it yet.')
+        ask_btn = ""
     ask = ""
     if F["asked"]:
         ask = (F["asked"].get("action") or "").split(" · expected in")[0]
@@ -439,6 +447,59 @@ def _requests_pane(F, ref, view):
             f'{_req_full(window, ref, page)}{_pager(window, ref, page, pages, n)}</div>')
 
 
+# ---------------------------------------------------------------- RCA leads (v111)
+LEAD_BADGE = {"confirmed": ("CONFIRMED", "ok"), "rejected": ("REJECTED", "bad"),
+              "set_aside": ("SET ASIDE", "sent")}
+LEADS_SHOWN = 5
+
+
+def _lead_badge(lead):
+    label, cls = LEAD_BADGE.get(lead.get("decision") or "", ("SUSPECTED", "warn"))
+    return f'<span class="st {cls}">{esc(label)}</span>'
+
+
+def _lead_acts(lead, ref):
+    """Confirm / Reject / Set aside — the ones that would change nothing are not offered."""
+    key = str(lead.get("key") or "")
+    out = []
+    if lead.get("decision") != "confirmed":
+        out.append(("Confirm", _href(ref, "confirm-lead", key, tab="Evidence & RCA")))
+    if lead.get("decision") != "rejected":
+        out.append(("Reject", _href(ref, "reject-lead", key, tab="Evidence & RCA")))
+    if lead.get("decision") != "set_aside":
+        out.append(("Set aside", _href(ref, "set-aside", key, tab="Evidence & RCA")))
+    return out
+
+
+def _lead_html(lead, ref):
+    when = (f'{esc(lead.get("decided_by"))} {esc(lead.get("decided_at"))}'
+            if lead.get("decision") else "")
+    meta = f'{esc(lead.get("evidence") or "")}' + (f' · {when}' if when else "")
+    return (f'<div class="lead" data-key="{esc(lead.get("key"))}" '
+            f'data-dec="{esc(lead.get("decision") or "none")}">'
+            f'<div class="l1"><span class="rk">#{int(lead.get("rank") or 0)}</span>'
+            f'<b>{esc(lead.get("label") or lead.get("type") or "Lead")}</b>'
+            f'<span class="cf">{int(lead.get("pct") or 0)}% {esc(lead.get("confidence") or "")}</span>'
+            f'{_lead_badge(lead)}'
+            f'{_acts_html(_lead_acts(lead, ref))}</div>'
+            f'<div class="l2">{meta}</div></div>')
+
+
+def _rca_pane(ref, F, leads, view):
+    """Every ranked hypothesis, with its confidence, its evidence and its decision."""
+    if not leads:
+        return '<div class="muted">No signal linked yet — no hypothesis is claimed.</div>'
+    shown = leads[:LEADS_SHOWN]
+    more = ""
+    if len(leads) > len(shown):
+        more = (f'<div class="rf">+{len(leads) - len(shown)} more ranked on this thread '
+                f'(the pane shows the top {LEADS_SHOWN})</div>')
+    decided = sum(1 for l in leads if l.get("decision"))
+    foot = (f'{len(F["evidence"])} evidence item{"" if len(F["evidence"]) == 1 else "s"} · '
+            f'{decided} of {len(leads)} decided · confidence is a rule-based indicator')
+    return "".join(_lead_html(l, ref) for l in shown) + more + f'<div class="rf">{esc(foot)}</div>'
+
+
 # ---------------------------------------------------------------- tabs
 def _panes(F, dom, view=None):
     ref = F["id"]
@@ -452,8 +513,7 @@ def _panes(F, dom, view=None):
 
     req = _requests_pane(F, ref, dict(view))
 
-    ev = "".join(f'<div class="ev"><span>{esc(e)}</span></div>' for e in F["evidence"][:4]) or \
-         '<div class="muted">No evidence recorded.</div>'
+    ev = _rca_pane(ref, F, view.get("leads") or [], view)
     sig = (f'{int(round(F["score"] * 100))}% inferred' if F["score"] is not None else "observed only")
 
     conn = _conn_line(ref)
@@ -475,7 +535,7 @@ def _panes(F, dom, view=None):
         learn_body += (f'<div class="ev"><span class="muted">Signature <b>{esc(sig_name)}</b></span></div>')
 
     gate = F["gate"]
-    actions = _act_links(F)
+    actions = _act_links(F, view.get("headline"))
 
     return {
         "Timeline": tl,
@@ -491,19 +551,39 @@ def _tone(kind):
     return {"alert": "warn", "impact": "warn", "repair": "bad"}.get(str(kind).lower(), "")
 
 
-def _act_links(F):
+def _close_row(ref, gate):
+    """The close control and, while it is refused, the requirements that refuse it."""
+    if gate.get("closed"):
+        who, when = journey.closed_by(ref)
+        return (f'<div class="act done"><span>Closed by {esc(who)} at {esc(when)}</span>'
+                f'<i>left the open queue</i></div>')
+    if gate.get("eligible"):
+        return (f'<a class="act" href="?inc={esc(ref)}&amp;action=close" target="_top">'
+                f'<span>Close incident</span><i>all requirements met — closes now</i></a>')
+    blockers = gate.get("blockers") or []
+    out = [(f'<div class="act blocked"><span>Close incident</span>'
+            f'<i>BLOCKED · {len(blockers)} requirement{"" if len(blockers) == 1 else "s"}</i></div>')]
+    for b in blockers:
+        out.append(
+            f'<div class="blk"><span class="need">{esc(b["need"])}</span>'
+            f'<a class="tablink" href="?inc={esc(ref)}&amp;tab={_q(b["tab"])}" target="_top">'
+            f'{esc(b["tab"])} →</a></div>')
+    return "".join(out)
+
+
+def _act_links(F, headline=None):
     ref = F["id"]
     gate = F["gate"]
+    if headline:
+        confirm_why = (f'names {headline.get("label")} — ranked {headline.get("rank")} of '
+                       f'{headline.get("total")}, {headline.get("confidence")}')
+    else:
+        confirm_why = "no lead is CONFIRMED yet — confirming names none"
     rows = [
-        ("Confirm cause", f'?inc={ref}&action=confirm', False,
-         "recorded as a human confirmation"),
+        ("Confirm cause", f'?inc={ref}&amp;action=confirm', False, confirm_why),
         ("Apply remediation", "", True, "inert in this POC — no change is executed"),
         ("Run verification", "", True, "inert in this POC — checks are recorded, not run"),
     ]
-    if gate.get("eligible") and not gate.get("closed"):
-        rows.append(("Close incident", f'?inc={ref}&action=close', False, "gap-gated"))
-    else:
-        rows.append(("Close incident", "", True, "blocked — " + ((gate.get("reasons") or ["requirement open"])[0][:60])))
     out = []
     for label, href, inert, why in rows:
         if inert:
@@ -511,19 +591,33 @@ def _act_links(F):
         else:
             out.append(f'<a class="act" href="{href}" target="_top"><span>{esc(label)}</span>'
                        f'<i>{esc(why)}</i></a>')
+    out.append(_close_row(ref, gate))
     return "".join(out)
 
 
 def _tabs(F, dom, initial, view=None):
+    view = view or {}
     reqs = story.requests(F["id"])
     over = sum(1 for r in reqs if r["overdue"])
+    leads = view.get("leads") or []
+    decided = [l for l in leads if l.get("decision")]
+    confirmed = [l for l in decided if l.get("decision") == "confirmed"]
+    gate = F["gate"]
+    if confirmed:
+        rca_state = f"{len(confirmed)} confirmed"
+    elif decided:
+        rca_state = f"{len(decided)} decided"
+    else:
+        rca_state = f"{len(leads)} lead{'' if len(leads) == 1 else 's'}"
+    n_block = len(gate.get("blockers") or [])
+    act_state = ("closed" if gate.get("closed")
+                 else ("ready" if gate.get("eligible") else f"BLOCKED · {n_block}"))
     state = {
         "Timeline": f'{len(story._rows("SELECT id FROM timeline WHERE ref_id=?", (F["id"],)))} events',
         "Requests": (f"{over} OVERDUE" if over else "none overdue"),
-        "Evidence & RCA": f'{len(F["evidence"])} items',
+        "Evidence & RCA": rca_state,
         "Connections & audit": _conn_line(F["id"]).split(" · ")[0],
-        "Act & verify": ("BLOCKED" if not F["gate"].get("closed") and not F["gate"].get("eligible")
-                         else ("closed" if F["gate"].get("closed") else "ready")),
+        "Act & verify": act_state,
         "Learn": "saved" if (hasattr(learn, "get") and learn.get(F["id"])) else "draft",
     }
     bar = "".join(
@@ -533,8 +627,9 @@ def _tabs(F, dom, initial, view=None):
                                   "Connections & audit", "Act & verify", "Learn"]))
     panes = _panes(F, dom, view)
     def _pane(i, name):
-        # Requests expands in place and pages there; the five other panes keep their overlay.
-        if name == "Requests":
+        # Requests expands in place and pages there; the RCA pane lists every lead in place; the
+        # four remaining panes keep their overlay.
+        if name in ("Requests", "Evidence & RCA"):
             return f'<div class="pane{" on" if name == initial else ""}" id="p{i}">{panes[name]}</div>'
         return (f'<div class="pane{" on" if name == initial else ""}" id="p{i}">{panes[name]}'
                 f'<button class="more" data-full="{esc(name)}">Show all</button>'
@@ -647,6 +742,24 @@ html,body{margin:0;height:100%;overflow:hidden;background:#fff;
 .act{display:flex;justify-content:space-between;text-decoration:none;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:4px 9px;margin-bottom:4px;font-size:11px;font-weight:650}
 .act i{font-style:normal;color:var(--muted);font-weight:500;font-size:9.5px}
 .act.inert{opacity:.55;cursor:not-allowed}
+.act.blocked{opacity:1;border-color:#fecaca;background:#fff5f5}
+.act.blocked i{color:var(--red);font-weight:700}
+.act.done{border-color:#bbf7d0;background:#f0fdf4}
+.act.done i{color:var(--green);font-weight:700}
+.blk{display:flex;align-items:baseline;gap:6px;font-size:9.5px;color:#7f1d1d;padding:0 9px 2px 12px}
+.blk .need{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.blk .tablink{color:var(--accent);text-decoration:none;font-weight:750;white-space:nowrap}
+.lead{border-left:3px solid var(--line);padding:1px 2px 1px 6px;margin-bottom:2px}
+.lead[data-dec=confirmed]{border-left-color:var(--green)}
+.lead[data-dec=rejected]{border-left-color:var(--red)}
+.lead[data-dec=set_aside]{border-left-color:var(--amber)}
+.lead .l1{display:flex;align-items:baseline;gap:6px;white-space:nowrap;overflow:hidden;font-size:10.5px}
+.lead .rk{font-weight:800;color:var(--muted);font-variant-numeric:tabular-nums}
+.lead .l1 b{font-weight:750;overflow:hidden;text-overflow:ellipsis}
+.lead .cf{color:var(--muted);font-size:9px}
+.lead .l1 .acts{margin-left:auto}
+.lead .l2{font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rf{font-size:9px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .more{margin-top:2px;border:1px solid var(--line);background:#fff;border-radius:6px;padding:1px 8px;font-size:9.5px;color:var(--muted);cursor:pointer}
 .foot{display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted)}
 .stage{display:grid;grid-template-columns:1fr;grid-template-rows:1fr;height:100%}
@@ -731,16 +844,24 @@ JS = """
 """
 
 
-def build(inc, dom, queue="", initial_tab="Timeline", action=None, view=None, owners=None):
+def build(inc, dom, queue="", initial_tab="Timeline", action=None, view=None, owners=None,
+          leads=None, headline=None):
     """Return the whole incident screen as one HTML document.
 
     ``view`` is the state of the Requests tab: {"full": bool, "page": int, "new": bool}. It comes
-    from the query string so an action can land back on the page it was taken from."""
+    from the query string so an action can land back on the page it was taken from.
+
+    ``leads`` are the ranked RCA hypotheses with their recorded decisions (``journey.leads_for``);
+    ``headline`` is the confirmed one, if any. Both are computed by the caller so the document
+    stays a renderer."""
     F = facts(inc)
     view = dict(view or {})
     view.setdefault("full", False)
     view.setdefault("page", 1)
     view.setdefault("new", False)
+    view["leads"] = list(leads or [])
+    headline = headline or next((l for l in view["leads"] if l.get("decision") == "confirmed"), None)
+    view["headline"] = headline
     if owners and not view.get("owners"):
         view["owners"] = owners
     elif not view.get("owners"):
@@ -756,7 +877,7 @@ def build(inc, dom, queue="", initial_tab="Timeline", action=None, view=None, ow
   <section class="hero">
     {_graph(F)}
     <div class="right">
-      {_meaning(F, act_href)}
+      {_meaning(F, act_href, headline)}
       {_who(F)}
     </div>
   </section>

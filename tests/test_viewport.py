@@ -19,13 +19,20 @@ import sqlite3  # noqa: E402
 
 
 def html_for(ref="INC-8841", tab="Timeline"):
+    import dataops_engine as DE
+    import engine as E
     con = sqlite3.connect(ROOT / "data" / "ops.db")
     con.row_factory = sqlite3.Row
     table = "dop_incidents" if ref.startswith("DOP") else "incidents"
     inc = dict(con.execute(f"SELECT * FROM {table} WHERE id=?", (ref,)).fetchone())
     con.close()
+    if ref.startswith("DOP"):
+        leads, headline = journey.leads_for(inc, DE.causes(inc, DE.load()))
+    else:
+        sv, _ed, _incs, ch, me, G = E.load()
+        leads, headline = journey.leads_for(inc, E.causes(inc, G, ch, me, sv))
     return incident_html.build(inc, "DataOps" if ref.startswith("DOP") else "IT Ops",
-                               queue="1 of 7", initial_tab=tab)
+                               queue="1 of 7", initial_tab=tab, leads=leads, headline=headline)
 
 
 def test_the_tiles_are_exactly_the_four_labels():
@@ -91,11 +98,40 @@ def test_the_panes_render_for_every_tab():
         assert pane and len(pane.group(1).strip()) > 40, f"{name} pane is empty"
 
 
-def test_the_single_action_is_one_link():
-    h = html_for()
-    actions = re.findall(r'class="btn primary" href="([^"]+)"', h)
-    assert len(actions) == 1, f"one action, found {len(actions)}"
-    assert "action=" in actions[0]
+# ---------------------------------------------------------------- restored controls
+# The incident screen is assembled from controls that are restored one pass at a time. Each entry is
+# one control that is live in THIS build; a later pass adds its rows instead of rewriting an
+# assertion that used to say "exactly one action". ``verbs`` is the full set of actions the document
+# may carry — an action that appears and is not listed here is a control that was added without a
+# line of cover, and fails.
+RESTORED_CONTROLS = [
+    ("back to the list", "action=back", lambda h: True),
+    ("chase (hero)", "action=chase", lambda h: True),
+    ("confirm cause", "action=confirm", lambda h: True),
+    ("requests · acknowledge", "action=ack&amp;target=", lambda h: 'class="rrow"' in h),
+    ("requests · mark done", "action=done&amp;target=", lambda h: 'class="rrow"' in h),
+    ("requests · send (NOT SENT)", "action=send&amp;target=", lambda h: "NOT SENT" in h),
+    ("requests · create ask (opens the form)", "new=1", lambda h: True),
+    ("rca · confirm lead", "action=confirm-lead&amp;target=", lambda h: 'class="lead"' in h),
+    ("rca · reject lead", "action=reject-lead&amp;target=", lambda h: 'class="lead"' in h),
+    ("rca · set aside", "action=set-aside&amp;target=", lambda h: 'class="lead"' in h),
+    ("close gate", "Close incident", lambda h: True),
+]
+
+# Every action verb the document is allowed to carry in v111.
+KNOWN_VERBS = {"back", "chase", "confirm", "ack", "done", "send", "ask",
+               "confirm-lead", "reject-lead", "set-aside", "close"}
+
+
+def test_every_restored_control_offers_its_action():
+    h = html_for(tab="Requests")
+    missing = [name for name, frag, applies in RESTORED_CONTROLS if applies(h) and frag not in h]
+    assert not missing, f"restored controls with no control on screen: {missing}"
+    verbs = set(re.findall(r"action=([a-z-]+)", h))
+    assert verbs <= KNOWN_VERBS, f"unlisted action verbs in the document: {verbs - KNOWN_VERBS}"
+    # a lead action must name the lead it acts on, or it is not a control
+    for lead_href in re.findall(r'href="(\?[^"]*action=(?:confirm-lead|reject-lead|set-aside)[^"]*)"', h):
+        assert "target=" in lead_href, lead_href
 
 
 def test_the_who_row_states_asked_once():

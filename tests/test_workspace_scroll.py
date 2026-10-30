@@ -46,7 +46,7 @@ def test_the_four_phases_are_named():
 def test_the_stage_actions_are_links_within_the_document():
     h = html_for()
     assert "Confirm cause" in h
-    assert 'href="?inc=INC-8841&action=confirm"' in h
+    assert 'href="?inc=INC-8841&amp;action=confirm"' in h      # &amp; is the correct attribute form
     assert "Close incident" in h
     assert "inert in this POC" in h, "the controls that do nothing must look inert"
 

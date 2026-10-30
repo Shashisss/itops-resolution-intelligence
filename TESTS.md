@@ -4,7 +4,7 @@ Two layers, both runnable without a browser.
 
 ```bash
 python3 -m pip install -r requirements-dev.txt
-python3 -m pytest tests -q          # 147 tests, ~20s
+python3 -m pytest tests -q          # 163 tests, ~23s
 python3 scripts/layout_check.py http://localhost:8501   # layout audit, needs Chrome on :9222
 python3 scripts/smoke.py            # deployment smoke test, ~5s
 ```
@@ -23,14 +23,15 @@ Chrome already running on :9222: it loads each screen, then asserts in-page that
 2. nothing overflows horizontally and the incident document does not scroll (`scrollHeight <=
    innerHeight`),
 3. header → tiles → hero → tab strip → panes appear in that order with no vertical overlap,
-4. each of the six tabs opens with non-empty content and "Show all" opens the overlay and closes
-   — except Requests, where it must expand inside the pane (no modal, same pane height, a
-   `1–8 of N` range, and a live `?action=` link on every unfinished row).
+4. each of the six tabs opens with non-empty content; on Timeline, Connections and Act & verify
+   "Show all" opens the overlay and closes, while Requests must expand inside the pane (no modal,
+   same pane height, a `1–8 of N` range, a live `?action=` link on every unfinished row) and
+   Evidence & RCA lists every ranked lead in place with its Confirm / Reject / Set aside link.
 
 Screens: incident × six tabs for INC-8841 and DOP-1001, the incidents list. One line of PASS/FAIL
 per screen; exit code 1 on any failure.
 
-Result at v110: 14 screens checked, 14 PASS.
+Result at v111: 14 screens checked, 14 PASS.
 
 ## `tests/test_incident_actions.py` — the Requests tab (v110)
 
@@ -55,6 +56,30 @@ re-rendered document are both read back.
 | `test_a_stale_target_changes_nothing_and_says_so` | unknown target → stated refusal, record untouched |
 | `test_an_ask_without_an_owner_creates_nothing` | empty form → nothing created, reason shown |
 | `test_actions_land_back_on_the_same_tab_and_page` | tab/full/page survive the action, `action` is consumed |
+
+## `tests/test_rca_and_gate.py` — leads and the close gate (v111)
+
+16 tests. Each action is driven through the app (`AppTest` + query params); the test then asserts the
+record changed *and* the re-rendered document shows it.
+
+| Test | Asserts |
+|---|---|
+| `test_the_rca_pane_lists_every_lead_with_rank_confidence_and_evidence` | every lead with `#rank`, confidence %, its evidence line and SUSPECTED; the tab header counts them |
+| `test_a_lead_exposes_only_the_decisions_that_would_change_it` | three links per undecided lead, returning to the tab they were taken from |
+| `test_confirm_lead_records_the_decision_without_moving_the_rank` | status confirmed, actor + time, `confirmed_cause`/`confirmed_at` set, rank unchanged, badge CONFIRMED with who/when |
+| `test_confirm_lead_retires_the_unconfirmed_sentence` | "nobody has confirmed it yet" is replaced by the confirmed lead |
+| `test_reject_lead_records_it_and_keeps_it_listed` | REJECTED with actor/time, still listed with its evidence, order unchanged |
+| `test_set_aside_lead_records_it_as_parked` | SET ASIDE with actor/time, nothing confirmed |
+| `test_rejecting_the_confirmed_lead_unconfirms_the_cause` | a rejected cause cannot stay confirmed; the unconfirmed sentence returns |
+| `test_confirm_cause_names_the_confirmed_lead` | flash, thread comment and the control's own sub-line name the lead and its rank |
+| `test_confirm_cause_with_no_lead_says_so` | no lead → the control and flash say nothing is named |
+| `test_a_stale_lead_target_changes_nothing` | unknown lead key → stated refusal, no decision written |
+| `test_the_gate_lists_each_blocker_with_the_tab_that_resolves_it` | one row per open requirement, the resolving tab linked, close is a refusal not a link |
+| `test_clearing_the_requests_leaves_only_the_verification_blocker` | a resolved blocker disappears; the header count drops to 1 |
+| `test_an_eligible_gate_offers_close_and_hides_the_blockers` | eligible → `?action=close`, no blocker rows, header `ready` |
+| `test_closing_records_actor_and_time_and_leaves_the_open_queue` | status closed, `closed_at`, "Closed by X at HH:MM" on screen, no second close, header `closed` |
+| `test_the_close_link_stays_blocked_while_any_requirement_is_open` | a blocked close is not a link and changes nothing |
+| `test_the_dataops_thread_renders_its_own_leads_and_gate` | DOP-1001 shows its own two leads and its own gate |
 
 ## What is covered
 
