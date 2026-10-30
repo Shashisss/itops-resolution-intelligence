@@ -98,7 +98,14 @@ def _needs_seed():
 
 
 if _needs_seed():
-    import seed  # noqa: F401
+    # `import seed` is a no-op once the module is cached, so on a long-running deployment a seed
+    # change (VERSION bumped, new rows) never landed: the file said the new version while the
+    # database still held the old data. Reload it when it is already imported.
+    import sys as _sys
+    if "seed" in _sys.modules:
+        importlib.reload(_sys.modules["seed"])
+    else:
+        import seed  # noqa: F401
 
 import clock  # noqa: E402
 import build  # noqa: E402
