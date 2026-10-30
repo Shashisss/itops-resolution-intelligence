@@ -58,7 +58,8 @@ def test_the_graph_shows_observed_and_inferred_edges_with_confidence():
     for e in edges:                       # every recorded link is drawn, with its own label
         assert (e["rel"] or "").strip()[:20] in graph, f'edge missing: {e["rel"]}'
     assert "observed" in graph and "inferred" in graph
-    assert "connections" in graph
+    assert f"{len(edges)} links · {observed} observed · {inferred} inferred" in graph, \
+        "the legend counts exactly the arrows drawn"
 
 
 def test_the_six_tabs_carry_state_in_words():
@@ -170,3 +171,26 @@ def test_a_dataops_incident_draws_its_own_pipeline():
     graph = h[h.index("Why this is happening"):h.index("What this means")]
     assert "payments_bronze_ingest" in graph, "its own pipeline"
     assert "Payment API" not in graph and "core_ledger" not in graph
+
+
+def test_the_hero_count_equals_the_thread_edges_for_that_incident():
+    """A reader must never count four arrows and read fifteen in the legend."""
+    import sqlite3
+    con = sqlite3.connect(ROOT / "data" / "ops.db")
+    n = con.execute("SELECT COUNT(*) FROM thread_edges WHERE thread_ref='INC-8841'").fetchone()[0]
+    obs = con.execute("SELECT COUNT(*) FROM thread_edges WHERE thread_ref='INC-8841' "
+                      "AND COALESCE(kind,'observed')!='inferred'").fetchone()[0]
+    con.close()
+    h = html_for()
+    graph = h[h.index("Why this is happening"):h.index("What this means")]
+    assert f"{n} links · {obs} observed · {n - obs} inferred" in graph
+    # and the count in the legend is the count in the table, not a second definition
+    m = re.search(r"(\d+) links · (\d+) observed · (\d+) inferred", graph)
+    assert int(m.group(1)) == n and int(m.group(2)) == obs
+
+
+def test_a_thread_with_no_links_says_so():
+    h = html_for("INC-8850")
+    graph = h[h.index("Why this is happening"):h.index("What this means")]
+    assert "no links recorded for this thread" in graph
+    assert "0 connections" not in graph

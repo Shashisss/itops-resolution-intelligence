@@ -184,7 +184,11 @@ def _graph(F):
     f, corr, kpi = F["fresh"], F["corr"], F["kpi"]
     edges = F.get("edges") or []
     kpi_txt = f'checkout {kpi["current"]:g}{kpi["unit"]}' if kpi else "—"
-    conn = _conn_line(F["id"])
+    # the legend counts exactly the arrows drawn below it — the thread's own links, not the graph's
+    n = len(edges)
+    obs = sum(1 for e in edges if (e.get("kind") or "observed") != "inferred")
+    legend = (f'{n} links · {obs} observed · {n - obs} inferred' if n
+              else "no links recorded for this thread")
 
     own = []                                   # bottom row: what the incident touches
     if corr:
@@ -281,18 +285,23 @@ def _graph(F):
   </svg>
   <div class="cap">{esc(cap)}</div>
   <div class="legend"><span><i></i>observed</span><span><i class="dash"></i>inferred</span>
-    <span class="n">{esc(conn)}</span></div>
+    <span class="n">{esc(legend)}</span></div>
 </div>'''
 
 
-def _conn_line(ref):
+def _graph_line(ref):
+    """The projected graph's connections — a wider set than the thread's own links.
+
+    It includes neighbours the projection derives (dependency edges, KPI links, prior learns), so it
+    says "in the graph": a reader comparing it with the four arrows on the hero is comparing two
+    different questions."""
     try:
         import graph
         rows = graph.store().neighbours(graph.incident_node_id(ref))
         obs = sum(1 for r in rows if r["edge"].get("basis") == "observed")
-        return f'{len(rows)} connections · {obs} observed · {len(rows) - obs} inferred'
+        return f'{len(rows)} connections in the graph · {obs} observed · {len(rows) - obs} inferred'
     except Exception:
-        return "no connections recorded"
+        return "no graph connections recorded"
 
 
 def _meaning(F, action, headline=None):
@@ -704,7 +713,7 @@ def _panes(F, dom, view=None):
     ev = _rca_pane(ref, F, view.get("leads") or [], view)
     sig = (f'{int(round(F["score"] * 100))}% inferred' if F["score"] is not None else "observed only")
 
-    conn = _conn_line(ref)
+    conn = _graph_line(ref)
     acts = story._rows("SELECT ts, detail FROM timeline WHERE ref_id=? ORDER BY ts DESC LIMIT 4", (ref,))
     audit = "".join(f'<div class="ev"><span class="ts">{esc(str(a["ts"])[11:16])}</span>'
                     f'<span>{esc(a["detail"])}</span></div>' for a in acts)
@@ -725,7 +734,10 @@ def _panes(F, dom, view=None):
         "Timeline": tl,
         "Requests": req,
         "Evidence & RCA": ev,
-        "Connections & audit": f'<div class="ev"><span>{esc(conn)}</span></div>{audit}',
+        "Connections & audit": (
+            f'<div class="ev"><span><b>{esc(conn)}</b></span></div>'
+            f'<div class="rf">includes neighbours beyond this thread — dependency edges, KPI '
+            f'links and prior learns</div>{audit}'),
         "Act & verify": actions,
         "Learn": learn_body,
     }
@@ -898,7 +910,7 @@ def _tabs(F, dom, initial, view=None):
         "Requests": (f"{over} OVERDUE · {n_asks} ask{'' if n_asks == 1 else 's'}"
                      if over else f"none overdue · {n_asks} ask{'' if n_asks == 1 else 's'}"),
         "Evidence & RCA": rca_state,
-        "Connections & audit": _conn_line(F["id"]).split(" · ")[0],
+        "Connections & audit": _graph_line(F["id"]).split(" connections")[0] + " in graph",
         "Act & verify": act_state,
         "Learn": "saved" if (hasattr(learn, "get") and learn.get(F["id"])) else "draft",
     }

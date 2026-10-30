@@ -4,7 +4,7 @@ Two layers, both runnable without a browser.
 
 ```bash
 python3 -m pip install -r requirements-dev.txt
-python3 -m pytest tests -q          # 193 tests, ~42s
+python3 -m pytest tests -q          # 198 tests, ~43s
 python3 scripts/layout_check.py http://localhost:8501   # layout audit — launches its own headless Chrome
 python3 scripts/smoke.py            # deployment smoke test, ~5s
 ```
@@ -34,7 +34,7 @@ that
 Screens: incident × six tabs for INC-8841 and DOP-1001, the incidents list. One line of PASS/FAIL
 per screen; exit code 1 on any failure.
 
-Result at v129: 14 screens checked, 14 PASS on the deployed app (own headless Chrome).
+Result at v130: 14 screens checked, 14 PASS on the deployed app (own headless Chrome).
 
 ## `tests/test_incident_actions.py` — the Requests tab (v110)
 
@@ -100,6 +100,11 @@ re-rendered document.
 | `test_inc_8841_keeps_its_own_plan` | INC-8841 keeps the schema/replay plan |
 | `test_an_incident_with_no_plan_says_so_and_offers_nothing` | DOP-1002 has no plan: the pane says so, the controls are unavailable, nothing is borrowed |
 | `test_verification_checks_the_metrics_that_are_breaching_here` | INC-8850 is checked on its latency, not on the payments error rate |
+| `test_the_hero_count_equals_the_thread_edges_for_that_incident` | the hero legend equals COUNT(*) from thread_edges for the ref (4 links · 2 observed · 2 inferred) |
+| `test_a_thread_with_no_links_says_so` | a thread with no links reads "no links recorded for this thread", never "0 connections" |
+| `test_projecting_twice_changes_nothing` | the projection is a rebuild, not an append |
+| `test_editing_a_thread_link_updates_its_edge_in_place` | an edited row moves its edge; no duplicate appears and the superseded edge is gone |
+| `test_ensure_skips_when_nothing_changed` | an unchanged record is not re-projected |
 
 ## `tests/test_rca_and_gate.py` — leads and the close gate (v111)
 

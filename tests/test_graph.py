@@ -156,3 +156,47 @@ def test_the_connections_line_renders_on_the_incident_screen():
     con.close()
     h = incident_html.build(inc, "IT Ops")
     assert "connections" in h and "observed" in h and "inferred" in h
+
+
+def test_projecting_twice_changes_nothing(db):
+    """The projection is a rebuild, not an append: same record in, same graph out."""
+    before = sqlite3.connect(db).execute("SELECT COUNT(*) FROM graph_edges").fetchone()[0]
+    graph.project(str(db))
+    after = sqlite3.connect(db).execute("SELECT COUNT(*) FROM graph_edges").fetchone()[0]
+    assert after == before
+
+
+def test_editing_a_thread_link_updates_its_edge_in_place(db):
+    """A changed thread_edges row must replace its edge, never add a second one.
+
+    TE-1 is the schema-change → pipeline-failure link, and nothing else in the projection produces
+    that edge — so it is the honest case for "the row changed, the edge moved"."""
+    OLD = "inc:DOP-1001|caused_by|chg:T-1"
+    NEW = "sig:metric:M3|caused_by|chg:T-1"
+
+    def edge_ids():
+        con = sqlite3.connect(db)
+        ids = {r[0] for r in con.execute("SELECT id FROM graph_edges")}
+        con.close()
+        return ids
+
+    before = edge_ids()
+    assert OLD in before, "TE-1 is projected"
+
+    con = sqlite3.connect(db)
+    con.execute("UPDATE thread_edges SET dst='DB connection saturation', rel='contributes', "
+                "confidence='low' WHERE id='TE-1'")
+    con.commit()
+    con.close()
+
+    graph.ensure(str(db))                    # notices the changed fingerprint and re-projects
+    after = edge_ids()
+    assert len(after) == len(before), "an edited row must not add an edge"
+    assert NEW in after, "the edge now points where the record points"
+    assert OLD not in after, "the superseded edge is gone, not duplicated"
+
+
+def test_ensure_skips_when_nothing_changed(db):
+    """It is idempotent, not merely tolerant: an unchanged record is not re-projected."""
+    res = graph.ensure(str(db))
+    assert res.get("skipped") == "already projected", res

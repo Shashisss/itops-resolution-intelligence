@@ -20,6 +20,7 @@ text in ``thread_edges`` is mapped onto node ids once, at import, and keeps its 
 confidence.
 """
 import datetime as dt
+import hashlib
 import json
 import os
 import re
@@ -658,7 +659,40 @@ def project(db=None, now=None):
     g.write_many(nodes, list(deduped.values()),
                  now.replace(microsecond=0).isoformat(timespec="seconds") if now else None,
                  replace=True)
+    _meta(db, "graph_sig", _thread_sig(db))
     return {"nodes": len(nodes), "edges": len(deduped)}
+
+
+def _meta(db, key, value=None):
+    """Small key/value on the database, used to remember what the projection was built from."""
+    con = sqlite3.connect(db or DB)
+    try:
+        con.execute("CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT)")
+        if value is None:
+            row = con.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+            return row[0] if row else None
+        con.execute("INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE "
+                    "SET value=excluded.value", (key, str(value)))
+        con.commit()
+    finally:
+        con.close()
+    return value
+
+
+def _thread_sig(db=None):
+    """A fingerprint of the thread links the projection derives edges from.
+
+    Counting rows is not enough and neither is the newest timestamp: editing a link in place keeps
+    both and changes the claim. The digest is over the rows themselves, so any edit moves it."""
+    con = sqlite3.connect(db or DB)
+    try:
+        rows = con.execute("SELECT id, thread_ref, src, dst, rel, kind, confidence "
+                           "FROM thread_edges ORDER BY id").fetchall()
+    except Exception:
+        rows = []
+    finally:
+        con.close()
+    return hashlib.sha1(repr(rows).encode("utf-8")).hexdigest()
 
 
 def ensure(db=None):
@@ -676,6 +710,9 @@ def ensure(db=None):
         con.close()
     except Exception:
         return {"nodes": 0, "edges": 0, "skipped": "no database"}
-    if have >= incidents > 0:
+    # Projected already? Only skip if the thread links are the ones this projection was built from:
+    # an edited row must reach the graph, and it must replace its edge rather than add a second one.
+    sig = _thread_sig(db)
+    if have >= incidents > 0 and _meta(db, "graph_sig") == sig:
         return {"nodes": have, "edges": None, "skipped": "already projected"}
     return project(db)
