@@ -16,11 +16,18 @@ The only server round-trip is an action: the buttons are real anchors carrying `
 import datetime as dt
 import html as _html
 import json
+import urllib.parse
 
 import collab
 import journey
 import learn
 import story
+
+try:                        # the footer states the build that is actually running, never a literal
+    import build as _build_mod
+    _BUILD = _build_mod.info()["build"]
+except Exception:           # noqa: BLE001 — a missing build identity must not break the document
+    _BUILD = "dev"
 
 WEEK = dt.date.today().strftime("%d %b %Y")
 TAB_NAMES = ["Timeline", "Requests", "Evidence & RCA", "Connections & audit",
@@ -257,9 +264,185 @@ def _people(F):
     return out[:3]
 
 
+# ---------------------------------------------------------------- requests pane (v110: actions)
+# One page of the in-place list holds eight requests; the collapsed preview shows three so the
+# pane keeps its signed-off 164px height whether it is collapsed or expanded.
+REQ_PAGE = 8
+REQ_PREVIEW = 4
+
+
+def _q(v):
+    """A query-parameter value: URL-safe, then HTML-escaped for the attribute."""
+    return esc(urllib.parse.quote(str(v), safe=""))
+
+
+def _href(ref, action=None, target=None, tab="Requests", full=None, page=None, extra=None):
+    """One action link. It always carries the view it was clicked from, so an action lands back on
+    the same tab, the same page and the same collapsed/expanded state."""
+    parts = [f'inc={_q(ref)}']
+    if tab:
+        parts.append(f'tab={_q(tab)}')
+    if full is not None:
+        parts.append(f'full={1 if full else 0}')
+    if page is not None:
+        parts.append(f'page={int(page)}')
+    if action:
+        parts.append(f'action={_q(action)}')
+    if target is not None:
+        parts.append(f'target={_q(target)}')
+    for k, v in (extra or {}).items():
+        parts.append(f'{k}={_q(v)}')
+    return esc("?" + "&".join(parts))     # &amp; in the attribute, & in the browser's href
+
+
+def _badge(r):
+    """The one state word for a request, and how it is toned.
+
+    Overdue outranks everything except nothing: it is the fact the reader must not miss. An ask
+    with no sent_at was recorded but never handed over, and says so."""
+    if r["overdue"]:
+        return "OVERDUE", "od"
+    if r["unsent"]:
+        return "NOT SENT", "unsent"
+    if r["status"] == "done":
+        return "DONE", "ok"
+    if r["status"] == "accepted":
+        return "ACKNOWLEDGED", "ok"
+    if r["status"] == "reopened":
+        return "REOPENED", "sent"
+    return "SENT", "sent"
+
+
+def _badge_html(r):
+    label, cls = _badge(r)
+    return f'<span class="st {cls}">{esc(label)}</span>'
+
+
+def _req_acts(r, ref, full, page):
+    """The actions this request can take right now — nothing inert, nothing that would lie."""
+    out = []
+    if r["unsent"]:
+        out.append(("Send", _href(ref, "send", r["id"], full=full, page=page)))
+        return out
+    if r["status"] != "done":
+        out.append(("Chase", _href(ref, "chase", r["id"], full=full, page=page)))
+        if r["status"] != "accepted":
+            out.append(("Acknowledge", _href(ref, "ack", r["id"], full=full, page=page)))
+        out.append(("Mark done", _href(ref, "done", r["id"], full=full, page=page)))
+    return out
+
+
+def _acts_html(acts):
+    return ('<span class="acts">' + "".join(
+        f'<a href="{h}" target="_top">{esc(t)}</a>' for t, h in acts) + '</span>') if acts else ""
+
+
+def _req_meta(r):
+    """Who last moved this request, when, and how long it has been open."""
+    when = str(r.get("changed_at") or "")[11:16]
+    who = r.get("actor") or "—"
+    bits = [f'open {story.fmt_minutes(r["age_min"])}']
+    if r.get("travels"):
+        bits.append(str(r["travels"])[:24])
+    return f'{esc(who)} {esc(when)} · ' + " · ".join(esc(b) for b in bits)
+
+
+def _req_preview(rows, ref, n, page):
+    cards = "".join(
+        f'<div class="req"><div class="r1"><b>{esc(r["owner"])}</b>'
+        f'<span class="t2">{esc(r["ask_short"])}</span>{_badge_html(r)}</div>'
+        f'<div class="r2"><span class="m">{_req_meta(r)}</span>'
+        f'{_acts_html(_req_acts(r, ref, 0, page))}</div></div>'
+        for r in rows[:REQ_PREVIEW])
+    if not cards:
+        cards = '<div class="muted">No request on this thread.</div>'
+    return cards
+
+
+def _req_full(rows, ref, page):
+    body = "".join(
+        f'<div class="rrow"><b>{esc(r["owner"])}</b>'
+        f'<span class="ask">{esc(r["ask_short"])}</span>{_badge_html(r)}'
+        f'<span class="meta">{esc(str(r.get("actor") or "—"))} '
+        f'{esc(str(r.get("changed_at") or "")[11:16])}</span>'
+        f'{_acts_html(_req_acts(r, ref, 1, page))}</div>'
+        for r in rows)
+    return body or '<div class="muted">No request on this thread.</div>'
+
+
+def _pager(rows, ref, page, pages, n):
+    first = (page - 1) * REQ_PAGE + 1
+    last = first + len(rows) - 1 if rows else first - 1
+    prev = (f'<a class="pg" href="{_href(ref, tab="Requests", full=1, page=page - 1)}" target="_top">'
+            '‹ prev</a>' if page > 1 else '<span class="pg off">‹ prev</span>')
+    nxt = (f'<a class="pg" href="{_href(ref, tab="Requests", full=1, page=page + 1)}" target="_top">'
+           'next ›</a>' if page < pages else '<span class="pg off">next ›</span>')
+    return (f'<div class="pager"><span class="range">{first}–{max(last, first)} of {n}</span>'
+            f'{prev}{nxt}'
+            f'<a class="morex" href="{_href(ref, tab="Requests", full=1, page=page, extra={"new": 1})}"'
+            f' target="_top">+ Create ask</a>'
+            f'<a class="morex" data-req="0" href="{_href(ref, tab="Requests", full=0, page=page)}"'
+            f' target="_top">Show fewer</a></div>')
+
+
+def _ask_form(ref, view):
+    owners = view.get("owners") or []
+    # form values are plain text: the browser (or nav()) encodes them once, on the way out
+    owner_opts = "".join(f'<option value="{esc(o)}">{esc(o)}</option>' for o in owners)
+    due_opts = "".join(
+        f'<option value="{m}"{" selected" if m == 30 else ""}>{m} min</option>'
+        for m in (15, 30, 45, 60, 90, 120))
+    hidden = (f'<input type="hidden" name="inc" value="{esc(ref)}">'
+              f'<input type="hidden" name="tab" value="Requests">'
+              f'<input type="hidden" name="full" value="1">'
+              f'<input type="hidden" name="page" value="{int(view.get("page") or 1)}">'
+              f'<input type="hidden" name="action" value="ask">')
+    return f'''<form class="askf" method="get" action="" target="_top">{hidden}
+  <div class="frow">
+    <label>Owner<select name="to">{owner_opts}</select></label>
+    <label>Action<input name="act" placeholder="what they must do" maxlength="90" required></label>
+  </div>
+  <div class="frow">
+    <label>Deadline<select name="due">{due_opts}</select></label>
+    <label>Travels with it<input name="travels" value="thread + evidence" maxlength="60"></label>
+  </div>
+  <div class="fgo"><button type="button" data-ask>Create ask · NOT SENT</button>
+    <a class="morex" href="{_href(ref, tab="Requests", full=1, page=view.get("page") or 1)}"
+       target="_top">Cancel</a>
+    <span class="muted">Send it from the list when you are ready.</span></div>
+</form>'''
+
+
+def _requests_pane(F, ref, view):
+    """The Requests tab: every ask with its actions, eight to a page, expanded in place."""
+    rows = list(reversed(story.requests(ref)))          # newest ask first
+    n = len(rows)
+    pages = max(1, (n + REQ_PAGE - 1) // REQ_PAGE)
+    try:
+        page = int(view.get("page") or 1)
+    except (TypeError, ValueError):
+        page = 1
+    page = max(1, min(page, pages))
+    view["page"] = page
+    if view.get("new"):
+        return _ask_form(ref, view)
+    window = rows[(page - 1) * REQ_PAGE: page * REQ_PAGE]
+    full = bool(view.get("full"))
+    more = (f'<div class="reqfoot"><a class="morex" data-req="1" '
+            f'href="{_href(ref, tab="Requests", full=1, page=page)}" target="_top">'
+            f'Show all · {n} request{"" if n == 1 else "s"}</a>'
+            f'<a class="morex" href="{_href(ref, tab="Requests", full=1, page=page, extra={"new": 1})}"'
+            f' target="_top">+ Create ask</a></div>')
+    return (f'<div class="reqprev"{"" if not full else " hidden"}>'
+            f'{_req_preview(rows, ref, n, page)}{more}</div>'
+            f'<div class="reqfull"{"" if full else " hidden"}>'
+            f'{_req_full(window, ref, page)}{_pager(window, ref, page, pages, n)}</div>')
+
+
 # ---------------------------------------------------------------- tabs
-def _panes(F, dom):
+def _panes(F, dom, view=None):
     ref = F["id"]
+    view = view or {}
     events = story._rows("SELECT kind, detail, ts FROM timeline WHERE ref_id=? ORDER BY ts DESC LIMIT 6",
                          (ref,))
     tl = "".join(
@@ -267,14 +450,7 @@ def _panes(F, dom):
         f'<span class="tag {_tone(e["kind"])}">{esc(str(e["kind"]).upper())}</span>'
         f'<span>{esc(e["detail"])}</span></div>' for e in reversed(events))
 
-    asks = [d for d in collab.delegations(ref)]
-    req = "".join(
-        f'<div class="req"><b>{esc(d["to_"])}</b> · {esc((d["action"] or "").split(" · expected in")[0])}'
-        f'<span class="st {("od" if collab.is_overdue(d) and d["status"] != "done" else "sent")}">'
-        f'{esc("OVERDUE" if collab.is_overdue(d) and d["status"] != "done" else d["status"])}</span>'
-        f'<div class="muted">{esc(d.get("channel") or "App")} · recorded, simulated</div></div>'
-        for d in sorted(asks, key=lambda d: d.get("ts") or "", reverse=True)[:4]) or \
-        '<div class="muted">No request on this thread.</div>'
+    req = _requests_pane(F, ref, dict(view))
 
     ev = "".join(f'<div class="ev"><span>{esc(e)}</span></div>' for e in F["evidence"][:4]) or \
          '<div class="muted">No evidence recorded.</div>'
@@ -338,12 +514,12 @@ def _act_links(F):
     return "".join(out)
 
 
-def _tabs(F, dom, initial):
+def _tabs(F, dom, initial, view=None):
+    reqs = story.requests(F["id"])
+    over = sum(1 for r in reqs if r["overdue"])
     state = {
         "Timeline": f'{len(story._rows("SELECT id FROM timeline WHERE ref_id=?", (F["id"],)))} events',
-        "Requests": ("1 OVERDUE" if any(collab.is_overdue(d) and d["status"] != "done"
-                                        for d in collab.delegations(F["id"]))
-                     else "none overdue"),
+        "Requests": (f"{over} OVERDUE" if over else "none overdue"),
         "Evidence & RCA": f'{len(F["evidence"])} items',
         "Connections & audit": _conn_line(F["id"]).split(" · ")[0],
         "Act & verify": ("BLOCKED" if not F["gate"].get("closed") and not F["gate"].get("eligible")
@@ -355,13 +531,16 @@ def _tabs(F, dom, initial):
         f'{esc(name)}<b>{esc(state[name])}</b></button>'
         for i, name in enumerate(["Timeline", "Requests", "Evidence & RCA",
                                   "Connections & audit", "Act & verify", "Learn"]))
-    panes = _panes(F, dom)
-    body = "".join(
-        f'<div class="pane{" on" if name == initial else ""}" id="p{i}">{panes[name]}'
-        f'<button class="more" data-full="{esc(name)}">Show all</button>'
-        f'<div class="full-src" hidden>{panes[name]}</div></div>'
-        for i, name in enumerate(["Timeline", "Requests", "Evidence & RCA",
-                                  "Connections & audit", "Act & verify", "Learn"]))
+    panes = _panes(F, dom, view)
+    def _pane(i, name):
+        # Requests expands in place and pages there; the five other panes keep their overlay.
+        if name == "Requests":
+            return f'<div class="pane{" on" if name == initial else ""}" id="p{i}">{panes[name]}</div>'
+        return (f'<div class="pane{" on" if name == initial else ""}" id="p{i}">{panes[name]}'
+                f'<button class="more" data-full="{esc(name)}">Show all</button>'
+                f'<div class="full-src" hidden>{panes[name]}</div></div>')
+    body = "".join(_pane(i, name) for i, name in enumerate(
+        ["Timeline", "Requests", "Evidence & RCA", "Connections & audit", "Act & verify", "Learn"]))
     return bar, body
 
 
@@ -425,10 +604,45 @@ html,body{margin:0;height:100%;overflow:hidden;background:#fff;
 .ev .ts{color:var(--muted);font-variant-numeric:tabular-nums;min-width:38px}
 .tag{display:inline-block;font-size:8.5px;font-weight:800;border-radius:999px;padding:0 6px;color:#fff;background:#2563eb;margin-right:5px;flex:0 0 auto}
 .tag.warn{background:var(--amber)}.tag.bad{background:var(--red)}
-.req{border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:3px 8px;margin-bottom:4px;font-size:11px}
+.req{border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:1px 7px;margin-bottom:3px;font-size:10.5px}
+.req .r1{display:flex;align-items:baseline;gap:5px;white-space:nowrap;overflow:hidden}
+.req .r1 .t2{overflow:hidden;text-overflow:ellipsis;color:#334155}
+.req .r2{display:flex;align-items:baseline;gap:6px;font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden}
+.req .r2 .m{overflow:hidden;text-overflow:ellipsis}
+.req .r2 .acts{margin-left:auto}
+.acts{display:flex;gap:6px;white-space:nowrap;align-items:baseline}
+.acts a{color:var(--accent);text-decoration:none;font-weight:700;font-size:9px}
+.acts a:hover{text-decoration:underline}
+.rrow{display:flex;align-items:baseline;gap:6px;height:17px;line-height:17px;font-size:10px;
+ white-space:nowrap;border-bottom:1px solid #f1f5f9;padding:0 1px}
+.rrow b{font-weight:750}
+.rrow .ask{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;color:#334155}
+.rrow .meta{color:var(--muted);font-size:9px}
+.rrow .acts a{font-size:9px}
+.reqfoot{display:flex;align-items:baseline;gap:10px;margin-top:1px}
+.reqfoot .morex:last-child{margin-left:auto}
+.pager{display:flex;align-items:center;gap:8px;font-size:9.5px;color:var(--muted);margin-top:2px}
+.pager .range{font-weight:800;color:#334155}
+.pager .pg{color:var(--accent);text-decoration:none;font-weight:700}
+.pager .pg.off{color:#cbd5e1;font-weight:600}
+.pager .morex:first-of-type{margin-left:auto}
+.morex{font-size:9.5px;color:var(--accent);text-decoration:none;font-weight:700}
+.morex:hover{text-decoration:underline}
+.askf{display:flex;flex-direction:column;gap:5px;padding:1px 1px 0}
+.askf .frow{display:flex;gap:8px}
+.askf label{flex:1;display:flex;flex-direction:column;gap:1px;font-size:8.5px;text-transform:uppercase;
+ letter-spacing:.05em;color:var(--muted);font-weight:800;min-width:0}
+.askf input,.askf select{font-family:inherit;font-size:11px;height:23px;padding:1px 5px;
+ border:1px solid var(--line);border-radius:6px;color:var(--ink);background:#fff;min-width:0}
+.askf .fgo{display:flex;align-items:center;gap:8px;margin-top:1px}
+.askf button{font:inherit;font-size:11px;font-weight:750;border-radius:8px;padding:4px 10px;
+ border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
 .st{font-size:8.5px;font-weight:800;text-transform:uppercase;border-radius:999px;padding:0 6px;margin-left:6px}
 .st.od{color:var(--red);border:1px solid #fca5a5;background:#fef2f2}
 .st.sent{color:#475569;border:1px dashed #94a3b8;background:var(--soft)}
+.st.ok{color:var(--green);border:1px solid #86efac;background:#f0fdf4}
+.st.unsent{color:var(--amber);border:1px dashed #f59e0b;background:#fffbeb}
+[hidden]{display:none !important}
 .muted{color:var(--muted);font-size:10px}
 .act{display:flex;justify-content:space-between;text-decoration:none;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:4px 9px;margin-bottom:4px;font-size:11px;font-weight:650}
 .act i{font-style:normal;color:var(--muted);font-weight:500;font-size:9.5px}
@@ -449,12 +663,58 @@ JS = """
 (function(){
   var tabs=[].slice.call(document.querySelectorAll('.tab'));
   var panes=[].slice.call(document.querySelectorAll('.pane'));
+  function parentURL(){ try{ return new URL(window.parent.location.href); }catch(e){ return null; } }
   function show(i){
     tabs.forEach(function(t,j){t.classList.toggle('on', j===i);});
     panes.forEach(function(p,j){p.classList.toggle('on', j===i);});
     try{var u=new URL(window.parent.location.href);u.searchParams.set('tab',tabs[i].innerText.split('\\n')[0]);window.parent.history.replaceState({},'',u);}catch(e){}
   }
   tabs.forEach(function(t,i){t.addEventListener('click',function(){show(i);});});
+
+  // An action must run against THIS session, so it must not reload the document. A full
+  // navigation would start a new Streamlit session, and every mutation before it would be gone.
+  // Instead the query string is rewritten on the parent and Streamlit's own popstate handler
+  // reruns the app in place — same session, same record, same tab.
+  function nav(qs){
+    var u=parentURL(); if(!u) { window.parent.location.href=window.parent.location.pathname+'?'+qs; return; }
+    new URLSearchParams(qs).forEach(function(v,k){ u.searchParams.set(k,v); });
+    try{
+      window.parent.history.pushState({},'',u.pathname+u.search);
+      window.parent.dispatchEvent(new PopStateEvent('popstate',{state:{}}));
+    }catch(e){ window.parent.location.href=u.pathname+u.search; }
+  }
+  document.addEventListener('click',function(e){
+    var a=e.target&&e.target.closest?e.target.closest('a[href]'):null;
+    if(!a) return;
+    if(a.hasAttribute('data-req')){ e.preventDefault(); toggleReq(a); return; }
+    var href=a.getAttribute('href')||'';
+    if(href.charAt(0)!=='?') return;
+    e.preventDefault(); nav(href.slice(1));
+  });
+  // Show all expands the Requests list inside the pane (no modal, no rerun, same height).
+  function toggleReq(a){
+    var pane=a.closest('.pane'); if(!pane) return;
+    var open=a.getAttribute('data-req')==='1';
+    var prev=pane.querySelector('.reqprev'), full=pane.querySelector('.reqfull');
+    if(prev) prev.hidden=open;
+    if(full) full.hidden=!open;
+    var u=parentURL();
+    if(u){ u.searchParams.set('full', open?'1':'0'); window.parent.history.replaceState({},'',u.pathname+u.search); }
+  }
+  document.querySelectorAll('form.askf').forEach(function(f){
+    var go=function(e){
+      if(e && e.preventDefault) e.preventDefault();
+      var sp=new URLSearchParams();
+      new FormData(f).forEach(function(v,k){ if(String(v).trim()!=='') sp.set(k,v); });
+      nav(sp.toString());
+    };
+    // The component iframe is sandboxed without allow-forms, so a native submission is silently
+    // dropped. The button is type=button and sends the same parameters through nav().
+    f.addEventListener('submit',go);
+    var b=f.querySelector('[data-ask]');
+    if(b) b.addEventListener('click',go);
+    f.addEventListener('keydown',function(e){ if(e.key==='Enter'){ go(e); } });
+  });
   var ov=document.getElementById('ov'), body=document.getElementById('ovbody'), title=document.getElementById('ovtitle');
   document.querySelectorAll('.more').forEach(function(b){
     b.addEventListener('click',function(){
@@ -471,10 +731,21 @@ JS = """
 """
 
 
-def build(inc, dom, queue="", initial_tab="Timeline", action=None):
-    """Return the whole incident screen as one HTML document."""
+def build(inc, dom, queue="", initial_tab="Timeline", action=None, view=None, owners=None):
+    """Return the whole incident screen as one HTML document.
+
+    ``view`` is the state of the Requests tab: {"full": bool, "page": int, "new": bool}. It comes
+    from the query string so an action can land back on the page it was taken from."""
     F = facts(inc)
-    bar, panes = _tabs(F, dom, initial_tab)
+    view = dict(view or {})
+    view.setdefault("full", False)
+    view.setdefault("page", 1)
+    view.setdefault("new", False)
+    if owners and not view.get("owners"):
+        view["owners"] = owners
+    elif not view.get("owners"):
+        view["owners"] = sorted({F["owns"]} | {"Data Owner", "Incident Manager"})
+    bar, panes = _tabs(F, dom, initial_tab, view)
     act_href = None
     nxt = F["next"]
     if not F["gate"].get("closed") and F["asked"]:
@@ -491,7 +762,7 @@ def build(inc, dom, queue="", initial_tab="Timeline", action=None):
   </section>
   <div class="tabbar">{bar}</div>
   <div class="panes">{panes}</div>
-  <div class="foot"><span>Sample data · simulated actions · build v109</span>
+  <div class="foot"><span>Sample data · simulated actions · build {esc(_BUILD)}</span>
     <span>{esc(F["id"])} · {esc(F["stage"])}</span></div>
 </div>
 <div class="ov" id="ov"><div class="sheet">

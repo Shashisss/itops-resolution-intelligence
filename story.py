@@ -298,16 +298,26 @@ def requests(ref):
         overdue = status != "done" and age > limit
         if overdue:
             state = "overdue"
+        sent_at = d.get("sent_at")
+        asked = d.get("action") or ""
         out.append({
-            "id": d["id"], "owner": d["to_"], "ask": d["action"], "state": state,
+            "id": d["id"], "owner": d["to_"], "ask": asked,
+            "ask_short": asked.split(" · expected in")[0],
+            "state": state,
             "status": status, "age_min": age, "deadline_min": limit, "overdue": overdue,
             "stage": d.get("stage") or "—", "channel": d.get("channel") or "App",
             "asked_by": d.get("frm") or "—", "since": d.get("ts"),
             "over_by": max(0, age - limit) if overdue else 0,
-            "delivered": False,          # no connector is configured; the card says so
+            "sent_at": sent_at,            # NULL: recorded but never handed over (NOT SENT)
+            "unsent": not sent_at,
+            "travels": d.get("travels") or "",
+            "actor": d.get("actor") or d.get("frm") or "—",
+            "changed_at": d.get("changed_at") or d.get("ts"),
+            "delivered": bool(sent_at),    # no connector is configured; SENT is a recorded send
             "tone": STATE_TONE.get(state, "#64748b"),
         })
     return out
+
 
 
 # ---------------------------------------------------------------- acceleration: measured, or a dash

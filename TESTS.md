@@ -4,7 +4,7 @@ Two layers, both runnable without a browser.
 
 ```bash
 python3 -m pip install -r requirements-dev.txt
-python3 -m pytest tests -q          # 132 tests, ~15s
+python3 -m pytest tests -q          # 147 tests, ~20s
 python3 scripts/layout_check.py http://localhost:8501   # layout audit, needs Chrome on :9222
 python3 scripts/smoke.py            # deployment smoke test, ~5s
 ```
@@ -23,12 +23,38 @@ Chrome already running on :9222: it loads each screen, then asserts in-page that
 2. nothing overflows horizontally and the incident document does not scroll (`scrollHeight <=
    innerHeight`),
 3. header → tiles → hero → tab strip → panes appear in that order with no vertical overlap,
-4. each of the six tabs opens with non-empty content and "Show all" opens the overlay and closes.
+4. each of the six tabs opens with non-empty content and "Show all" opens the overlay and closes
+   — except Requests, where it must expand inside the pane (no modal, same pane height, a
+   `1–8 of N` range, and a live `?action=` link on every unfinished row).
 
 Screens: incident × six tabs for INC-8841 and DOP-1001, the incidents list. One line of PASS/FAIL
 per screen; exit code 1 on any failure.
 
-Result at v109: 14 screens checked, 14 PASS.
+Result at v110: 14 screens checked, 14 PASS.
+
+## `tests/test_incident_actions.py` — the Requests tab (v110)
+
+15 tests over a throwaway copy of the database. Rendering is checked on `incident_html.build()`;
+each action is driven through the real app (`AppTest` + query params), then the record and the
+re-rendered document are both read back.
+
+| Test | Asserts |
+|---|---|
+| `test_every_live_request_offers_its_actions_with_target` | every unfinished request carries `action=chase/ack/done&target=<id>`; no inert button |
+| `test_action_links_carry_the_view_they_were_clicked_from` | each href carries `tab=Requests`, `full` and `page`, and an action on page 2 lands back on page 2 |
+| `test_create_ask_is_an_inline_form_with_the_four_fields` | owner, action, deadline, what travels with it — inline, no modal |
+| `test_pagination_range_and_prev_next_in_place` | `1–8 of N` / `9–N of N`, prev/next are links, both branches live inside the pane |
+| `test_page_out_of_range_clamps_to_the_last_page` | `?page=99` renders the last page, not an empty pane |
+| `test_expanded_page_holds_eight_rows_and_the_preview_holds_four` | 8 rows a page, ≤4 in the preview |
+| `test_header_overdue_count_equals_the_badges` | the tab header counts the same rows the list badges as OVERDUE |
+| `test_acknowledge_action_mutates_and_rerenders` | status → accepted, actor + changed_at + event recorded, flash names who/when, badge ACKNOWLEDGED |
+| `test_mark_done_resolves_the_overdue_and_the_header_says_so` | last overdue resolved → header `none overdue`, no OVERDUE badge left |
+| `test_create_ask_makes_a_not_sent_request_and_send_delivers_it` | ask stored NOT SENT with `expected in 45 min` and its bundle; Send sets sent_at and reveals Chase/Ack/Done |
+| `test_send_is_refused_once_the_request_is_already_sent` | a second send raises and does not rewrite the first stamp |
+| `test_chase_with_a_target_logs_it_against_that_request` | the comment names the request's owner |
+| `test_a_stale_target_changes_nothing_and_says_so` | unknown target → stated refusal, record untouched |
+| `test_an_ask_without_an_owner_creates_nothing` | empty form → nothing created, reason shown |
+| `test_actions_land_back_on_the_same_tab_and_page` | tab/full/page survive the action, `action` is consumed |
 
 ## What is covered
 

@@ -70,6 +70,39 @@ JS = r"""
       let r = checkIncident(doc, 'incident · ' + tabs[i].innerText.split('\n')[0]);
       const pane = doc.querySelector('.pane.on');
       if (!pane || !pane.innerText.trim()) { r.pass = false; r.notes.push('empty pane'); }
+      const name = tabs[i].innerText.split('\n')[0].trim();
+      if (name === 'Requests') {
+        // v110: the Requests tab pages in place. "Show all" must expand inside the pane (no modal),
+        // the pane must keep its height, and every row must offer a live ?action= link.
+        const box = doc.querySelector('.panes');
+        const h0 = Math.round(rect(box).h);
+        if (!doc.querySelectorAll('.pane.on .req').length) { r.pass = false; r.notes.push('no request cards'); }
+        const tog = doc.querySelector('.pane.on [data-req="1"]');
+        if (!tog) { r.pass = false; r.notes.push('no show-all control'); }
+        else {
+          tog.click(); await sleep(90);
+          const fullBox = doc.querySelector('.pane.on .reqfull');
+          if (!fullBox || fullBox.hasAttribute('hidden')) { r.pass = false; r.notes.push('show all did not expand in place'); }
+          if (doc.getElementById('ov').classList.contains('on')) { r.pass = false; r.notes.push('show all opened a modal'); }
+          const h1 = Math.round(rect(box).h);
+          if (Math.abs(h1 - h0) > 1) { r.pass = false; r.notes.push('pane height ' + h0 + '->' + h1); }
+          const range = doc.querySelector('.pane.on .pager .range');
+          if (!range || !/^\d+–\d+ of \d+$/.test(range.innerText.trim())) { r.pass = false; r.notes.push('no 1–N of M range'); }
+          const rows = [...doc.querySelectorAll('.pane.on .rrow')];
+          if (!rows.length) { r.pass = false; r.notes.push('expanded view empty'); }
+          const live = rows.filter(x => !/DONE/.test((x.querySelector('.st') || {}).innerText || ''));
+          const dead = live.filter(x => !x.querySelector('a[href*="action="]')).length;
+          if (dead) { r.pass = false; r.notes.push(dead + ' live row(s) without an action'); }
+          const back = doc.querySelector('.pane.on [data-req="0"]');
+          if (back) { back.click(); await sleep(90); }
+          const prev = doc.querySelector('.pane.on .reqprev');
+          if (!prev || prev.hasAttribute('hidden')) { r.pass = false; r.notes.push('show fewer did not collapse'); }
+          const h2 = Math.round(rect(box).h);
+          if (Math.abs(h2 - h0) > 1) { r.pass = false; r.notes.push('pane height after collapse ' + h2); }
+        }
+        out.screens.push(r);
+        continue;
+      }
       const more = doc.querySelector('.pane.on .more');
       if (more) {
         more.click(); await sleep(60);

@@ -45,7 +45,11 @@ def _ensure_state_columns(con):
         return
     for ddl in ("ALTER TABLE delegations ADD COLUMN done_at TEXT",
                 "ALTER TABLE delegations ADD COLUMN actor TEXT",
-                "ALTER TABLE delegations ADD COLUMN changed_at TEXT"):
+                "ALTER TABLE delegations ADD COLUMN changed_at TEXT",
+                # v110: the delivery stamp and the bundle that travels with the ask. sent_at NULL is
+                # the visible NOT SENT state — an ask recorded but never handed to anyone.
+                "ALTER TABLE delegations ADD COLUMN sent_at TEXT",
+                "ALTER TABLE delegations ADD COLUMN travels TEXT"):
         try:
             con.execute(ddl)
         except sqlite3.OperationalError:
@@ -86,17 +90,48 @@ def _record_event(con, did, status, actor, when):
 
 
 def add_delegation(ref_id, frm, to, action, status="assigned", channel="Teams", stage=None,
-                   actor=None):
+                   actor=None, travels=None, delivered=True):
+    """Record an ask. ``delivered=False`` creates it in the NOT SENT state (sent_at NULL).
+
+    Every other caller keeps the old meaning: the request was handed over when it was recorded, so
+    it carries a sent_at equal to its own timestamp."""
     now = _now()
     who = actor or frm
     con = _connect()
     cur = con.execute(
-        "INSERT INTO delegations(ref_id,frm,to_,action,status,ts,channel,stage,actor,changed_at) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?)",
-        (ref_id, frm, to, action, status, now, channel, stage, who, now))
+        "INSERT INTO delegations(ref_id,frm,to_,action,status,ts,channel,stage,actor,changed_at,"
+        "sent_at,travels) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+        (ref_id, frm, to, action, status, now, channel, stage, who, now, now if delivered else None,
+         travels))
     _record_event(con, cur.lastrowid, status, who, now)
     con.commit()
     con.close()
+    return cur.lastrowid
+
+
+def send_delegation(did, actor):
+    """NOT SENT → SENT: hand a recorded ask over, stamping who sent it and when.
+
+    Returns the HH:MM the send was stamped with (the caller shows it). Sending twice is refused
+    rather than silently rewriting the first send time."""
+    actor = str(actor or "").strip()
+    if not actor:
+        raise ValueError("send_delegation requires an actor")
+    now = _now()
+    con = _connect()
+    row = con.execute("SELECT * FROM delegations WHERE id=?", (did,)).fetchone()
+    if row is None:
+        con.close()
+        raise ValueError("no such request")
+    if row["sent_at"]:
+        con.close()
+        raise ValueError("this request was already sent")
+    con.execute("UPDATE delegations SET status='assigned', sent_at=?, actor=?, changed_at=? WHERE id=?",
+                (now, actor, now, did))
+    _record_event(con, did, "assigned", actor, now)
+    con.commit()
+    con.close()
+    return now[11:16]
 
 
 def set_delegation_status(did, status, actor):
@@ -123,6 +158,7 @@ def set_delegation_status(did, status, actor):
     _record_event(con, did, status, actor, now)
     con.commit()
     con.close()
+    return now[11:16]
 
 
 def age_minutes(d, now=None):

@@ -1,6 +1,6 @@
 # PROTOTYPE NOTES — Resolution Intelligence POC
 
-Build v109 · sample data · simulated actions. This is a proof of concept, **not** production.
+Build v110 · sample data · simulated actions. This is a proof of concept, **not** production.
 
 ## Persistence boundary — what survives what
 
@@ -87,6 +87,32 @@ Relationships are **structured records** in `thread_edges` (source, target, rela
 observed/inferred kind, evidence source, timestamp, rule-based confidence). UI code no longer
 builds edges by hand; `journey.thread_edges_for()` resolves a thread via the correlation model.
 Inferred relationships are labelled as hypotheses, not proven facts.
+
+## v110 — the Requests tab works (milestone 1)
+
+The rebuild had reduced the incident to two actions (`?action=chase`, `?action=confirm`). The
+Requests tab is now a working list again, without touching the signed-off geometry:
+
+- **Each request carries its actions** — Chase, Acknowledge, Mark done, and Send for an ask that was
+  recorded but never handed over (NOT SENT → SENT). Every one is an `?action=<verb>&target=<id>`
+  link that mutates the record through `collab`, records who and when, and re-renders on the same
+  tab with the new badge (`OVERDUE`, `NOT SENT`, `SENT`, `ACKNOWLEDGED`, `DONE`).
+- **Create ask** is an inline form in the pane (owner, action, deadline, what travels with it). It
+  is created NOT SENT and the ask carries `· expected in <n> min`, which is the same deadline
+  `story.deadline_minutes()` reads — one definition.
+- **Pagination in place** — "Show all" expands inside the pane (no modal), eight to a page,
+  `1–8 of 13` with prev/next; `?page=` and `?full=` live in the URL and every action href carries
+  them, so an action lands back on the page it was taken from. The pane stays 164px: eight 17px rows
+  plus the pager, or four preview cards, both measured in the CDP audit.
+- **The tab header is derived**, not a literal: `Requests · N OVERDUE` counts the same rows the list
+  badges, so resolving the last overdue turns it into `none overdue`.
+- **Why the links no longer reload the page:** a full navigation starts a new Streamlit session and
+  the per-session database copy would lose every earlier mutation. The component rewrites the
+  parent's query string and lets Streamlit's own `popstate` handler rerun the app, so a sequence of
+  actions accumulates in one session. (The iframe is sandboxed without `allow-forms`, so the ask
+  form sends its fields the same way instead of relying on a native submit.)
+
+Out of scope for this milestone: RCA, collaboration, act/verify, close, learn and the agent panel.
 
 ## v109 — the incident screen is one HTML document
 

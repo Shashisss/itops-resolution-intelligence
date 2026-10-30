@@ -69,7 +69,7 @@ CREATE TABLE comments(id INTEGER PRIMARY KEY AUTOINCREMENT, ref_id TEXT, author 
                       text TEXT, ts TEXT, channel TEXT, stage TEXT);
 CREATE TABLE delegations(id INTEGER PRIMARY KEY AUTOINCREMENT, ref_id TEXT, frm TEXT, to_ TEXT,
                          action TEXT, status TEXT, ts TEXT, channel TEXT, stage TEXT,
-                         done_at TEXT, actor TEXT, changed_at TEXT);
+                         done_at TEXT, actor TEXT, changed_at TEXT, sent_at TEXT, travels TEXT);
 CREATE TABLE delegation_events(id INTEGER PRIMARY KEY AUTOINCREMENT, delegation_id INTEGER,
                                status TEXT, actor TEXT, changed_at TEXT);
 CREATE TABLE notifications(id INTEGER PRIMARY KEY AUTOINCREMENT, role TEXT, ref_id TEXT, text TEXT,
@@ -325,6 +325,30 @@ c.executemany("INSERT INTO delegations(ref_id,frm,to_,action,status,ts,channel,s
      "Approve pipeline replay + service restart", "accepted", M(9), "Teams", "Act"),
     ("INC-8841", "CIO", "Data Platform",
      "Confirm contract v4 is deployed to payments", "assigned", M(38), "Teams", "Act"),
+    # v110: the rest of the INC-8841 thread history — enough requests for the Requests tab to page
+    # (eight to a page) and for the overdue count to be a number the record supports, not a label.
+    ("INC-8841", "Incident Manager", "Checkout Team",
+     "Confirm retry budget 24.10 on payments-api · expected in 45 min", "done", M(96), "Teams", "Detect"),
+    ("INC-8841", "Checkout Team", "Cloud Platform",
+     "Check node pool for the 14:02 eviction · expected in 30 min", "done", M(88), "Teams", "Correlate"),
+    ("INC-8841", "Incident Manager", "Data Platform",
+     "Verify the ledger lag follows the service, not the feed · expected in 60 min", "done", M(74), "Teams", "Correlate"),
+    ("INC-8841", "Platform Engineering", "Data Platform",
+     "Freeze the payments contract until the replay is done · expected in 30 min", "done", M(61), "Jira", "Act"),
+    ("INC-8841", "Incident Manager", "Analytics Engineering",
+     "Hold the 15:00 finance refresh until replay completes · expected in 30 min", "done", M(52), "Teams", "Act"),
+    ("INC-8841", "CSM", "Finance Data",
+     "Confirm the EUR ledger difference is the same +0.4% · expected in 60 min", "done", M(47), "Teams", "Act"),
+    ("INC-8841", "Incident Manager", "Checkout Team",
+     "Name the release owner for 24.10 · expected in 30 min", "accepted", M(26), "Teams", "Correlate"),
+    ("INC-8841", "Incident Manager", "Finance Data",
+     "State whether the 15:00 close depends on the replay · expected in 30 min", "assigned", M(21), "App", "Act"),
+    ("INC-8841", "Platform Engineering", "Cloud Platform",
+     "Confirm the 14:02 eviction window from the node log · expected in 45 min", "assigned", M(16), "Teams", "Act"),
+    ("INC-8841", "Incident Manager", "Analytics Engineering",
+     "Rebuild the finance mart after replay · expected in 90 min", "assigned", M(12), "Jira", "Act"),
+    ("INC-8841", "CSM", "Checkout Team",
+     "Send the customer-facing note for the 14:02 window · expected in 30 min", "assigned", M(7), "App", "Act"),
     ("DOP-1001", "Data Owner", "Data Engineer",
      "Reconcile schema (contract v4) + replay", "assigned", M(14), "Jira", "Act"),
     # INC-8850 deliberately has no handoff yet: it is the incident used to demonstrate the full
@@ -332,6 +356,11 @@ c.executemany("INSERT INTO delegations(ref_id,frm,to_,action,status,ts,channel,s
     ("DOP-1002", "Data Owner", "Data Engineer",
      "Reconcile order_channel schema", "assigned", M(15), "Teams", "Act"),
 ])
+# Every ask that is already on the thread was handed over when it was recorded: sent_at = ts.
+# Only an ask created in the UI starts unsent (NOT SENT until Send is pressed).
+c.execute("UPDATE delegations SET sent_at = ts WHERE sent_at IS NULL")
+c.execute("UPDATE delegations SET travels = CASE channel WHEN 'Jira' THEN 'ticket + evidence' "
+          "WHEN 'Teams' THEN 'thread + evidence' ELSE 'thread context' END WHERE travels IS NULL")
 # The initial insertion is itself the first recorded transition: the requester is the actor.
 c.execute("UPDATE delegations SET actor=frm, changed_at=ts WHERE actor IS NULL")
 c.execute("INSERT INTO delegation_events(delegation_id,status,actor,changed_at) "

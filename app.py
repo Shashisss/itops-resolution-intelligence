@@ -210,22 +210,78 @@ def _next_ask(inc):
     return (oldest.get("action") or "").split(" · expected in")[0]
 
 
-def _run_incident_action(dom, ref, you_role, act):
+def _ask_label(d):
+    return (d.get("action") or "").split(" · expected in")[0]
+
+
+def _target_ask(ref, target):
+    """The request an action names. A stale or missing target is a stated refusal, never a no-op."""
+    if target in (None, "", []):
+        return None
+    for d in collab.delegations(ref):
+        if str(d["id"]) == str(target):
+            return d
+    return None
+
+
+def _run_incident_action(dom, ref, you_role, act, target=None):
     """Actions arrive as ?action=… from the html block. Performed once, on the record."""
     inc = _find_dop(ref) if dom == "DataOps" else _find_it(ref)
     if inc is None:
         return
     if act == "chase":
         asks = [d for d in collab.delegations(ref) if d.get("status") != "done"]
+        if target:
+            asked = _target_ask(ref, target)
+            asks = [asked] if asked else []
         if asks:
             d = min(asks, key=lambda x: x.get("ts") or "")
             collab.add_comment(ref, you_role, "Person",
                                f'Chased {d["to_"]} for: {d["action"]} (simulated)')
             st.session_state["flash"] = f'Reminder logged to {d["to_"]} (simulated — not sent).'
+        else:
+            st.session_state["flash"] = "No open request to chase on this thread."
     elif act == "confirm":
         collab.add_comment(ref, you_role, "Person",
                            "Cause confirmation recorded on the thread (simulated).")
         st.session_state["flash"] = "Cause confirmation recorded on the thread."
+    elif act in ("ack", "done", "send"):
+        d = _target_ask(ref, target)
+        if d is None:
+            st.session_state["flash"] = "That request is no longer on the thread — nothing changed."
+            return
+        try:
+            if act == "send":
+                when = collab.send_delegation(d["id"], you_role)
+                st.session_state["flash"] = (
+                    f'Sent to {d["to_"]} at {when} (simulated) — {_ask_label(d)} is now SENT.')
+            elif act == "ack":
+                when = collab.set_delegation_status(d["id"], "accepted", you_role)
+                st.session_state["flash"] = (
+                    f'Acknowledged by {you_role} at {when} — {d["to_"]} · {_ask_label(d)}.')
+            else:
+                when = collab.set_delegation_status(d["id"], "done", you_role)
+                st.session_state["flash"] = (
+                    f'Marked done by {you_role} at {when} — {d["to_"]} · {_ask_label(d)}.')
+        except ValueError as exc:
+            st.session_state["flash"] = f"Not done: {exc}"
+    elif act == "ask":
+        _to = str(st.query_params.get("to") or "").strip()
+        _what = str(st.query_params.get("act") or "").strip()
+        _travels = str(st.query_params.get("travels") or "").strip() or "thread context"
+        try:
+            _due = int(st.query_params.get("due") or 30)
+        except (TypeError, ValueError):
+            _due = 30
+        if not _to or not _what:
+            st.session_state["flash"] = "An ask needs an owner and an action — nothing was created."
+            return
+        collab.add_delegation(ref, you_role, _to, f"{_what} · expected in {_due} min",
+                              status="assigned", channel="App",
+                              stage=journey.lifecycle_stage(inc), actor=you_role,
+                              travels=_travels, delivered=False)
+        st.session_state["flash"] = (f'Ask recorded for {_to} ({_due} min) — NOT SENT. '
+                                     "Send it from the Requests tab.")
     elif act == "back":
         _close_workspace()
     elif act == "close":
@@ -248,11 +304,12 @@ def _close_workspace():
     """Leave the workspace for the list — and drop the deep link, or it would reopen on the rerun."""
     st.session_state.pop("open_incident", None)
     st.session_state["_deep_done"] = True
-    try:
-        if "inc" in st.query_params:
-            del st.query_params["inc"]
-    except Exception:
-        pass
+    for _k in ("inc", "action", "target", "tab", "full", "page", "new"):
+        try:
+            if _k in st.query_params:
+                del st.query_params[_k]
+        except Exception:
+            pass
 
 
 def _all_refs():
@@ -401,19 +458,33 @@ def render_workspace_page(dom, ref, you_role):
 
     # v109: the incident screen is ONE html block. No Streamlit widgets inside it, so no keys to
     # collide and no containers to fight. Actions are anchors carrying ?action=…, handled here once.
-    _act = st.query_params.get("action")
+    _act = (st.query_params.get("action") or "").strip().lower()
     if _act:
-        _run_incident_action(dom, ref, you_role, _act)
-        try:
-            del st.query_params["action"]
-        except Exception:
-            pass
+        _run_incident_action(dom, ref, you_role, _act, target=st.query_params.get("target"))
+        for _k in ("action", "target", "to", "act", "due", "travels", "new"):
+            try:
+                del st.query_params[_k]
+            except Exception:
+                pass
         st.rerun()
+
+    def _flag(name):
+        return str(st.query_params.get(name) or "").strip().lower() in ("1", "true", "yes", "on")
+
+    def _num(name, default=1):
+        try:
+            return int(str(st.query_params.get(name) or default))
+        except (TypeError, ValueError):
+            return default
 
     _tab = (st.query_params.get("tab") or "").strip().lower()
     _initial = next((t for t in incident_html.TAB_NAMES if t.lower() == _tab), "Timeline")
+    # The Requests tab's view lives in the URL (full / page / new) so an action lands back on the
+    # page it was taken from instead of resetting the tab.
+    _view = {"full": _flag("full"), "page": _num("page", 1), "new": _flag("new")}
     st.query_params["inc"] = ref
-    _html = incident_html.build(inc, dom, queue=queue, initial_tab=_initial)
+    _html = incident_html.build(inc, dom, queue=queue, initial_tab=_initial, view=_view,
+                                owners=_ask_targets(dom, inc))
     # a spacer clears Streamlit Cloud's own toolbar, which overlays the top of the content
     st.markdown('<div style="height:30px"></div>', unsafe_allow_html=True)
     components.html(_html, height=656, scrolling=False)
