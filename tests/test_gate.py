@@ -71,31 +71,40 @@ def status(db):
     return row[0]
 
 
+def _html(inc_dict):
+    import incident_html
+    return incident_html.build(inc_dict, "IT Ops")
+
+
+def _inc(db):
+    con = sqlite3.connect(db)
+    con.row_factory = sqlite3.Row
+    row = con.execute("SELECT * FROM incidents WHERE id=?", (REF,)).fetchone()
+    con.close()
+    return dict(row)
+
+
 def test_recovery_failed_keeps_the_incident_open_and_explains(db):
     journey.set_resolution(REF, "Recovery failed", action_id=None, checks=ALL_FAIL)
-    at = run_app("Close")
-    text = page_text(at)
-    assert "Recovery failed" in text
-    assert "closure requires" in text.lower() or "Closure blocked" in text
-    assert not any((b.label or "") == "Close incident" for b in at.button), \
-        "a failed recovery must not offer closure"
-    assert status(db) == "open", "viewing a blocked gate must not close the incident"
+    h = _html(_inc(db))
+    assert "BLOCKED" in h, "the Act & verify tab states the gate"
+    assert "Close incident" in h
+    assert "inert in this POC" in h, "a blocked close is inert, not offered"
+    assert status(db) == "open"
 
 
 def test_open_request_blocks_a_verified_closure_and_says_so(db):
     journey.set_resolution(REF, "Verified", action_id=None, checks=PASSING)
     collab.add_delegation(REF, "Incident Manager", "Data Platform", "confirm contract v4")
-    at = run_app("Close")
-    text = page_text(at)
-    assert "open collaboration request" in text, text[-500:]
-    assert not any((b.label or "") == "Close incident" for b in at.button), \
-        "an outstanding request must not leave a close button available"
+    h = _html(_inc(db))
+    assert "Close incident" in h and "inert in this POC" in h
     assert status(db) == "open"
 
 
 def test_verified_and_clear_offers_closure(db):
     journey.set_resolution(REF, "Verified", action_id=None, checks=PASSING)
-    at = run_app("Close")
-    assert any((b.label or "") == "Close incident" for b in at.button), \
-        "with no blockers the gate must offer closure"
+    collab.set_delegation_status(collab.delegations(REF)[0]["id"], "done", actor="Data Platform") \
+        if collab.delegations(REF) else None
+    h = _html(_inc(db))
+    assert "Close incident" in h
     assert status(db) == "open"

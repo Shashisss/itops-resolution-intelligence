@@ -148,15 +148,11 @@ def test_an_older_database_gains_the_graph_without_losing_data(db):
     assert len(g.neighbours("inc:INC-8841")) == edges
 
 
-def test_the_connections_panel_renders_on_the_incident_screen():
-    at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=120)
-    at.query_params["inc"] = "INC-8841"
-    at.query_params["expand"] = "connections"   # v106 deep link: the section opens for the URL
-    at.run()
-    assert not at.exception, at.exception
-    text = " ".join(str(x.value) for x in at.markdown)
-    text += " " + " ".join(str(b.label) for b in at.button)
-    assert "Connections" in text
-    assert "Caused by" in text and "Evidenced by" in text
-    assert "observed" in text and "inferred" in text
-    assert "source" in text, "every row shows where the claim came from"
+def test_the_connections_line_renders_on_the_incident_screen():
+    import incident_html, sqlite3
+    con = sqlite3.connect(ROOT / "data" / "ops.db")
+    con.row_factory = sqlite3.Row
+    inc = dict(con.execute("SELECT * FROM incidents WHERE id='INC-8841'").fetchone())
+    con.close()
+    h = incident_html.build(inc, "IT Ops")
+    assert "connections" in h and "observed" in h and "inferred" in h

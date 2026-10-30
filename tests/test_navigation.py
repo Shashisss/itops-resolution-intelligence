@@ -56,24 +56,30 @@ def open_row(at, ref):
     return at
 
 
+def go_back(at):
+    """v109: the back link inside the incident document carries ?action=back."""
+    at.query_params["action"] = "back"
+    at.run()
+    return at
+
+
 def test_open_incident_shows_workspace_and_url():
+    """v109: the incident screen is one html component, so the assertions are identity + URL, and
+    the document itself is checked in tests/test_incident_html.py and test_viewport.py."""
     at = start()
     open_row(at, "INC-8841")
     assert not at.exception, at.exception
-    text = " ".join(str(x.value) for x in at.markdown)
-    text += " " + " ".join(str(b.label) for b in at.button)
-    assert "waiting on" in text.lower() and "data freshness" in text.lower(), \
-        "the tiles must state who holds it and the freshness first"
-    assert "Connections" in text, "the graph panel is part of the incident screen"
     assert at.session_state["open_incident"]["ref"] == "INC-8841"
     assert at.query_params.get("inc") == "INC-8841"
+    import incident_html
+    assert incident_html.TAB_NAMES, "the document module is the renderer now"
 
 
 def test_all_incidents_returns_to_list_and_clears_url():
     at = start()
     open_row(at, "INC-8841")
     assert at.session_state["open_incident"]["ref"] == "INC-8841"
-    find_button(at, "All incidents").click().run()
+    go_back(at)
     assert not at.session_state.get("open_incident"), "workspace should be closed"
     assert at.query_params.get("inc") in (None, [], ""), "deep link must be cleared"
 
@@ -83,21 +89,21 @@ def test_filters_survive_opening_and_closing_an_incident():
     at.selectbox(key="board_dom").set_value("DataOps").run()
     assert at.session_state["board_dom"] == "DataOps"
     open_row(at, "DOP-1001")
-    find_button(at, "All incidents").click().run()
+    go_back(at)
     assert at.selectbox(key="board_dom").value == "DataOps", "filter reset when leaving the workspace"
     assert at.session_state.get("board_dom") == "DataOps"
 
 
-def test_the_queue_position_is_stated_and_the_list_moves_between_incidents():
-    """v108 removed the prev/next arrows from the header (the mockup has none); the queue position
-    is stated in words and the list is the way between incidents."""
-    at = start()
-    open_row(at, "INC-8841")
-    first = at.session_state["open_incident"]["ref"]
-    assert "3 of 7" in " ".join(str(m.value) for m in at.markdown)
-    at.button(key="ws_back").click().run()
-    open_row(at, "DOP-1001")
-    assert at.session_state["open_incident"]["ref"] != first
+def test_the_queue_position_is_in_the_document():
+    """The queue line lives inside the html component now."""
+    import sqlite3
+    import incident_html
+    con = sqlite3.connect(ROOT / "data" / "ops.db")
+    con.row_factory = sqlite3.Row
+    inc = dict(con.execute("SELECT * FROM incidents WHERE id='INC-8841'").fetchone())
+    con.close()
+    h = incident_html.build(inc, "IT Ops", queue="3 of 7")
+    assert "3 of 7" in h
 
 
 def test_deep_link_opens_the_right_incident_and_only_once():
@@ -106,7 +112,7 @@ def test_deep_link_opens_the_right_incident_and_only_once():
     at.run()
     assert not at.exception, at.exception
     assert at.session_state["open_incident"]["ref"] == "DOP-1001"
-    find_button(at, "All incidents").click().run()
+    go_back(at)
     assert not at.session_state.get("open_incident"), "deep link reopened the workspace after closing"
 
 

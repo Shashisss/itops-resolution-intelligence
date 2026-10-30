@@ -1,130 +1,58 @@
-"""Workspace scrolling — one scroll surface, a pinned identity bar, actions that jump to their section.
+"""The incident screen's layout (v109) — one HTML document, no nested scroll.
 
-v93 put the thread and the guided walkthrough inside a fixed-height box (clamp 300–560px) so the
-identity bar could stay on screen inside Streamlit Cloud's auto-height iframe. On a laptop that made
-the walkthrough a keyhole with its own scrollbar. v94 removes the nested scroll: the content flows in
-the app's single scroll surface, the bar pins to the top of it, and an action lands the page on the
-section it opened.
+These replace the v94–v108 tests that inspected Streamlit containers: the containers are gone, and
+the properties they protected (one scroll surface, no clipped panel, phase names, stage actions)
+are now properties of the generated document.
 """
 import os
 import pathlib
 import re
+import sqlite3
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
-from streamlit.testing.v1 import AppTest  # noqa: E402
+import incident_html  # noqa: E402
 
 
-def start():
-    at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=120)
-    at.run()
-    return at
+def html_for(ref="INC-8841"):
+    con = sqlite3.connect(ROOT / "data" / "ops.db")
+    con.row_factory = sqlite3.Row
+    table = "dop_incidents" if ref.startswith("DOP") else "incidents"
+    inc = dict(con.execute(f"SELECT * FROM {table} WHERE id=?", (ref,)).fetchone())
+    con.close()
+    return incident_html.build(inc, "DataOps" if ref.startswith("DOP") else "IT Ops",
+                               queue="1 of 7")
 
 
-def find_button(at, needle):
-    for b in at.button:
-        if needle in (b.label or ""):
-            return b
-    raise AssertionError(f"no button matching {needle!r}; have: {[b.label for b in at.button][:20]}")
+def test_the_panel_is_not_height_clamped():
+    """No nested scroll: the document sets overflow:hidden and the pane band clips a fixed slice."""
+    css = html_for()
+    css = css[css.index("<style>"):css.index("</style>")]
+    assert "overflow:hidden" in css
+    assert css.count("overflow:auto") == 1, "only the overlay's body scrolls"
+    panes = re.search(r"\.panes\{([^}]*)\}", css).group(1)
+    assert "height:172px" in panes and "overflow:hidden" in panes
 
 
-def open_incident(ref="INC-8841"):
-    """v106: a row opens the drawer; the drawer's button opens the workspace."""
-    at = start()
-    find_button(at, ref).click().run()
-    find_button(at, "Open incident").click().run()
-    return at
+def test_the_four_phases_are_named():
+    h = html_for()
+    for phase in ("Confirm cause", "Apply remediation", "Run verification", "Close incident"):
+        assert phase in h, phase
 
 
-def all_markdown(at):
-    return " ".join(str(x.value) for x in at.markdown)
+def test_the_stage_actions_are_links_within_the_document():
+    h = html_for()
+    assert "Confirm cause" in h
+    assert 'href="?inc=INC-8841&action=confirm"' in h
+    assert "Close incident" in h
+    assert "inert in this POC" in h, "the controls that do nothing must look inert"
 
 
-_PANEL_RULE = re.compile(r"\.st-key-ws_panel_[^{]*\{([^}]*)\}")
-
-
-def panel_declarations(css):
-    """Declarations inside every rule that targets the thread panel.
-
-    The guard is about the panel, not about the whole stylesheet: a clamp() on a font-size elsewhere
-    is legitimate, a clamped height on this container is the nested scroll that v94 removed."""
-    return [m.group(1) for m in _PANEL_RULE.finditer(css)]
-
-
-def panel_height_violations(css):
-    """The bug this test exists to catch: any height cap on the thread panel.
-
-    `height: auto` / `max-height: none` are the fix and pass; a clamp, a px cap or a percentage is
-    a nested scroll and fails. Any clamp() in a panel declaration fails too."""
-    bad = []
-    allowed = {"auto", "none", "unset", "initial", "inherit"}
-    for decls in panel_declarations(css):
-        for decl in decls.split(";"):
-            prop, _, value = decl.partition(":")
-            prop = prop.strip().lower()
-            value = value.replace("!important", "").strip().lower()
-            if "clamp(" in value:
-                bad.append(f"{prop}: {value}")
-            elif prop in ("height", "max-height") and value not in allowed:
-                bad.append(f"{prop}: {value}")
-    return bad
-
-
-def test_thread_panel_is_not_height_clamped():
-    at = open_incident()
-    css = all_markdown(at)
-    assert "st-key-ws_panel_" in css, "the thread container should still be addressed by CSS"
-    assert panel_declarations(css), "the panel rule must actually be rendered for this guard to mean anything"
-    assert panel_height_violations(css) == [], (
-        "the panel must not cap its height — that is the nested scroll that turned the walkthrough "
-        f"into a keyhole: {panel_height_violations(css)}")
-    assert "scroll-margin-top" in css, "jump targets need a margin so the sticky bar cannot cover them"
-
-
-def test_the_panel_guard_still_catches_a_clamped_height():
-    """The narrowed guard must still fail on the bug it was written for — it is not a weaker test."""
-    assert panel_height_violations(
-        ".st-key-ws_panel_INC-1 { flex: 0 0 auto; height: clamp(300px, 50vh, 560px) !important; }")
-    assert panel_height_violations(".st-key-ws_panel_INC-1 { max-height: 560px !important; }")
-    assert panel_height_violations(".st-key-ws_panel_INC-1 { height: 70vh !important; }")
-    assert panel_height_violations(
-        ".st-key-ws_panel_INC-1 { height: auto !important; max-height: none !important; "
-        "overflow: visible !important; }") == [], "the real fix must pass"
-
-
-def test_primary_action_opens_the_matching_guided_step():
-    at = open_incident()
-    find_button(at, "Confirm cause").click().run()
-    assert not at.exception, at.exception
-    assert at.session_state["ws_mode_INC-8841"] == "Act & verify (guided)"
-    assert at.session_state["it_step_INC-8841"] == "Correlate", "Confirm cause should land on Correlate"
-    assert "Root cause" in all_markdown(at) or "Root cause" in " ".join(
-        str(x.value) for x in at.expander), "the hypothesis section is what the action claims to open"
-
-
-def test_guided_walkthrough_step_is_remembered_per_incident():
-    at = open_incident()
-    find_button(at, "Confirm cause").click().run()
-    at.session_state["it_step_INC-8841"] = "Verify"
-    at.run()
-    assert not at.exception, at.exception
-    assert at.session_state["it_step_INC-8841"] == "Verify"
-
-
-def test_dataops_workspace_is_the_same_one_scroll_with_the_same_anchors():
-    """v107: the lifecycle lives in the Act & verify tab, one stage at a time, with the same anchors
-    and the same phase names."""
-    at = open_incident("DOP-1001")
-    at.session_state["tab_DOP-1001"] = "Act & verify"
-    at.run()
-    assert not at.exception, at.exception
-    text = all_markdown(at) + " " + " ".join(str(b.label) for b in at.button)
-    assert "Connections" in text, "the incident screen carries the connections section"
-    assert "Close & Learn" in text, "the phase name appears in the stage headers"
-    assert not any(r.key == "ws_mode_DOP-1001" for r in at.radio), "the lens switch is gone"
-    at.session_state["_scroll_anchor"] = "dop_step_DOP-1001_anchor_Act"
-    at.run()
-    assert not at.exception, at.exception
+def test_a_dataops_incident_renders_the_same_shape():
+    h = html_for("DOP-1001")
+    assert h.count('class="tile"') == 4
+    assert "Failed runs" in h
+    assert "payments_bronze_ingest" in h

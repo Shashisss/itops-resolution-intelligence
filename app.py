@@ -29,13 +29,14 @@ import ask_view
 import agents
 import sections
 import panel
+import incident_html
 import workspace
 import realtime
 import runclock
 
 
 _RELOAD_TARGETS = (viz, journey, collab, analytics, learn, E, DE, personas, DV, workspace,
-                   command_center, shell, realtime, graph, graph_views, story, ask, ask_view, agents, sections, panel)
+                   command_center, shell, realtime, graph, graph_views, story, ask, ask_view, agents, sections, panel, incident_html)
 
 
 def _refresh_modules():
@@ -196,59 +197,8 @@ def _sla_txt(i):
 
 
 # ================================================================= The incident (one scroll)
-def _render_incident_detail(dom, ref, you_role):
-    """The incident itself: thread, actions, close gate and learn record in one scroll.
-
-    v99 removed the thread/guided switch. Two lenses meant the person had to decide how to read
-    before reading, and the actions hid behind one of them. Every stage keeps its section anchor,
-    so the primary action still lands the page on the step it names."""
-    if dom == "DataOps":
-        data = DE.load()
-        inc = next((i for i in data["incidents"] if i["id"] == ref), None)
-        if inc is None:
-            st.warning("Incident not found.")
-            return
-        DV.pipeline_view(inc, data)
-    else:
-        ctx = _it_ctx()
-        inc = _find_it(ref)
-        if inc is None:
-            st.warning("Incident not found.")
-            return
-        personas.incident_view(inc, ctx)
-
-
 ACT_STAGES = [("Correlate", "Confirm cause"), ("Act", "Apply remediation"),
               ("Verify", "Run verification"), ("Close", "Close")]
-
-
-def _stage_functions(dom, ref, inc):
-    """The stage bodies for this domain, so the Act & verify tab can render one at a time."""
-    if dom == "DataOps":
-        return DV.stage_functions(inc, DE.load())
-    ctx = _it_ctx()
-    return personas.incident_sections(inc, ctx)
-
-
-def _act_tab(dom, ref, inc, you_role):
-    """Act & verify — the only uncapped tab, bounded by construction: one stage at a time."""
-    fns = _stage_functions(dom, ref, inc)
-    names = dict(ACT_STAGES)
-    sel = st.session_state.get(f"act_stage_{ref}")
-    if sel not in names:
-        cur = journey.lifecycle_stage(inc)
-        sel = cur if cur in names else "Act"
-        st.session_state[f"act_stage_{ref}"] = sel
-    viz.phase_stepper(journey.lifecycle_stage(inc))
-    cols = st.columns(len(ACT_STAGES))
-    for (stage, label), col in zip(ACT_STAGES, cols):
-        if col.button(label, key=f"act_{ref}_{stage}", width="stretch",
-                      type=("primary" if stage == sel else "secondary")):
-            st.session_state[f"act_stage_{ref}"] = stage
-            st.rerun()
-    prefix = "dop" if dom == "DataOps" else "it"
-    with st.container(key=f"{prefix}_step_{ref}_anchor_{sel}"):
-        fns[sel]()
 
 
 def _next_ask(inc):
@@ -260,30 +210,27 @@ def _next_ask(inc):
     return (oldest.get("action") or "").split(" · expected in")[0]
 
 
-def _tab_body(name, dom, ref, inc, you_role):
-    """Everything that is not the header, the tiles or a tab header."""
-    if name == "Timeline":
-        journey.render_timeline(ref, limit=3)
-    elif name == "Requests":
-        _collab_bar(dom, ref, you_role, heading=False)
-    elif name == "Evidence & RCA":
-        _agent_panel(dom, ref, inc)
-        corr = journey.correlation_for(ref)
-        if corr:
-            st.caption(f'Shared cause with {corr["other_domain"]} {corr["other_id"]}: '
-                       f'{corr["shared_cause"]}')
-        ev = story.evidence(inc, limit=99)
-        for item in ev[:3]:
-            st.markdown(f'- {item}')
-
-    elif name == "Connections & audit":
-        graph_views.connections_panel(ref, key=f"conn_{ref}")
-        _accel_strip(inc)
-        activity_section(ref)
-    elif name == "Act & verify":
-        _act_tab(dom, ref, inc, you_role)
-    elif name == "Learn":
-        learn.panel(inc, "DataOps" if dom == "DataOps" else "IT Ops", actor=you_role)
+def _run_incident_action(dom, ref, you_role, act):
+    """Actions arrive as ?action=… from the html block. Performed once, on the record."""
+    inc = _find_dop(ref) if dom == "DataOps" else _find_it(ref)
+    if inc is None:
+        return
+    if act == "chase":
+        asks = [d for d in collab.delegations(ref) if d.get("status") != "done"]
+        if asks:
+            d = min(asks, key=lambda x: x.get("ts") or "")
+            collab.add_comment(ref, you_role, "Person",
+                               f'Chased {d["to_"]} for: {d["action"]} (simulated)')
+            st.session_state["flash"] = f'Reminder logged to {d["to_"]} (simulated — not sent).'
+    elif act == "confirm":
+        collab.add_comment(ref, you_role, "Person",
+                           "Cause confirmation recorded on the thread (simulated).")
+        st.session_state["flash"] = "Cause confirmation recorded on the thread."
+    elif act == "back":
+        _close_workspace()
+    elif act == "close":
+        ok, msg = journey.close_incident(ref, you_role)
+        st.session_state["flash"] = msg
 
 
 def _preview(dom, ref):
@@ -336,191 +283,6 @@ def _ask_targets(dom, inc=None):
         options.remove(owner)
         options.insert(0, owner)
     return options
-
-
-def _collaborate_popover(dom, ref, inc, you_role):
-    """Ask someone for something specific, with a deadline — logged on the thread, never sent."""
-    with st.popover("Collaborate", type="primary", width="stretch"):
-        st.markdown("**Bring someone in**")
-        st.caption("Logs a request on this thread with a deadline. **Simulated: nothing is sent.** "
-                   "No Teams, Slack or email connector is configured, so the channel below is "
-                   "recorded as the intended route only.")
-        # A form, not loose widgets: typing does not rerun the page, so the popover stays open and
-        # the presenter can type and then press Send without losing what they wrote.
-        with st.form(key=f"ask_form_{ref}", clear_on_submit=True, border=False):
-            who = st.selectbox("Who", _ask_targets(dom, inc), key=f"ask_who_{ref}")
-            what = st.text_input("What do you need", key=f"ask_what_{ref}",
-                                 placeholder="e.g. confirm contract v4 is deployed")
-            mins = st.select_slider("Expected back in", [15, 30, 60, 120], value=30,
-                                    format_func=lambda m: f"{m} min", key=f"ask_when_{ref}")
-            channel = st.radio("Intended channel (recorded only)", ["Teams", "Slack", "Email", "App"],
-                               horizontal=True, key=f"ask_ch_{ref}")
-            sent = st.form_submit_button("Log request — not sent", type="primary", width="stretch")
-        if sent:
-            if not what.strip():
-                st.warning("Say what you need before logging the request.")
-            else:
-                act = f'{what.strip()} · expected in {mins} min'
-                collab.add_delegation(ref, you_role, who, act, channel=channel,
-                                      stage=journey.lifecycle_stage(inc))
-                collab.add_comment(ref, you_role, "Person",
-                                   f'Asked **{who}**: {act} (simulated — not delivered)',
-                                   channel=channel, stage=journey.lifecycle_stage(inc))
-                collab.add_notification(collab.ACTOR_TO_ROLE.get(who, "Incident Manager"), ref,
-                                        f'[Simulated · not delivered] {you_role} asked you: {what.strip()}')
-                st.session_state["flash"] = (
-                    f"Request logged on the thread for {who} with a {mins} min clock. "
-                    f"Simulated — it was NOT delivered: no {channel} connector is configured.")
-                st.rerun()
-
-
-def _collab_bar(dom, ref, you_role, heading=True):
-    """Requests, with the people on the thread and one obvious way to ask for something.
-
-    v106: the people line and the two controls live in the section header, not in a row of their own."""
-    inc = _find_dop(ref) if dom == "DataOps" else _find_it(ref)
-    if inc is None:
-        return
-
-    def _controls():
-        c2, c3 = st.columns([1.55, 0.85], vertical_alignment="center")
-        with c2:
-            _collaborate_popover(dom, ref, inc, you_role)
-        with c3:
-            with st.popover("Share", width="stretch"):
-                st.caption("Stable link to this thread.")
-                st.code(f'?inc={ref}', language=None)
-
-    _people = _participants(inc)
-    _on_it = "on it — " + " · ".join(_people[:3]) + (f" +{len(_people) - 3}" if len(_people) > 3 else "")
-    if heading:
-        viz.section("Requests", _on_it, right=_controls)
-    else:
-        st.caption(_on_it)
-        _controls()
-    cards = story.requests(ref)
-    open_cards = [c for c in cards if c["status"] != "done"]
-    done_cards = [c for c in cards if c["status"] == "done"]
-    impact_txt = story.impact(inc)["text"]
-    ev = story.evidence(inc)
-    if open_cards:
-        for c in open_cards:
-            cols = st.columns([5.55, 1.55], vertical_alignment="center")
-            with cols[0]:
-                viz.request_card(c, (c["stage"], impact_txt, ev[-1] if ev else "—"), key=c["id"])
-            with cols[1]:
-                # one action per reader: chase it, or (as the owner) move its state
-                b1, b2 = (st.container(), st.container())
-                if b1.button("Chase", key=f"ask_chase_{c['id']}", width="stretch", type="primary"):
-                    collab.add_comment(ref, you_role, "Person",
-                                       f'Chased {c["owner"]} for: {c["ask"]} (simulated)')
-                    st.session_state["flash"] = f'Reminder logged to {c["owner"]} (simulated).'
-                    st.rerun()
-                if c["status"] == "assigned":
-                    if b2.button("Acknowledge", key=f"ask_ack_{c['id']}", width="stretch",
-                                 type="tertiary", help=f'As {c["owner"]} (simulated)'):
-                        collab.set_delegation_status(c["id"], "accepted", actor=c["owner"])
-                        collab.add_comment(ref, c["owner"], "Person",
-                                           f'Acknowledged: {c["ask"]} (simulated)')
-                        st.session_state["flash"] = f'Acknowledged by {c["owner"]} on the thread (simulated).'
-                        st.rerun()
-                elif c["status"] in ("accepted", "reopened"):
-                    if b2.button("Answered", key=f"ask_done_{c['id']}", width="stretch",
-                                 type="tertiary", help=f'As {c["owner"]} (simulated)'):
-                        collab.set_delegation_status(c["id"], "done", actor=c["owner"])
-                        collab.add_comment(ref, c["owner"], "Person", f'Done: {c["ask"]} (simulated)')
-                        st.session_state["flash"] = f'Marked answered — {c["owner"]} replied (simulated).'
-                        st.rerun()
-    else:
-        st.caption("No open request — nobody is holding this. Use **Collaborate** to ask someone, "
-                   "with a deadline.")
-    if done_cards:
-        with st.expander(f"Answered · {len(done_cards)}", expanded=False):
-            for d in [x for x in collab.delegations(ref) if x["status"] == "done"]:
-                c = st.columns([6, 1], vertical_alignment="center")
-                c[0].markdown(f'~~{d["to_"]} · {d["action"]}~~', unsafe_allow_html=True)
-                if c[1].button("Reopen", key=f"ask_reopen_{d['id']}", width="stretch"):
-                    collab.set_delegation_status(d["id"], "reopened", actor=you_role)
-                    collab.add_comment(ref, you_role, "Person",
-                                       f'Reopened the request to {d["to_"]}: {d["action"]} (simulated)')
-                    st.session_state["flash"] = f'Reopened the request to {d["to_"]} (simulated).'
-                    st.rerun()
-
-
-def _agent_panel(dom, ref, inc):
-    """Who's on it — static definition, live numbers. Undefined incidents get a neutral empty state
-    rather than an invented panel."""
-    p = agents.panel(inc)
-    if not p:
-        viz.section("Who's on it", "no agent definition for this incident")
-        st.caption("Nothing is defined for this incident — the record above is unchanged. The panel "
-                   "is a static per-incident definition and never invents a team.")
-        return
-    viz.agent_panel_head(p)
-    c = st.columns([1.5, 4.5], vertical_alignment="center")
-    c[0].button("See the ranked list →", key=f"agents_ranked_{ref}", width="stretch",
-                on_click=_go_stage, args=(dom, ref, "Correlate"),
-                help="Lands on the Correlate section, where the ranked leads are rendered.")
-    viz.agent_panel_tail(p)
-    controls = st.columns([1, 1, 1, 3.6], vertical_alignment="center")
-    for i, label in enumerate(("Approve", "Edit", "Reject")):
-        controls[i].button(label, key=f"agents_{label.lower()}_{ref}", width="stretch",
-                           disabled=True)
-    controls[3].caption("Inert in this POC — the draft is never sent, so these stay disabled "
-                        "rather than pretending to work.")
-
-
-def _extra_sections(dom, ref, inc):
-    """The sections that fold away below the lifecycle: the agent panel, connections, evidence,
-    activity and the record. Each header states what is inside; opening one closes the stage."""
-    opened = st.session_state.get(f"open_{ref}")
-    with st.container(key=f"acc_group_{ref}_extras"):
-        for r in sections.extra_rows(inc, dom):
-            with st.container(key=f"extra_{ref}_{r['key']}"):
-                viz.accordion_header(ref, r["key"], r["title"], detail=r["fact"],
-                                     badge=r["badge"], is_open=(opened == r["key"]))
-                if opened != r["key"]:
-                    continue
-                if r["key"] == "agents":
-                    _agent_panel(dom, ref, inc)
-                elif r["key"] == "connections":
-                    graph_views.connections_panel(ref, key=f"conn_{ref}")
-                elif r["key"] == "evidence":
-                    ev = story.evidence(inc, limit=99)
-                    if ev:
-                        for item in ev:
-                            st.markdown(f'- {item}')
-                    else:
-                        st.caption("No evidence recorded on the thread.")
-                elif r["key"] == "activity":
-                    activity_section(ref)
-                elif r["key"] == "record":
-                    sections.record_body(inc, dom)
-
-
-def _core_strip(dom, ref, inc):
-    """The first three seconds of the incident: who holds it, the SLA clock, how far the work has
-    crossed. One definition each (story.py), one line each, no decoration — the handoff path and
-    the measured acceleration sit directly under it so the numbers and the picture agree."""
-    h = story.hero(inc)
-    viz.hero_strip(h["facts"])
-    viz.domain_chain(h["cross"]["nodes"])
-    corr = journey.correlation_for(ref)
-    if corr:
-        st.caption(f'Shared cause with {corr["other_domain"]} {corr["other_id"]}: {corr["shared_cause"]}')
-
-
-def _accel_strip(inc):
-    """Acceleration, measured — never estimated. A number the record cannot support is an em dash."""
-    a = story.acceleration(inc)
-    viz.accel_row([
-        ("Time to next action", story.fmt_minutes(a["time_to_next_action_min"]),
-         f'from the alarm to the first recorded action — {a["time_to_next_action_what"]}'
-         if a["time_to_next_action_min"] is not None else "no action recorded yet"),
-        ("Unblocked by evidence", story.fmt_minutes(a["unblocked_by_evidence_min"]),
-         f'{a["holder"]} asked → {a["unblocked_by_evidence_what"]}'
-         if a["unblocked_by_evidence_min"] is not None else "no evidence recorded after the request"),
-    ])
 
 
 def _ws_panel_css(ref):
@@ -637,79 +399,22 @@ def render_workspace_page(dom, ref, you_role):
     idx = next((n for n, (_d, i) in enumerate(refs) if i["id"] == ref), None)
     queue = f'{idx + 1} of {len(refs)} in the queue' if idx is not None else ""
 
-    with st.container(key=f"ws_head_{ref}"):
-        _bc, _tt = st.columns([1.45, 8.55], vertical_alignment="center")
-        with _bc:
-            st.button("All incidents", key="ws_back", on_click=_close_workspace,
-                      type="tertiary")
-        with _tt:
-            panel.header(inc, verdict, sev, queue, "closed" if closed else sla)
+    # v109: the incident screen is ONE html block. No Streamlit widgets inside it, so no keys to
+    # collide and no containers to fight. Actions are anchors carrying ?action=…, handled here once.
+    _act = st.query_params.get("action")
+    if _act:
+        _run_incident_action(dom, ref, you_role, _act)
+        try:
+            del st.query_params["action"]
+        except Exception:
+            pass
+        st.rerun()
 
+    _tab = (st.query_params.get("tab") or "").strip().lower()
+    _initial = next((t for t in incident_html.TAB_NAMES if t.lower() == _tab), "Timeline")
     st.query_params["inc"] = ref
-    _ws_panel_css(ref)
-    panel.tiles(inc)
-
-    _left, _right = st.columns([1.62, 1], gap="small")
-    with _left:
-        panel.graph_card(inc)
-    with _right:
-        panel.meaning_card(inc, _next_ask(inc) or action_label, None)
-        if action_label:
-            if action_stage == "Close" and gate["eligible"]:
-                st.button(action_label, type="primary", width="stretch", key="ws_primary",
-                          on_click=_close_now, args=(ref, you_role))
-            elif action_stage == "Close":
-                st.button("See the blockers", width="stretch", key="ws_primary",
-                          on_click=_go_stage, args=(dom, ref, "Close"))
-            else:
-                st.button(action_label, type="primary", width="stretch", key="ws_primary",
-                          on_click=_go_stage, args=(dom, ref, action_stage), help=action_why)
-        panel.who_card(inc, _participants(inc))
-
-    # Deep links: ?tab=… selects a tab, ?step=… lands in Act & verify at that stage,
-    # ?expand=… opens the tab that now carries that section. Applied once per distinct value.
-    _tab = (st.query_params.get("tab") or "").strip()
-    _step = (st.query_params.get("step") or "").strip()
-    _expand = (st.query_params.get("expand") or "").strip()
-    _token = f"{_tab}|{_step}|{_expand}"
-    if (_tab or _step or _expand) and st.session_state.get(f"deep_{ref}") != _token:
-        st.session_state[f"deep_{ref}"] = _token
-        _stage = _step.title().replace("_", " ")
-        if _stage in journey.LIFECYCLE:
-            st.session_state[f"tab_{ref}"] = "Act & verify"
-            st.session_state[f"act_stage_{ref}"] = _stage
-        elif _expand in ("agents", "evidence"):
-            st.session_state[f"tab_{ref}"] = "Evidence & RCA"
-        elif _expand in ("connections", "activity", "record"):
-            st.session_state[f"tab_{ref}"] = "Connections & audit"
-
-    st.session_state[f"tabstate_{ref}"] = panel.tab_state(inc, dom)
-    active = panel.active_tab(ref, default="Timeline")
-    panel.tab_bar(ref, active)
-    _fv = st.session_state.get(f"fv_{ref}")
-    _full = (_fv == active)
-    if active == "Act & verify":
-        st.markdown(f'<style>.st-key-tabbody_{ref}{{max-height:none;overflow:visible}}</style>',
-                    unsafe_allow_html=True)
-    # The full view is rendered INSTEAD of the clipped body, never beside it — that is what made two
-    # copies of the same widgets collide on their keys.
-    with st.container(key=f"ws_panel_{ref}"):
-        body_key = f"fullbody_{ref}" if _full else f"tabbody_{ref}"
-        with st.container(key=body_key):
-            _tab_body(active, dom, ref, inc, you_role)
-    if active in ("Timeline", "Requests", "Evidence & RCA", "Connections & audit", "Learn"):
-        _sp, _sa = st.columns([6.6, 1.4], vertical_alignment="center")
-        if _full:
-            _sp.caption("Full view — the whole section, uncapped.")
-            if _sa.button("Close full view", key=f"closefull_{ref}", width="stretch"):
-                st.session_state.pop(f"fv_{ref}", None)
-                st.rerun()
-        else:
-            _sp.caption(f"Showing the first screen of {active.lower()} — the rest is in the full view.")
-            if _sa.button("Show all", key=f"showall_{ref}", width="stretch",
-                       help=f"Open the full {active} section"):
-                st.session_state[f"fv_{ref}"] = active
-                st.rerun()
+    _html = incident_html.build(inc, dom, queue=queue, initial_tab=_initial)
+    components.html(_html, height=704, scrolling=False)
 
     _anchor = st.session_state.pop("_scroll_anchor", None)
     if _anchor:

@@ -1,6 +1,6 @@
 # PROTOTYPE NOTES — Resolution Intelligence POC
 
-Build v107e · sample data · simulated actions. This is a proof of concept, **not** production.
+Build v109 · sample data · simulated actions. This is a proof of concept, **not** production.
 
 ## Persistence boundary — what survives what
 
@@ -87,6 +87,30 @@ Relationships are **structured records** in `thread_edges` (source, target, rela
 observed/inferred kind, evidence source, timestamp, rule-based confidence). UI code no longer
 builds edges by hand; `journey.thread_edges_for()` resolves a thread via the correlation model.
 Inferred relationships are labelled as hypotheses, not proven facts.
+
+## v109 — the incident screen is one HTML document
+
+The Streamlit container layout could not be made clean: bands with their own heights inside a fixed
+wrapper produced overlaps that padding could not fix. The incident screen is now generated as a
+single document by `incident_html.build()` and embedded with
+`st.components.v1.html(html, height=704, scrolling=False)`.
+
+- **Built from the record:** header (breadcrumb, title, pills, queue, clock), four tiles
+  (Waiting on · Error rate · Data freshness · Checkout), the dependency graph, "what this means",
+  the single action, six tabs and their panes. No literal numbers — every value comes from `story`,
+  `journey`, `collab`, `learn` or the tables they read.
+- **No Streamlit widgets inside** the incident area: nothing to collide on, no containers to fight.
+  Tabs and "Show all" switch client-side; the full view is an overlay in the same document.
+- **Actions** are anchors carrying `?inc=…&action=…` (chase / confirm / close / back), read once by
+  `app.py` and cleared. Apply and Verify are inert by design and say so.
+- **Layout:** `html,body{overflow:hidden}`, a flex column that fills 100% of the component, one
+  fixed 172px pane band that clips (with the overlay for the long view). No `position:absolute`
+  anywhere except inside the graph SVG.
+- **Deleted:** the Streamlit incident renderers (`_core_strip`, `_collab_bar`, `_render_incident_detail`,
+  `_extra_sections`, `_agent_panel`, `_tab_body`, `_act_tab`, `_accel_strip`) are gone, not left behind.
+
+Tests that asserted the old Streamlit surfaces were retargeted onto `incident_html.build()` — the
+document is now the contract.
 
 ## v107e — fits 1280×768, not just 1280×800
 
