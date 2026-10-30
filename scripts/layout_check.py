@@ -26,8 +26,21 @@ JS = r"""
   const out = {screens: []};
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const app = document;
+  // The app is not always the top document: on Streamlit Cloud it is served inside one wrapper
+  // iframe, so the component lives two levels down. Walk them; a document we cannot read is skipped.
   function frames() {
-    return [...app.querySelectorAll('iframe')].map(f => { try { return f.contentDocument; } catch (e) { return null; } }).filter(Boolean);
+    const out = [];
+    (function walk(doc, depth) {
+      if (!doc || depth > 2) return;
+      [...doc.querySelectorAll('iframe')].forEach(f => {
+        let d = null;
+        try { d = f.contentDocument; } catch (e) { return; }
+        if (!d) return;
+        out.push(d);
+        walk(d, depth + 1);
+      });
+    })(app, 0);
+    return out;
   }
   function incidentDoc() {
     const f = frames().find(d => d.querySelector('.tiles'));
@@ -142,6 +155,29 @@ JS = r"""
 """
 
 
+WAIT_DOC = r"""
+(async () => {
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const find = () => {
+    const out = [];
+    (function walk(doc, depth) {
+      if (!doc || depth > 2) return;
+      [...doc.querySelectorAll('iframe')].forEach(f => {
+        let d = null;
+        try { d = f.contentDocument; } catch (e) { return; }
+        if (!d) return;
+        out.push(d);
+        walk(d, depth + 1);
+      });
+    })(document, 0);
+    return out.find(d => d.querySelector('.tiles')) || null;
+  };
+  for (let i = 0; i < 30; i++) { if (find()) return true; await sleep(2000); }
+  return false;
+})()
+"""
+
+
 async def evaluate(ws, expr):
     await ws.send(json.dumps({"id": 1, "method": "Runtime.evaluate",
                               "params": {"expression": expr, "awaitPromise": True,
@@ -158,6 +194,8 @@ async def run(screen, url, script=None):
     async with websockets.connect(target["webSocketDebuggerUrl"], max_size=2 ** 24) as ws:
         await ws.send(json.dumps({"id": 0, "method": "Page.enable"}))
         await asyncio.sleep(6)
+        if not await evaluate(ws, WAIT_DOC):
+            raise RuntimeError(f"no incident document rendered at {url} after 60s")
         result = await evaluate(ws, JS)
         if script:
             await evaluate(ws, script)
