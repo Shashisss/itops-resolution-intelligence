@@ -220,20 +220,6 @@ def show_all(title, render):
         _full()
 
 
-def full_view(name, dom, ref, inc, you_role):
-    """The overlay: the same body, uncapped, in a dialog. Never the only route to a fact."""
-    import app as _app            # late import: the tab bodies live in app.py
-    dialog = getattr(st, "dialog", None)
-    if dialog is None:
-        return
-
-    @dialog(title=f"{name} — {ref}", width="large")
-    def _full():
-        _app._tab_body(name, dom, ref, inc, you_role)
-
-    _full()
-
-
 # ==================================================================== v108: concept A
 def header(inc, verdict, sev, queue, clock, on_back=None):  # noqa: F811
     """Breadcrumb + title, with the pills, queue and the single clock on the right."""

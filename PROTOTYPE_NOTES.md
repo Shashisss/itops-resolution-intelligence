@@ -1,6 +1,6 @@
 # PROTOTYPE NOTES — Resolution Intelligence POC
 
-Build v107b · sample data · simulated actions. This is a proof of concept, **not** production.
+Build v107c · sample data · simulated actions. This is a proof of concept, **not** production.
 
 ## Persistence boundary — what survives what
 
@@ -87,6 +87,25 @@ Relationships are **structured records** in `thread_edges` (source, target, rela
 observed/inferred kind, evidence source, timestamp, rule-based confidence). UI code no longer
 builds edges by hand; `journey.thread_edges_for()` resolves a thread via the correlation model.
 Inferred relationships are labelled as hypotheses, not proven facts.
+
+## v107c — the duplicate-key crash on "Show all"
+
+**Bug:** clicking "Show all · Evidence & RCA" raised `StreamlitDuplicateElementKey`. The overlay
+rendered `_tab_body(...)` a second time beside the inline panel, so every widget inside it (the agent
+panel's buttons, the connections panel, the learn form) existed twice with the same key.
+
+**Fix:** the full view is rendered *instead of* the clipped body, not beside it. One section body per
+render pass, keyed `fullbody_<ref>` when expanded and `tabbody_<ref>` when clipped, so the two forms
+cannot coexist. "Close full view" clears the flag and returns to the clipped body with the same tab
+still selected. The dialog is gone — an in-place full view needs no second render, which removes the
+whole class of collision rather than papering over one instance.
+
+`tests/test_viewport.py::test_every_full_view_opens_without_a_duplicate_key` opens and closes the
+full view for Timeline, Requests, Evidence & RCA, Connections & audit and Learn, asserting no
+exception, unique widget keys within the pass, and that the tab survives the round trip.
+
+`st.button(width="stretch")` in `shell.py` is supported on the deployed Streamlit (1.66.1 — `width`
+is in the signature); it appeared in the traceback as a context line, not as a cause.
 
 ## v107b — the graph hero, the four tiles, the underline tabs
 

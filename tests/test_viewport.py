@@ -80,3 +80,33 @@ def test_the_tiles_are_exactly_the_four_labels():
     md = "\n".join(m.value for m in open_page().markdown)
     labels = re.findall(r'<div class="k">([^<]+)</div>', md)
     assert labels == ["Waiting on", "Error rate", "Data freshness", "Checkout"], labels
+
+
+def _keys(at):
+    keys = []
+    for kind in ("button", "text_input", "selectbox", "radio", "checkbox", "multiselect"):
+        for w in getattr(at, kind):
+            if getattr(w, "key", None):
+                keys.append(w.key)
+    return keys
+
+
+def test_every_full_view_opens_without_a_duplicate_key():
+    """v107c: 'Show all' must never render the section twice — the overlay replaces the clipped body."""
+    for section in ("Timeline", "Requests", "Evidence & RCA", "Connections & audit", "Learn"):
+        # Act & verify is uncapped by design — it has no clipped state to expand.
+        at = open_page(tab=section)
+        opener = next((b for b in at.button if (b.label or "").startswith("Show all")), None)
+        assert opener is not None, f"{section} offers no full view"
+        opener.click().run()
+        assert not at.exception, [e.value for e in at.exception]
+        keys = _keys(at)
+        assert len(keys) == len(set(keys)), f"duplicate widget keys in {section}: " \
+                                            f"{sorted({k for k in keys if keys.count(k) > 1})}"
+        assert at.session_state["tab_INC-8841"] == section, "the tab stays selected"
+        closer = next((b for b in at.button if (b.label or "") == "Close full view"), None)
+        assert closer is not None, f"{section} full view cannot be closed"
+        closer.click().run()
+        assert not at.exception, [e.value for e in at.exception]
+        assert at.session_state["tab_INC-8841"] == section, "closing returns to the same tab"
+        assert at.session_state.get("fv_INC-8841") is None

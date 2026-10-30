@@ -686,17 +686,29 @@ def render_workspace_page(dom, ref, you_role):
     st.session_state[f"tabstate_{ref}"] = panel.tab_state(inc, dom)
     active = panel.active_tab(ref, default="Timeline")
     panel.tab_bar(ref, active)
+    _fv = st.session_state.get(f"fv_{ref}")
+    _full = (_fv == active)
     if active == "Act & verify":
-        st.markdown(f'<style>.st-key-tabbody_{ref}{{max-height:none;overflow:visible}}'
-                    f'.st-key-ws_panel_{ref}{{border:none;padding:0}}</style>', unsafe_allow_html=True)
+        st.markdown(f'<style>.st-key-tabbody_{ref}{{max-height:none;overflow:visible}}</style>',
+                    unsafe_allow_html=True)
+    # The full view is rendered INSTEAD of the clipped body, never beside it — that is what made two
+    # copies of the same widgets collide on their keys.
     with st.container(key=f"ws_panel_{ref}"):
-        with st.container(key=f"tabbody_{ref}"):
+        body_key = f"fullbody_{ref}" if _full else f"tabbody_{ref}"
+        with st.container(key=body_key):
             _tab_body(active, dom, ref, inc, you_role)
-    if active in ("Timeline", "Evidence & RCA", "Connections & audit", "Requests"):
+    if active in ("Timeline", "Requests", "Evidence & RCA", "Connections & audit", "Learn"):
         _sp, _sa = st.columns([6.6, 1.4], vertical_alignment="center")
-        _sp.caption(f"Showing the first screen of {active.lower()} — the rest is in the full view.")
-        if _sa.button(f"Show all · {active}", key=f"showall_{ref}", width="stretch"):
-            panel.full_view(active, dom, ref, inc, you_role)
+        if _full:
+            _sp.caption("Full view — the whole section, uncapped.")
+            if _sa.button("Close full view", key=f"closefull_{ref}", width="stretch"):
+                st.session_state.pop(f"fv_{ref}", None)
+                st.rerun()
+        else:
+            _sp.caption(f"Showing the first screen of {active.lower()} — the rest is in the full view.")
+            if _sa.button(f"Show all · {active}", key=f"showall_{ref}", width="stretch"):
+                st.session_state[f"fv_{ref}"] = active
+                st.rerun()
 
     _anchor = st.session_state.pop("_scroll_anchor", None)
     if _anchor:
