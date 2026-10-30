@@ -217,7 +217,7 @@ def _graph(F):
                 f'{esc(label[:26])}</text>')
         return out, w
 
-    bottom, bw = row(own, 132)
+    bottom, bw = row(own, 132 if upstream else 74)
     top, tw = row([("SIGNAL", u, "#fff", "#e5e7eb") for u in upstream], 18) if upstream else ([], tw if False else 0)
 
     def col(label):
@@ -239,13 +239,14 @@ def _graph(F):
         dash = ' stroke-dasharray="4 3"' if (e.get("kind") or "observed") == "inferred" else ""
         mark = "ad" if dash else "as"
         colour = "#b45309" if dash else "#475569"
-        arrows.append(f'<path d="M{sx:.0f} 62 L{sx:.0f} 96 L{tx:.0f} 96 L{tx:.0f} 128" fill="none" '
+        drop = 104
+        arrows.append(f'<path d="M{sx:.0f} 62 L{sx:.0f} {drop} L{tx:.0f} {drop} L{tx:.0f} 128" fill="none" '
                       f'stroke="{colour}" stroke-width="1.5"{dash} marker-end="url(#{mark})"/>')
         score = (agents.SIGNAL_SCORE.get(e.get("kind") or "observed", {})
                  .get((e.get("confidence") or "").lower()))
         rel = (e.get("rel") or "").strip()[:20]
         lab = esc(rel + (f" {score:.2f}" if score else ""))
-        arrows.append(f'<text x="{min(sx, tx) + 3:.0f}" y="92" font-size="9" fill="{colour}" '
+        arrows.append(f'<text x="{sx + 4:.0f}" y="72" font-size="9" fill="{colour}" '
                       f'font-weight="700">{lab}</text>')
 
     holder_tag = ""
@@ -253,8 +254,9 @@ def _graph(F):
         svc_i = next((i for i, (_k, name, _a, _b) in enumerate(own)
                       if str(name) == str(F["service"])), len(own) - 1)
         hx = 8 + svc_i * (bw + 12) + 4
-        holder_tag = (f'<rect x="{hx:.0f}" y="110" width="104" height="16" rx="8" fill="#eef2ff"/>'
-                      f'<text x="{hx + 7:.0f}" y="122" font-size="8.5" fill="#3730a3" '
+        ty = (132 if upstream else 74) - 22
+        holder_tag = (f'<rect x="{hx:.0f}" y="{ty}" width="104" height="16" rx="8" fill="#eef2ff"/>'
+                      f'<text x="{hx + 7:.0f}" y="{ty + 12}" font-size="8.5" fill="#3730a3" '
                       f'font-weight="700">now · held here</text>')
     if upstream:
         cap = "The break is upstream — the service is serving what it was given."
