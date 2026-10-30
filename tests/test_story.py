@@ -89,7 +89,7 @@ def test_freshness_is_one_number_across_the_page(db):
     assert not at.exception, [e.value for e in at.exception]
     md = "\n".join([m.value for m in at.markdown] + [c.value for c in at.caption])
     t = _tiles(at)
-    lag = t["data freshness"][0].rstrip("m")
+    lag = t["Data freshness"][0].rstrip("m")
     assert lag.isdigit(), t
     others = set(re.findall(r"freshness (\d+)m", md)) | set(re.findall(r"data_age (\d+)", md))
     if others:
@@ -108,7 +108,7 @@ def test_wait_sla_and_owner_are_stated_once(db):
     at.run()
     assert not at.exception, [e.value for e in at.exception]
     md = "\n".join([m.value for m in at.markdown] + [c.value for c in at.caption])
-    waits = re.findall(r"Data Platform holds it, \d+m", md)
+    waits = re.findall(r"<div class=\"v\">Data Platform</div>", md)
     slas = re.findall(r"\d+h \d+m left", md)
     assert len(waits) == 1, f"the holder and wait appear {len(waits)} times: {waits}"
     assert len(slas) == 1, f"the SLA clock appears {len(slas)} times: {slas}"
@@ -132,10 +132,10 @@ def test_hero_strip_on_screen_matches_the_module(db, monkeypatch):
     assert not at.exception, [e.value for e in at.exception]
     t = _tiles(at)
     assert set(t) == {"failed runs" if "failed runs" in t else sig for sig in t}, "four tiles"
-    assert t["handoff"][0] == story.cross(inc)["text"]
+    assert t["Waiting on"][0] == story.waiting(inc)["who"]
     w = story.waiting(inc)
     if not w["empty"]:
-        assert w["who"] in t["handoff"][1]
+        assert story.fmt_minutes(w["minutes"]) in t["Waiting on"][1]
     import re as _re
     header = "\n".join(m.value for m in at.markdown)
     assert _re.search(r"\d+h \d+m left", header), "the single clock in the header"

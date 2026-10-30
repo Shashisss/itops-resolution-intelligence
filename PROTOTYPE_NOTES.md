@@ -1,6 +1,6 @@
 # PROTOTYPE NOTES — Resolution Intelligence POC
 
-Build v107a · sample data · simulated actions. This is a proof of concept, **not** production.
+Build v108 · sample data · simulated actions. This is a proof of concept, **not** production.
 
 ## Persistence boundary — what survives what
 
@@ -87,6 +87,29 @@ Relationships are **structured records** in `thread_edges` (source, target, rela
 observed/inferred kind, evidence source, timestamp, rule-based confidence). UI code no longer
 builds edges by hand; `journey.thread_edges_for()` resolves a thread via the correlation model.
 Inferred relationships are labelled as hypotheses, not proven facts.
+
+## Concept A — the one-viewport incident page (v108)
+
+Approved design, implemented against `files/mockup-proposal-incident-page.png`.
+
+- **Header**: breadcrumb, title, P2 + stage pills, queue position, one clock. Nothing else — the
+  prev/next arrows were removed with the old strip.
+- **Four tiles**: Waiting on (holder, duration, overdue) · Error rate (value + threshold line) ·
+  Data freshness (value + SLA) · Checkout (value + baseline) — the mockup's order.
+- **Hero**: the dependency graph on the left (change → job → dataset → service → KPI, plus the linked
+  incident; observed edges solid, the inferred one dashed with 0.72; caption "the break is upstream"
+  with the connection count), and on the right "What this means" (one sentence + confidence/basis),
+  the single next action with one button, and who is on it.
+- **Six tabs**: Timeline · Requests · Evidence & RCA · Connections & audit · Act & verify · Learn,
+  each header carrying its state in words; content capped at 164px with "show all" in a dialog.
+  Act & verify is uncapped — closing stays in-flow.
+
+Measured at 1366×768 and 1280×800: `scrollHeight == clientHeight` (768/768, 800/800) — no page scroll.
+
+Assumptions taken rather than inventing features: the graph's holder chip reads "now · held here"
+(the wait is stated once, in the Waiting on tile); confidence is the stored signal's weight
+(inferred/medium = 72%, not the mockup's illustrative 85%); the error-rate tile draws a threshold
+line, not a trend, because the record holds one value per metric and no history.
 
 ## One viewport (v107a)
 

@@ -97,7 +97,7 @@ def test_tab_headers_carry_counts_and_critical_state():
     at = open_incident()
     labels = " || ".join(l for _, l in tab_buttons(at))
     assert "Requests · 2 open · 1 OVERDUE" in labels, labels
-    assert "Act & verify · 1 OVERDUE" in labels, labels
+    assert "Act & verify · BLOCKED" in labels, labels
     assert "Learn · draft, not saved" in labels, labels
     assert "Connections & audit ·" in labels and "records" in labels, labels
     assert "Timeline · " in labels and "events" in labels, labels

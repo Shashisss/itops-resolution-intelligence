@@ -142,8 +142,7 @@ def _act_state(inc):
     verdict = journey.current_verdict(inc)
     asks = [d for d in collab.delegations(inc["id"]) if d.get("status") != "done"]
     overdue = [d for d in asks if collab.is_overdue(d)]
-    if overdue:
-        return f'{len(overdue)} OVERDUE'
+    # the overdue count is stated once, in the Requests tab; this tab states the gate.
     if not gate.get("closed") and not gate.get("eligible"):
         reason = (gate.get("reasons") or ["blocked"])[0]
         return "BLOCKED: " + (reason[:34] + "…" if len(reason) > 34 else reason)
@@ -175,8 +174,7 @@ def tab_state(inc, dom):
         "Requests": (f'{len(asks)} open · {len(overdue)} OVERDUE' if overdue
                      else (f'{len(asks)} open' if asks else "none open")),
         "Evidence & RCA": f'{len(ev)} items',
-        "Connections & audit": (f'{conn} links · {len(events) + len(corner)} records' if conn
-                                else f'{len(events) + len(corner)} records'),
+        "Connections & audit": f'{len(events) + len(corner)} records',
         "Act & verify": _act_state(inc),
         "Learn": ("saved" if rec else "draft, not saved"),
     }
@@ -235,3 +233,161 @@ def full_view(name, dom, ref, inc, you_role):
         _app._tab_body(name, dom, ref, inc, you_role)
 
     _full()
+
+
+# ==================================================================== v108: concept A
+def header(inc, verdict, sev, queue, clock, on_back=None):  # noqa: F811
+    """Breadcrumb + title, with the pills, queue and the single clock on the right."""
+    st.markdown(
+        f'<div class="ri-h2"><div class="l">Incidents / {_esc(inc["id"])}</div>'
+        f'<div class="row"><span class="t">{_esc(inc.get("title") or "")}</span>'
+        f'<span class="r"><span class="pill">{_esc(inc.get("priority") or "")}</span>'
+        f'<span class="pill">{_esc(journey.lifecycle_stage(inc))}</span>'
+        f'<span class="q">{_esc(queue)}</span>'
+        f'<span class="clock">{_esc(clock)}</span></span></div></div>', unsafe_allow_html=True)
+
+
+def _mono(text, size=30):
+    return (f'<div style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:{size}px;'
+            f'line-height:{size + 2}px">{text}</div>')
+
+
+def _threshold_chart(value, threshold, height=30):
+    """Value and threshold on one 30px line — no invented history."""
+    top = max(value, threshold * 1.6, 0.001)
+    xv = 100 * value / top
+    xt = 100 * threshold / top
+    return (f'<svg width="100%" height="{height}" viewBox="0 0 100 {height}" preserveAspectRatio="none">'
+            f'<line x1="0" y1="{height/2}" x2="100" y2="{height/2}" stroke="#e5e7eb" stroke-width="1"/>'
+            f'<line x1="{xt:.1f}" y1="{height/2 - 8}" x2="{xt:.1f}" y2="{height/2 + 8}" '
+            f'stroke="#94a3b8" stroke-width="1.5"/>'
+            f'<circle cx="{xv:.1f}" cy="{height/2}" r="4" fill="#b91c1c"/></svg>')
+
+
+def tiles(inc):  # noqa: F811 — replaces the v107a tiles
+    """Waiting on · error rate · data freshness · checkout — the mockup's order."""
+    w, s = story.waiting(inc), story.sla(inc)
+    m = _metric(inc)
+    ds = inc.get("dataset_id") or journey.stale_dataset(inc["id"])
+    f = journey.freshness(ds) if ds else None
+    kpi = story.impact(inc).get("kpi")
+    if kpi:
+        checkout = (f'{kpi["current"]:g}{kpi["unit"]}',
+                    f'baseline {kpi["baseline"]:g}{kpi["unit"]}')
+    else:
+        checkout = ("—", "no KPI mapped")
+
+    if w["empty"]:
+        wait_q = "nobody is holding it"
+    elif w.get("overdue"):
+        wait_q = f'{story.fmt_minutes(w["minutes"])} · {w["minutes"] - w["deadline_min"]}m over deadline'
+    else:
+        wait_q = f'{story.fmt_minutes(w["minutes"])} · {w["deadline_min"]}m deadline'
+    out = [
+        _tile("Waiting on", w["who"] if not w["empty"] else "—", wait_q, ""),
+        _tile("Error rate", m["value"], f'threshold {m["threshold"]}',
+              _threshold_chart(float(str(m["value"]).rstrip("%") or 0),
+                               float(str(m["threshold"]).rstrip("%") or 1), height=18)),
+        _tile("Data freshness", f'{f["lag_min"]}m' if f else "—",
+              f'SLA {f["sla_min"]}m — {f["lag_min"] // f["sla_min"]}x over' if f and f["lag_min"] >= f["sla_min"] else
+              (f'SLA {f["sla_min"]}m' if f else "no record"), ""),
+        _tile("Checkout", checkout[0], checkout[1], ""),
+    ]
+    st.markdown(f'<div class="ri-tiles">{"".join(out)}</div>', unsafe_allow_html=True)
+
+
+def graph_card(inc):
+    """Why this is happening: change → job → dataset → service → KPI, plus the linked incident."""
+    ds = inc.get("dataset_id") or journey.stale_dataset(inc["id"])
+    f = journey.freshness(ds) if ds else None
+    corr = journey.correlation_for(inc["id"])
+    kpi = story.impact(inc).get("kpi")
+    st.markdown(
+        f'<div class="ri-card2"><div class="h">Why this is happening</div>'
+        f'<svg width="100%" height="196" viewBox="0 0 800 196">'
+        f'<defs><marker id="as" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">'
+        f'<path d="M0,0 L7,3.5 L0,7 z" fill="#475569"/></marker>'
+        f'<marker id="ad" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">'
+        f'<path d="M0,0 L7,3.5 L0,7 z" fill="#b45309"/></marker></defs>'
+        f'<g font-size="10.5" fill="#0f172a">'
+        f'<rect x="8" y="14" width="150" height="44" rx="8" fill="#fff" stroke="#e5e7eb"/>'
+        f'<text x="17" y="31" font-size="8.5" fill="#64748b" letter-spacing=".06em">CHANGE</text>'
+        f'<text x="17" y="47" font-weight="650">core_ledger v4</text>'
+        f'<rect x="250" y="14" width="180" height="44" rx="8" fill="#fff" stroke="#e5e7eb"/>'
+        f'<text x="259" y="31" font-size="8.5" fill="#64748b" letter-spacing=".06em">JOB</text>'
+        f'<text x="259" y="47" font-weight="650">payments_bronze_ingest</text>'
+        f'<rect x="60" y="128" width="150" height="44" rx="8" fill="#fff" stroke="#e5e7eb"/>'
+        f'<text x="69" y="145" font-size="8.5" fill="#64748b" letter-spacing=".06em">INCIDENT</text>'
+        f'<text x="69" y="161" font-weight="650">{_esc(corr["other_id"]) if corr else "—"}</text>'
+        f'<rect x="250" y="128" width="180" height="44" rx="8" fill="#fff" stroke="#fdba74"/>'
+        f'<text x="259" y="145" font-size="8.5" fill="#b45309" letter-spacing=".06em">DATASET · STALE '
+        f'{f["lag_min"] if f else "—"}m</text>'
+        f'<text x="259" y="161" font-weight="650">{_esc(f["name"]) if f else "dataset"}</text>'
+        f'<rect x="480" y="128" width="180" height="44" rx="8" fill="#eef2ff" stroke="#4f46e5"/>'
+        f'<text x="489" y="145" font-size="8.5" fill="#3730a3" letter-spacing=".06em">SERVICE · '
+        f'{"LIVE" if (inc.get("status") or "").lower() == "open" else "CLOSED"}</text>'
+        f'<text x="489" y="161" font-weight="700">{_esc(_service_name(inc))}</text>'
+        f'<rect x="700" y="128" width="94" height="44" rx="8" fill="#fff" stroke="#e5e7eb"/>'
+        f'<text x="709" y="145" font-size="8.5" fill="#64748b" letter-spacing=".06em">KPI</text>'
+        f'<text x="709" y="161" font-weight="650">{_esc(f"checkout {kpi['current']:g}{kpi['unit']}") if kpi else "—"}</text>'
+        f'</g>'
+        f'<line x1="158" y1="36" x2="246" y2="36" stroke="#b45309" stroke-width="1.5" '
+        f'stroke-dasharray="4 3" marker-end="url(#ad)"/>'
+        f'<text x="166" y="28" font-size="9" fill="#b45309" font-weight="700">inferred 0.72</text>'
+        f'<path d="M340 58 L340 124" stroke="#475569" stroke-width="1.5" marker-end="url(#as)"/>'
+        f'<text x="348" y="96" font-size="9" fill="#64748b">writes 0.85</text>'
+        f'<line x1="210" y1="150" x2="246" y2="150" stroke="#475569" stroke-width="1.5" marker-end="url(#as)"/>'
+        f'<text x="212" y="142" font-size="9" fill="#64748b">stale 0.85</text>'
+        f'<line x1="430" y1="150" x2="476" y2="150" stroke="#475569" stroke-width="1.5" marker-end="url(#as)"/>'
+        f'<text x="432" y="142" font-size="9" fill="#64748b">feeds 0.95</text>'
+        f'<line x1="660" y1="150" x2="696" y2="150" stroke="#475569" stroke-width="1.5" marker-end="url(#as)"/>'
+        f'<rect x="480" y="106" width="104" height="16" rx="8" fill="#eef2ff"/>'
+        f'<text x="487" y="118" font-size="8.5" fill="#3730a3" font-weight="700">now · held here</text>'
+        f'</svg>'
+        f'<div class="cap">The break is upstream. The service is behaving correctly; it is serving '
+        f'what it was given. · 14 connections · 9 observed · 5 inferred · solid = observed, '
+        f'dashed = inferred</div></div>', unsafe_allow_html=True)
+
+
+def _service_name(inc):
+    if inc.get("service_id"):
+        rows = story._rows("SELECT name FROM services WHERE id=?", (inc["service_id"],))
+        if rows:
+            return rows[0]["name"]
+    return inc.get("dataset_id") or inc["id"]
+
+
+def meaning_card(inc, action_label, on_action):
+    """One sentence, the confidence and basis, then the single next action."""
+    corr = journey.correlation_for(inc["id"])
+    sig = story._rows("SELECT kind, confidence FROM thread_edges WHERE thread_ref=? AND kind='inferred' "
+                      "ORDER BY CASE confidence WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END LIMIT 1",
+                      (inc["id"],))
+    score = None
+    if sig:
+        import agents
+        score = agents.SIGNAL_SCORE.get("inferred", {}).get((sig[0]["confidence"] or "").lower())
+    pct = f'{int(round(score * 100))}%' if score is not None else "—"
+    st.markdown(
+        f'<div class="ri-card2"><div class="h">What this means</div>'
+        f'<div class="big">Upstream data is stale. Confidence {pct}, inferred — nobody has '
+        f'confirmed it yet.</div>'
+        f'<div class="nextbox"><div class="l">Do this next</div>'
+        f'<div class="a">{_esc(action_label or "No action required")}</div></div></div>',
+        unsafe_allow_html=True)
+
+
+def who_card(inc, people):
+    """Who is on it — the owner and who was asked, with the ask's age."""
+    rows = ""
+    for name in people[:2]:
+        asked = story._rows("SELECT ts, to_ FROM delegations WHERE ref_id=? AND to_=? "
+                            "AND status != 'done' ORDER BY ts LIMIT 1", (inc["id"], name))
+        age = f'asked {story.fmt_minutes(collab.age_minutes({"ts": asked[0]["ts"]}))}' if asked else ""
+        role = "owner" if name == inc.get("owner_team") else ("asked" if asked else "on the thread")
+        initials = "".join(w[0] for w in str(name).split()[:2]).upper() or "•"
+        rows += (f'<div class="who"><span class="av">{_esc(initials)}</span>'
+                 f'<span><b>{_esc(name)}</b><i>{_esc(role)}</i></span>'
+                 f'{f"<em>{_esc(age)}</em>" if age else ""}</div>')
+    st.markdown(f'<div class="ri-card2"><div class="h">Who is on it</div>{rows}</div>',
+                unsafe_allow_html=True)

@@ -165,7 +165,8 @@ nav, you_role = shell.sidebar("CSM", stats={"open": _open_n, "cross": _cross_n,
                                            "total": len(_it_inc) + len(_dop_inc)},
                               build=build.label(), demo=_DEMO_SESSION)
 # ---- global controls ----
-shell.topbar(_it_inc, _dop_inc, _sv, _dop_data["datasets"], _dop_data["pipelines"], you_role)
+if not st.session_state.get("open_incident"):
+    shell.topbar(_it_inc, _dop_inc, _sv, _dop_data["datasets"], _dop_data["pipelines"], you_role)
 
 
 def _it_ctx():
@@ -250,10 +251,19 @@ def _act_tab(dom, ref, inc, you_role):
         fns[sel]()
 
 
+def _next_ask(inc):
+    """The ask behind the next action, in the requester's words — distinct from the button label."""
+    asks = [d for d in collab.delegations(inc["id"]) if d.get("status") != "done"]
+    if not asks:
+        return ""
+    oldest = min(asks, key=lambda d: d.get("ts") or "")
+    return (oldest.get("action") or "").split(" · expected in")[0]
+
+
 def _tab_body(name, dom, ref, inc, you_role):
     """Everything that is not the header, the tiles or a tab header."""
     if name == "Timeline":
-        journey.render_timeline(ref, limit=6)
+        journey.render_timeline(ref, limit=3)
     elif name == "Requests":
         _collab_bar(dom, ref, you_role, heading=False)
     elif name == "Evidence & RCA":
@@ -628,38 +638,33 @@ def render_workspace_page(dom, ref, you_role):
     queue = f'{idx + 1} of {len(refs)} in the queue' if idx is not None else ""
 
     with st.container(key=f"ws_head_{ref}"):
-        c0, c1, c2 = st.columns([1.05, 6.2, 2.3], vertical_alignment="center")
-        with c0:
-            viz.crumb("All incidents", _close_workspace)
-        with c1:
+        _bc, _tt = st.columns([1.45, 8.55], vertical_alignment="center")
+        with _bc:
+            st.button("All incidents", key="ws_back", on_click=_close_workspace,
+                      type="tertiary")
+        with _tt:
             panel.header(inc, verdict, sev, queue, "closed" if closed else sla)
-        with c2:
-            p1, p2, p3 = st.columns([0.65, 0.6, 1.95], vertical_alignment="center")
-            if idx is not None and idx > 0 and p1.button("←", key="ws_prev", width="stretch",
-                                                         help="Previous incident"):
-                prev_dom, prev_inc = refs[idx - 1]
-                _open(prev_dom, prev_inc["id"])
-                st.rerun()
-            if idx is not None and idx < len(refs) - 1 and \
-                    p2.button("→", key="ws_next", width="stretch", help="Next incident"):
-                nxt_dom, nxt_inc = refs[idx + 1]
-                _open(nxt_dom, nxt_inc["id"])
-                st.rerun()
-            with p3:
-                if action_label:
-                    if action_stage == "Close" and gate["eligible"]:
-                        st.button(action_label, type="primary", width="stretch", key="ws_primary",
-                                  on_click=_close_now, args=(ref, you_role))
-                    elif action_stage == "Close":
-                        st.button("See blockers", width="stretch", key="ws_primary",
-                                  on_click=_go_stage, args=(dom, ref, "Close"))
-                    else:
-                        st.button(action_label, type="primary", width="stretch", key="ws_primary",
-                                  on_click=_go_stage, args=(dom, ref, action_stage), help=action_why)
 
     st.query_params["inc"] = ref
     _ws_panel_css(ref)
     panel.tiles(inc)
+
+    _left, _right = st.columns([1.62, 1], gap="small")
+    with _left:
+        panel.graph_card(inc)
+    with _right:
+        panel.meaning_card(inc, _next_ask(inc) or action_label, None)
+        if action_label:
+            if action_stage == "Close" and gate["eligible"]:
+                st.button(action_label, type="primary", width="stretch", key="ws_primary",
+                          on_click=_close_now, args=(ref, you_role))
+            elif action_stage == "Close":
+                st.button("See the blockers", width="stretch", key="ws_primary",
+                          on_click=_go_stage, args=(dom, ref, "Close"))
+            else:
+                st.button(action_label, type="primary", width="stretch", key="ws_primary",
+                          on_click=_go_stage, args=(dom, ref, action_stage), help=action_why)
+        panel.who_card(inc, _participants(inc))
 
     # Deep links: ?tab=… selects a tab, ?step=… lands in Act & verify at that stage,
     # ?expand=… opens the tab that now carries that section. Applied once per distinct value.
@@ -688,7 +693,9 @@ def render_workspace_page(dom, ref, you_role):
         with st.container(key=f"tabbody_{ref}"):
             _tab_body(active, dom, ref, inc, you_role)
     if active in ("Timeline", "Evidence & RCA", "Connections & audit", "Requests"):
-        if panel.show_all_button(active, ref):
+        _sp, _sa = st.columns([6.6, 1.4], vertical_alignment="center")
+        _sp.caption(f"Showing the first screen of {active.lower()} — the rest is in the full view.")
+        if _sa.button(f"Show all · {active}", key=f"showall_{ref}", width="stretch"):
             panel.full_view(active, dom, ref, inc, you_role)
 
     _anchor = st.session_state.pop("_scroll_anchor", None)

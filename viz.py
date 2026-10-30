@@ -384,6 +384,32 @@ div[class*="st-key-tabbody_"]{max-height:224px;overflow:hidden}
 div[class*="st-key-tab_"] button{font-size:11px!important;padding:2px 6px!important;min-height:30px!important}
 div[class*="st-key-tab_"] button p{font-size:11px!important;line-height:1.15!important;white-space:normal!important}
 .ri-hdr .t{max-width:26ch}
+/* ---- v108: concept A — breadcrumb header, four tiles, graph hero, tabs --------------------- */
+.ri-h2 .l{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ri-muted);font-weight:800}
+.ri-h2 .row{display:flex;align-items:center;gap:10px;overflow:hidden;white-space:nowrap}
+.ri-h2 .t{font-size:19px;font-weight:800;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis}
+.ri-h2 .r{margin-left:auto;display:flex;align-items:center;gap:8px}
+.ri-h2 .pill{font-size:10.5px;font-weight:750;border:1px solid var(--ri-line);border-radius:999px;padding:1px 8px}
+.ri-h2 .q{font-size:11px;color:var(--ri-muted)}
+.ri-h2 .clock{font-size:13px;font-weight:800}
+.ri-card2{border:1px solid var(--ri-line);border-radius:12px;background:#fff;padding:8px 12px}
+.ri-card2 .h{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--ri-muted);font-weight:800;margin-bottom:4px}
+.ri-card2 .cap{font-size:11px;color:#334155;border-top:1px solid var(--ri-line);padding-top:5px;margin-top:2px}
+.ri-card2 .big{font-size:12.5px;font-weight:650;color:var(--ink);line-height:1.4}
+.ri-card2 .nextbox{border:1px solid #c7d2fe;background:#eef2ff;border-radius:10px;padding:7px 10px;margin-top:8px}
+.ri-card2 .nextbox .l{font-size:9.5px;letter-spacing:.07em;text-transform:uppercase;color:#3730a3;font-weight:800}
+.ri-card2 .nextbox .a{font-size:12.5px;font-weight:650;color:#1e1b4b;margin-top:2px}
+.ri-card2 .who{display:flex;align-items:center;gap:8px;margin-top:5px;font-size:11.5px}
+.ri-card2 .who .av{width:22px;height:22px;border-radius:50%;background:#e5e7eb;display:flex;align-items:center;
+  justify-content:center;font-size:9.5px;font-weight:800;color:#334155}
+.ri-card2 .who b{display:block;font-weight:700;color:var(--ink)}
+.ri-card2 .who i{display:block;font-style:normal;font-size:10px;color:var(--ri-muted)}
+.ri-card2 .who em{margin-left:auto;font-style:normal;font-size:10px;color:var(--ri-muted)}
+.ri-tile{min-height:62px!important;padding:4px 10px!important;height:70px;overflow:hidden}
+.ri-tile .v{font-size:17px!important}
+.ri-tile .g{height:20px!important}
+div[class*="st-key-tabbody_"]{max-height:164px;overflow:hidden}
+.ri-h2 .t{font-size:18px}
 </style>
 """
 

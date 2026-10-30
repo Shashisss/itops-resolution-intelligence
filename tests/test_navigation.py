@@ -62,8 +62,8 @@ def test_open_incident_shows_workspace_and_url():
     assert not at.exception, at.exception
     text = " ".join(str(x.value) for x in at.markdown)
     text += " " + " ".join(str(b.label) for b in at.button)
-    assert "handoff" in text.lower() and "time left" in text.lower(), \
-        "the tiles must state the handoff and the SLA first"
+    assert "waiting on" in text.lower() and "data freshness" in text.lower(), \
+        "the tiles must state who holds it and the freshness first"
     assert "Connections" in text, "the graph panel is part of the incident screen"
     assert at.session_state["open_incident"]["ref"] == "INC-8841"
     assert at.query_params.get("inc") == "INC-8841"
@@ -88,15 +88,16 @@ def test_filters_survive_opening_and_closing_an_incident():
     assert at.session_state.get("board_dom") == "DataOps"
 
 
-def test_previous_and_next_move_between_incidents():
+def test_the_queue_position_is_stated_and_the_list_moves_between_incidents():
+    """v108 removed the prev/next arrows from the header (the mockup has none); the queue position
+    is stated in words and the list is the way between incidents."""
     at = start()
     open_row(at, "INC-8841")
     first = at.session_state["open_incident"]["ref"]
-    at.button(key="ws_next").click().run()
-    second = at.session_state["open_incident"]["ref"]
-    assert second != first, "Next did not change the incident"
-    at.button(key="ws_prev").click().run()
-    assert at.session_state["open_incident"]["ref"] == first
+    assert "3 of 7" in " ".join(str(m.value) for m in at.markdown)
+    at.button(key="ws_back").click().run()
+    open_row(at, "DOP-1001")
+    assert at.session_state["open_incident"]["ref"] != first
 
 
 def test_deep_link_opens_the_right_incident_and_only_once():
