@@ -381,8 +381,16 @@ div[class*="st-key-ws_panel_"]{padding:2px 8px!important}
 .ri-tile .q{font-size:10.5px;color:var(--ri-muted)}
 .ri-tile .g{margin-top:auto;height:40px;display:flex;align-items:center}
 div[class*="st-key-tabbody_"]{max-height:224px;overflow:hidden}
-div[class*="st-key-tab_"] button{font-size:11px!important;padding:2px 6px!important;min-height:30px!important}
-div[class*="st-key-tab_"] button p{font-size:11px!important;line-height:1.15!important;white-space:normal!important}
+/* v107b: an underline strip, not pills — the mockup's tab bar */
+div[class*="st-key-tab_"] button{background:transparent!important;border:none!important;
+  border-bottom:2px solid transparent!important;border-radius:0!important;box-shadow:none!important;
+  justify-content:flex-start!important;padding:3px 2px!important;min-height:34px!important;
+  align-items:flex-start!important}
+div[class*="st-key-tab_"] button p{font-size:11px!important;line-height:1.2!important;
+  white-space:normal!important;color:#475569!important}
+div[class*="st-key-tab_"] button[data-testid="stBaseButton-primary"]{border-bottom-color:var(--ri-accent)!important}
+div[class*="st-key-tab_"] button[data-testid="stBaseButton-primary"] p{color:var(--ri-accent)!important;font-weight:750!important}
+div[class*="st-key-tab_"] button:hover{background:transparent!important;border-bottom-color:#c7d2fe!important}
 .ri-hdr .t{max-width:26ch}
 /* ---- v108: concept A — breadcrumb header, four tiles, graph hero, tabs --------------------- */
 .ri-h2 .l{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ri-muted);font-weight:800}
@@ -395,6 +403,11 @@ div[class*="st-key-tab_"] button p{font-size:11px!important;line-height:1.15!imp
 .ri-card2{border:1px solid var(--ri-line);border-radius:12px;background:#fff;padding:8px 12px}
 .ri-card2 .h{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--ri-muted);font-weight:800;margin-bottom:4px}
 .ri-card2 .cap{font-size:11px;color:#334155;border-top:1px solid var(--ri-line);padding-top:5px;margin-top:2px}
+.ri-card2 .legendline{display:flex;gap:14px;font-size:10px;color:var(--ri-muted);margin-top:4px}
+.ri-card2 .legendline i{display:inline-block;width:16px;height:0;border-top:2px solid #475569;
+  vertical-align:3px;margin-right:4px}
+.ri-card2 .legendline i.dash{border-top:2px dashed #b45309}
+.ri-card2 .legendline .n{margin-left:auto}
 .ri-card2 .big{font-size:12.5px;font-weight:650;color:var(--ink);line-height:1.4}
 .ri-card2 .nextbox{border:1px solid #c7d2fe;background:#eef2ff;border-radius:10px;padding:7px 10px;margin-top:8px}
 .ri-card2 .nextbox .l{font-size:9.5px;letter-spacing:.07em;text-transform:uppercase;color:#3730a3;font-weight:800}

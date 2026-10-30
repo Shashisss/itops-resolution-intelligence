@@ -1,6 +1,6 @@
 # PROTOTYPE NOTES — Resolution Intelligence POC
 
-Build v108 · sample data · simulated actions. This is a proof of concept, **not** production.
+Build v107b · sample data · simulated actions. This is a proof of concept, **not** production.
 
 ## Persistence boundary — what survives what
 
@@ -87,6 +87,21 @@ Relationships are **structured records** in `thread_edges` (source, target, rela
 observed/inferred kind, evidence source, timestamp, rule-based confidence). UI code no longer
 builds edges by hand; `journey.thread_edges_for()` resolves a thread via the correlation model.
 Inferred relationships are labelled as hypotheses, not proven facts.
+
+## v107b — the graph hero, the four tiles, the underline tabs
+
+- **Graph hero** replaces the last of the strip/chain. For INC-8841 it draws: CHANGE `core_ledger v4`
+  --(dashed, inferred 0.72)--> JOB `payments_bronze_ingest` --(writes 0.85)--> DATASET
+  `payments_gold` (stale 60m) --(feeds 0.95)--> SERVICE Payment API --(impacts 0.90)--> KPI
+  `checkout 90%`, with the linked INCIDENT `DOP-1001` --(stale 0.85)--> the dataset. The held chip
+  says "now · held here" so the wait is not repeated. Beneath: the caption "The break is upstream —
+  the service is serving what it was given", an observed/inferred legend and the connections count.
+- **Tiles** are exactly the approved four, in order: Waiting on · Error rate · Data freshness ·
+  Checkout. Time-left lives in the header; handoffs in the graph and the Connections tab.
+- **Tabs** are an underline strip (no pills), same six labels and state words; Act & verify remains
+  the only uncapped tab.
+
+Measured: 768/768 at 1366×768 and 800/800 at 1280×800 — no page scroll, on Cloud as well.
 
 ## Concept A — the one-viewport incident page (v108)
 

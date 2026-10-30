@@ -59,3 +59,24 @@ def test_holder_and_clock_appear_once():
     holder = re.findall(r'<div class="v">(Data Platform|—)</div>', md)
     assert len(holder) == 1, f"the holder is stated {len(holder)} times: {holder}"
     assert "now · held here" in md, "the graph marks the holder without repeating the wait"
+
+
+def test_the_graph_shows_observed_and_inferred_edges_with_confidence():
+    """The hero graph must show both bases, and every edge it draws must carry a confidence."""
+    md = "\n".join(m.value for m in open_page().markdown)
+    graph = md[md.index('Why this is happening'):md.index('What this means')]
+    assert 'stroke-dasharray' in graph, "an inferred edge is drawn dashed"
+    assert graph.count('marker-end="url(#as)"') >= 3, "observed edges are drawn solid"
+    assert graph.count('marker-end="url(#ad)"') >= 1
+    for label in ("inferred 0.72", "writes 0.85", "stale 0.85", "feeds 0.95"):
+        assert label in graph, f"edge confidence missing: {label}"
+    assert "solid = observed" not in graph or "observed" in graph
+    assert "observed" in graph and "inferred" in graph
+    assert "connections" in graph, "the connections count is under the legend"
+
+
+def test_the_tiles_are_exactly_the_four_labels():
+    import re
+    md = "\n".join(m.value for m in open_page().markdown)
+    labels = re.findall(r'<div class="k">([^<]+)</div>', md)
+    assert labels == ["Waiting on", "Error rate", "Data freshness", "Checkout"], labels

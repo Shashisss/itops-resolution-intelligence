@@ -144,10 +144,9 @@ def _act_state(inc):
     overdue = [d for d in asks if collab.is_overdue(d)]
     # the overdue count is stated once, in the Requests tab; this tab states the gate.
     if not gate.get("closed") and not gate.get("eligible"):
-        reason = (gate.get("reasons") or ["blocked"])[0]
-        return "BLOCKED: " + (reason[:34] + "…" if len(reason) > 34 else reason)
+        return "BLOCKED"
     if verdict and verdict != "Verified" and (inc.get("status") or "").lower() != "closed":
-        return f'UNVERIFIED: {verdict}'
+        return "UNVERIFIED"
     return "ready" if not gate.get("closed") else "closed"
 
 
@@ -285,9 +284,7 @@ def tiles(inc):  # noqa: F811 — replaces the v107a tiles
         wait_q = f'{story.fmt_minutes(w["minutes"])} · {w["deadline_min"]}m deadline'
     out = [
         _tile("Waiting on", w["who"] if not w["empty"] else "—", wait_q, ""),
-        _tile("Error rate", m["value"], f'threshold {m["threshold"]}',
-              _threshold_chart(float(str(m["value"]).rstrip("%") or 0),
-                               float(str(m["threshold"]).rstrip("%") or 1), height=18)),
+        _tile("Error rate", m["value"], f'vs {m["threshold"]} threshold', ""),
         _tile("Data freshness", f'{f["lag_min"]}m' if f else "—",
               f'SLA {f["sla_min"]}m — {f["lag_min"] // f["sla_min"]}x over' if f and f["lag_min"] >= f["sla_min"] else
               (f'SLA {f["sla_min"]}m' if f else "no record"), ""),
@@ -304,7 +301,7 @@ def graph_card(inc):
     kpi = story.impact(inc).get("kpi")
     st.markdown(
         f'<div class="ri-card2"><div class="h">Why this is happening</div>'
-        f'<svg width="100%" height="196" viewBox="0 0 800 196">'
+        f'<svg width="100%" height="186" viewBox="0 0 800 186">'
         f'<defs><marker id="as" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">'
         f'<path d="M0,0 L7,3.5 L0,7 z" fill="#475569"/></marker>'
         f'<marker id="ad" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">'
@@ -344,9 +341,21 @@ def graph_card(inc):
         f'<rect x="480" y="106" width="104" height="16" rx="8" fill="#eef2ff"/>'
         f'<text x="487" y="118" font-size="8.5" fill="#3730a3" font-weight="700">now · held here</text>'
         f'</svg>'
-        f'<div class="cap">The break is upstream. The service is behaving correctly; it is serving '
-        f'what it was given. · 14 connections · 9 observed · 5 inferred · solid = observed, '
-        f'dashed = inferred</div></div>', unsafe_allow_html=True)
+        f'<div class="cap">The break is upstream — the service is serving what it was given.</div>'
+        f'<div class="legendline"><span><i></i>observed</span>'
+        f'<span><i class="dash"></i>inferred</span>'
+        f'<span class="n">{_conn_line(inc)}</span></div></div>', unsafe_allow_html=True)
+
+
+def _conn_line(inc):
+    """The connections count, from the graph store — the same count the audit tab lists."""
+    try:
+        import graph
+        rows = graph.store().neighbours(graph.incident_node_id(inc["id"]))
+        obs = sum(1 for r in rows if r["edge"].get("basis") == "observed")
+        return f'{len(rows)} connections · {obs} observed · {len(rows) - obs} inferred'
+    except Exception:
+        return "no connections recorded"
 
 
 def _service_name(inc):

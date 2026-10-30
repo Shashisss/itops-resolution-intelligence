@@ -4,7 +4,7 @@ Two layers, both runnable without a browser.
 
 ```bash
 python3 -m pip install -r requirements-dev.txt
-python3 -m pytest tests -q          # 145 tests, ~30s
+python3 -m pytest tests -q          # 147 tests, ~30s
 python3 scripts/smoke.py            # deployment smoke test, ~5s
 ```
 
