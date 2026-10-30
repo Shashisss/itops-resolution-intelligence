@@ -23,11 +23,21 @@ import journey
 import learn
 import story
 
-try:                        # the footer states the build that is actually running, never a literal
+try:
     import build as _build_mod
-    _BUILD = _build_mod.info()["build"]
 except Exception:           # noqa: BLE001 — a missing build identity must not break the document
-    _BUILD = "dev"
+    _build_mod = None
+
+
+def _build_label():
+    """The build the footer states — read when the document is built, not when the module loads.
+
+    A hot reload swaps app.py without restarting the process; a label frozen at import time then
+    reports the build before the deploy, which is exactly how a correct deployment looks stale."""
+    try:
+        return _build_mod.info()["build"]
+    except Exception:       # noqa: BLE001
+        return "dev"
 
 WEEK = dt.date.today().strftime("%d %b %Y")
 TAB_NAMES = ["Timeline", "Requests", "Evidence & RCA", "Connections & audit",
@@ -883,7 +893,7 @@ def build(inc, dom, queue="", initial_tab="Timeline", action=None, view=None, ow
   </section>
   <div class="tabbar">{bar}</div>
   <div class="panes">{panes}</div>
-  <div class="foot"><span>Sample data · simulated actions · build {esc(_BUILD)}</span>
+  <div class="foot"><span>Sample data · simulated actions · build {esc(_build_label())}</span>
     <span>{esc(F["id"])} · {esc(F["stage"])}</span></div>
 </div>
 <div class="ov" id="ov"><div class="sheet">
