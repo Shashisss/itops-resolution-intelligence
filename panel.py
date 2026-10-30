@@ -182,9 +182,11 @@ def tab_state(inc, dom):
 def tab_bar(ref, active):
     """Six headers as buttons, each carrying its own state in words."""
     state = st.session_state.get(f"tabstate_{ref}") or {}
-    cols = st.columns(len(TABS))
-    for col, name in zip(cols, TABS):
-        label = f'{name} · {state.get(name, "")}' if state.get(name) else name
+    labels = [f'{name} · {state.get(name, "")}' if state.get(name) else name for name in TABS]
+    # width follows the label: a long state ("1 open · 1 OVERDUE") gets room instead of wrapping
+    widths = [max(1.15, len(lbl) / 16) for lbl in labels]
+    cols = st.columns(widths)
+    for col, name, label in zip(cols, TABS, labels):
         if col.button(label, key=f"tab_{ref}_{name}", width="stretch",
                       type=("primary" if name == active else "secondary")):
             st.session_state[f"tab_{ref}"] = name
@@ -288,7 +290,7 @@ def graph_card(inc):
     kpi = story.impact(inc).get("kpi")
     st.markdown(
         f'<div class="ri-card2"><div class="h">Why this is happening</div>'
-        f'<svg width="100%" height="186" viewBox="0 0 800 186">'
+        f'<svg width="100%" height="170" viewBox="0 0 800 186">'
         f'<defs><marker id="as" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">'
         f'<path d="M0,0 L7,3.5 L0,7 z" fill="#475569"/></marker>'
         f'<marker id="ad" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">'

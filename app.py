@@ -706,7 +706,8 @@ def render_workspace_page(dom, ref, you_role):
                 st.rerun()
         else:
             _sp.caption(f"Showing the first screen of {active.lower()} — the rest is in the full view.")
-            if _sa.button(f"Show all · {active}", key=f"showall_{ref}", width="stretch"):
+            if _sa.button("Show all", key=f"showall_{ref}", width="stretch",
+                       help=f"Open the full {active} section"):
                 st.session_state[f"fv_{ref}"] = active
                 st.rerun()
 

@@ -421,7 +421,11 @@ div[class*="st-key-tab_"] button:hover{background:transparent!important;border-b
 .ri-tile{min-height:64px!important;padding:4px 10px!important;height:auto!important;overflow:hidden}
 .ri-tile .v{font-size:17px!important}
 .ri-tile .g{height:20px!important}
-div[class*="st-key-tabbody_"]{max-height:152px;overflow:hidden}
+div[class*="st-key-tabbody_"]{max-height:144px;overflow:hidden}
+@media (max-width:1320px){
+  div[class*="st-key-tab_"] button p{font-size:9.5px!important;line-height:1.15!important}
+  .ri-h2 .t{font-size:17px}
+}
 .ri-h2 .t{font-size:18px}
 </style>
 """

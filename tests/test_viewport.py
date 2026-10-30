@@ -18,7 +18,7 @@ import story  # noqa: E402
 from streamlit.testing.v1 import AppTest  # noqa: E402
 
 CAP = 780
-BANDS = {"header": 62, "tiles": 76, "hero": 330, "tabs": 44, "tab body": 152, "footer": 26}
+BANDS = {"header": 62, "tiles": 76, "hero": 330, "tabs": 44, "tab body": 144, "footer": 26}
 
 
 def open_page(**params):
@@ -41,14 +41,14 @@ def test_the_page_renders_one_of_each_band():
     assert md.count('class="ri-h2"') == 1, "one header band"
     assert md.count('class="ri-tiles"') == 1, "one tiles band"
     assert md.count('class="ri-card2"') == 3, "graph + meaning + who is on it"
-    assert 'max-height:152px' in md, "the tab body cap"
+    assert 'max-height:144px' in md, "the tab body cap"
 
 
 def test_opening_a_tab_does_not_add_a_band():
     for tab in ("Requests", "Evidence & RCA", "Connections & audit", "Learn"):
         md = "\n".join(m.value for m in open_page(tab=tab).markdown)
         assert md.count('class="ri-tiles"') == 1 and md.count('class="ri-h2"') == 1
-        assert md.count('max-height:152px') == 1 or "max-height:none" in md
+        assert md.count('max-height:144px') == 1 or "max-height:none" in md
 
 
 def test_holder_and_clock_appear_once():

@@ -1,6 +1,6 @@
 # PROTOTYPE NOTES — Resolution Intelligence POC
 
-Build v107d · sample data · simulated actions. This is a proof of concept, **not** production.
+Build v107e · sample data · simulated actions. This is a proof of concept, **not** production.
 
 ## Persistence boundary — what survives what
 
@@ -87,6 +87,17 @@ Relationships are **structured records** in `thread_edges` (source, target, rela
 observed/inferred kind, evidence source, timestamp, rule-based confidence). UI code no longer
 builds edges by hand; `journey.thread_edges_for()` resolves a thread via the correlation model.
 Inferred relationships are labelled as hypotheses, not proven facts.
+
+## v107e — fits 1280×768, not just 1280×800
+
+The page was measured at 1280×800 and shipped; at 1280×768 the same content needed ~800px, so the
+page scrolled and the tiles looked like they overlapped the header. Fixed by removing the *cause*
+(the tab labels wrapping to two lines at that width): tab columns now take a width proportional to
+their label, the label font is 9.5px below 1320px, and the graph/body caps came down (SVG 186 → 170,
+body 152 → 144).
+
+Measured after the fix, both domains: 1366×768 → 768/768 and 1280×768 → 768/768, `scrollHeight ==
+clientHeight`, bounding boxes of header / tiles / hero / tabs / body do not intersect at either size.
 
 ## v107d — overlap and the DataOps reading
 
