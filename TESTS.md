@@ -5,12 +5,30 @@ Two layers, both runnable without a browser.
 ```bash
 python3 -m pip install -r requirements-dev.txt
 python3 -m pytest tests -q          # 128 tests, ~15s
+python3 scripts/layout_check.py http://localhost:8501   # layout audit, needs Chrome on :9222
 python3 scripts/smoke.py            # deployment smoke test, ~5s
 ```
 
 `scripts/smoke.py` is the check to run before claiming a deployment: imports every module, boots the
 app headless through Streamlit's own harness, opens an incident, follows the URL, goes back to the
 list and asserts the URL was cleared. It exits non-zero on the first failure.
+
+## Layout audit (`scripts/layout_check.py`)
+
+Playwright is **not installed** in this container (the npm package is absent and installing browsers
+needs network). The audit is the same idea over the Chrome DevTools Protocol against the headless
+Chrome already running on :9222: it loads each screen, then asserts in-page that
+
+1. no two sibling cards/tiles overlap (intersection > 1px on both axes),
+2. nothing overflows horizontally and the incident document does not scroll (`scrollHeight <=
+   innerHeight`),
+3. header → tiles → hero → tab strip → panes appear in that order with no vertical overlap,
+4. each of the six tabs opens with non-empty content and "Show all" opens the overlay and closes.
+
+Screens: incident × six tabs for INC-8841 and DOP-1001, the incidents list. One line of PASS/FAIL
+per screen; exit code 1 on any failure.
+
+Result at v109: 14 screens checked, 14 PASS.
 
 ## What is covered
 
