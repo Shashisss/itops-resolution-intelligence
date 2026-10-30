@@ -36,6 +36,11 @@ COLS = [
     ("live_events", "ts"),
     ("comments", "ts"),
     ("delegations", "ts"),
+    # v114: the row prints who moved it and when, so those stamps must slide with the rest or the
+    # card says "CIO 09:32" on a request the pane reports as 80 minutes old.
+    ("delegations", "changed_at"),
+    ("delegations", "done_at"),
+    ("delegations", "sent_at"),
     ("notifications", "ts"),
     ("resolution_state", "closed_at"),
     ("resolution_state", "updated_at"),
