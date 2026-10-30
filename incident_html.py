@@ -357,7 +357,7 @@ def _req_meta(r):
 
 def _req_preview(rows, ref, n, page):
     cards = "".join(
-        f'<div class="req"><div class="r1"><b>{esc(r["owner"])}</b>'
+        f'<div class="req" data-id="{int(r["id"])}"><div class="r1"><b>{esc(r["owner"])}</b>'
         f'<span class="t2">{esc(r["ask_short"])}</span>{_badge_html(r)}</div>'
         f'<div class="r2"><span class="m">{_req_meta(r)}</span>'
         f'{_acts_html(_req_acts(r, ref, 0, page))}</div></div>'
@@ -369,7 +369,7 @@ def _req_preview(rows, ref, n, page):
 
 def _req_full(rows, ref, page):
     body = "".join(
-        f'<div class="rrow"><b>{esc(r["owner"])}</b>'
+        f'<div class="rrow" data-id="{int(r["id"])}"><b>{esc(r["owner"])}</b>'
         f'<span class="ask">{esc(r["ask_short"])}</span>{_badge_html(r)}'
         f'<span class="meta">{esc(str(r.get("actor") or "—"))} '
         f'{esc(str(r.get("changed_at") or "")[11:16])}</span>'

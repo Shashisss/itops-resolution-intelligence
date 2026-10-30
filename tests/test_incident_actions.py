@@ -83,16 +83,37 @@ def _header(h, name="Requests"):
 
 
 # ---------------------------------------------------------------- rendering: the links
-def test_every_live_request_offers_its_actions_with_target(db):
-    h = _html(view={"full": True})
-    ids = [str(r["id"]) for r in _asks() if r["status"] != "done"][:8]
-    for did in ids:
-        assert f"action=chase&amp;target={did}" in h or f"action=chase&target={did}" in h
-    assert "action=ack" in h and "action=done" in h
-    # no button is inert: every action link names the record it acts on
-    acts = re.findall(r'href="\?inc=INC-8841[^"]*action=(chase|ack|done|send)[^"]*"', h)
-    assert set(acts) <= {"chase", "ack", "done", "send"}
-    assert {"chase", "ack", "done"} <= set(acts)
+def _rows(h):
+    """Each request row on its own. Rows are siblings, so a row ends where the next one begins."""
+    out = []
+    for doc in h.split("</html>"):
+        if 'class="reqfull"' not in doc:
+            continue
+        body = doc.split('class="reqfull"')[1].split('class="pager"')[0]
+        out += body.split('<div class="rrow"')[1:]
+    return out
+
+
+def _row_for(h, rid):
+    hits = [r for r in _rows(h) if r.startswith(f' data-id="{rid}"')]
+    return hits[0] if hits else ""
+
+
+def test_every_row_offers_exactly_the_actions_its_state_allows(db):
+    h = _html(view={"full": True, "page": 1}) + _html(view={"full": True, "page": 2})
+    for r in _asks():
+        row = _row_for(h, r["id"])
+        assert row, f'no row rendered for request {r["id"]}'
+        offered = set(re.findall(r"action=(chase|ack|done|send)&amp;target=", row))
+        if r["unsent"]:
+            assert offered == {"send"}, f'unsent ask {r["id"]} offers {offered} — only Send applies'
+        elif r["status"] == "done":
+            assert offered == set(), f'a completed ask {r["id"]} still offers {offered}'
+        else:
+            assert "chase" in offered and "done" in offered, f'{r["id"]} offers {offered}'
+            assert ("ack" in offered) == (r["status"] == "assigned"), f'{r["id"]} offers {offered}'
+        for verb in offered:
+            assert f"action={verb}&amp;target={r['id']}" in row, "an action must name its record"
 
 
 def test_action_links_carry_the_view_they_were_clicked_from(db):
@@ -153,11 +174,14 @@ def test_expanded_page_holds_eight_rows_and_the_preview_holds_four(db):
 
 
 def test_header_overdue_count_equals_the_badges(db):
+    overdue_rows = sum(1 for r in _asks() if r["overdue"])
     h = _html(view={"full": True})
     head = _header(h)
-    overdue_rows = sum(1 for r in _asks() if r["overdue"])
     assert head == (f"{overdue_rows} OVERDUE" if overdue_rows else "none overdue")
-    assert h.count(">OVERDUE<") >= overdue_rows
+    # the header counts the thread, the badges are spread over its pages: they must add up
+    pages = max(1, (len(_asks()) + 7) // 8)
+    badges = sum(_html(view={"full": True, "page": p}).count(">OVERDUE<") for p in range(1, pages + 1))
+    assert badges == overdue_rows, f"{badges} badges for {overdue_rows} overdue requests"
 
 
 # ---------------------------------------------------------------- the actions themselves
@@ -221,9 +245,9 @@ def test_create_ask_makes_a_not_sent_request_and_send_delivers_it(db):
     sent = _ask(new["id"])
     assert sent["sent_at"] and sent["status"] == "assigned"
     h = _html(view={"full": True})
-    row = [ln for ln in h.split('<div class="rrow"') if f'action=chase&amp;target={new["id"]}' in ln]
-    assert row, "a sent request offers Chase"
-    assert "NOT SENT" not in row[0]
+    row = _row_for(h, new["id"])
+    assert "action=chase&amp;target=" in row, "a sent request offers Chase"
+    assert "NOT SENT" not in row, "the badge is SENT once it has been sent"
 
 
 def test_send_is_refused_once_the_request_is_already_sent(db):

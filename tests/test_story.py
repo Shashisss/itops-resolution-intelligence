@@ -49,14 +49,22 @@ def _inc(db, ref="INC-8841"):
 
 # ------------------------------------------------------------------ the hero strip
 def test_hero_waiting_is_the_oldest_open_request(db):
-    """'Waiting 53m · Data Platform' must be that request's own age and its own recipient."""
+    """'Waiting 53m · Data Platform' must be that request's own age and its own recipient.
+
+    Only a request that was actually handed over holds anyone: an ask recorded but never sent
+    (sent_at NULL) is waiting on the person who raised it, and must not become the hero."""
     inc = _inc(db)
-    asks = [d for d in collab.delegations(inc["id"]) if d["status"] != "done"]
+    asks = [d for d in collab.delegations(inc["id"]) if d["status"] != "done" and d.get("sent_at")]
     oldest = min(asks, key=lambda d: d["ts"] or "")
     w = story.waiting(inc)
     assert w["who"] == oldest["to_"]
     assert abs(w["minutes"] - collab.age_minutes(oldest)) <= 1
     assert w["text"] == f'Waiting {story.fmt_minutes(w["minutes"])} · {oldest["to_"]}'
+    open_all = [d for d in collab.delegations(inc["id"]) if d["status"] != "done"]
+    oldest_any = min(open_all, key=lambda d: d["ts"] or "")
+    assert not oldest_any.get("sent_at"), "the seed keeps an unsent ask older than the holder"
+    assert collab.age_minutes(oldest_any) > w["minutes"], \
+        "an ask nobody was sent must not become the holder, however old it is"
 
 
 def test_hero_sla_matches_the_priority_clock(db):

@@ -1,6 +1,6 @@
 # PROTOTYPE NOTES — Resolution Intelligence POC
 
-Build v111 · sample data · simulated actions. This is a proof of concept, **not** production.
+Build v112 · sample data · simulated actions. This is a proof of concept, **not** production.
 
 ## Persistence boundary — what survives what
 
@@ -87,6 +87,18 @@ Relationships are **structured records** in `thread_edges` (source, target, rela
 observed/inferred kind, evidence source, timestamp, rule-based confidence). UI code no longer
 builds edges by hand; `journey.thread_edges_for()` resolves a thread via the correlation model.
 Inferred relationships are labelled as hypotheses, not proven facts.
+
+## v112 — the demo record can show every state, on both pages
+
+The seed had one NOT SENT ask and no live row on page 2, so two controls could not be demonstrated
+without creating data by hand. INC-8841 now has 16 asks arranged so page 1 (`1–8 of 16`) carries one
+NOT SENT, one DONE, one ACKNOWLEDGED and one OVERDUE, and page 2 (`9–16 of 16`) still has an ask
+awaiting send — pagination can be demonstrated *with* an action, not just by looking at it. The tab
+header counts the thread (2 OVERDUE, one on each page), so header and badges add up.
+
+That exposed a rule worth stating: an ask recorded but never handed over does not hold anyone. It is
+excluded from the hero's "Waiting on" and cannot be overdue — the clock starts when it is sent. It
+still blocks closure, because a request you raised is still a request you owe an ending to.
 
 ## v111 — hypotheses you can decide, and a gate that says what it wants
 

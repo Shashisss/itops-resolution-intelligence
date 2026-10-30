@@ -31,7 +31,7 @@ Chrome already running on :9222: it loads each screen, then asserts in-page that
 Screens: incident × six tabs for INC-8841 and DOP-1001, the incidents list. One line of PASS/FAIL
 per screen; exit code 1 on any failure.
 
-Result at v111: 14 screens checked, 14 PASS.
+Result at v112: 14 screens checked, 14 PASS.
 
 ## `tests/test_incident_actions.py` — the Requests tab (v110)
 
@@ -41,13 +41,13 @@ re-rendered document are both read back.
 
 | Test | Asserts |
 |---|---|
-| `test_every_live_request_offers_its_actions_with_target` | every unfinished request carries `action=chase/ack/done&target=<id>`; no inert button |
+| `test_every_row_offers_exactly_the_actions_its_state_allows` | each row carries only what its state allows: an unsent ask offers Send alone, a completed one offers nothing, the rest offer chase/done (+ ack while assigned) |
 | `test_action_links_carry_the_view_they_were_clicked_from` | each href carries `tab=Requests`, `full` and `page`, and an action on page 2 lands back on page 2 |
 | `test_create_ask_is_an_inline_form_with_the_four_fields` | owner, action, deadline, what travels with it — inline, no modal |
 | `test_pagination_range_and_prev_next_in_place` | `1–8 of N` / `9–N of N`, prev/next are links, both branches live inside the pane |
 | `test_page_out_of_range_clamps_to_the_last_page` | `?page=99` renders the last page, not an empty pane |
 | `test_expanded_page_holds_eight_rows_and_the_preview_holds_four` | 8 rows a page, ≤4 in the preview |
-| `test_header_overdue_count_equals_the_badges` | the tab header counts the same rows the list badges as OVERDUE |
+| `test_header_overdue_count_equals_the_badges` | the header equals the overdue rows on the thread, and the badges summed over every page equal it too |
 | `test_acknowledge_action_mutates_and_rerenders` | status → accepted, actor + changed_at + event recorded, flash names who/when, badge ACKNOWLEDGED |
 | `test_mark_done_resolves_the_overdue_and_the_header_says_so` | last overdue resolved → header `none overdue`, no OVERDUE badge left |
 | `test_create_ask_makes_a_not_sent_request_and_send_delivers_it` | ask stored NOT SENT with `expected in 45 min` and its bundle; Send sets sent_at and reveals Chase/Ack/Done |

@@ -161,8 +161,9 @@ def deadline_minutes(d):
 # ---------------------------------------------------------------- hero: the first three seconds
 def waiting(inc):
     """Who holds the work, and for how long. The same request the cards below show first."""
-    open_asks = [d for d in _asks(inc["id"]) if d.get("status") != "done"]
+    open_asks = [d for d in _asks(inc["id"]) if d.get("status") != "done" and d.get("sent_at")]
     if not open_asks:
+        # a request recorded but never handed over is waiting on *you*, not on its owner
         return {"who": None, "minutes": None, "text": "No open request", "empty": True,
                 "note": "nobody is holding it — ask someone"}
     d = min(open_asks, key=lambda x: x.get("ts") or "")
@@ -294,11 +295,12 @@ def requests(ref):
         age = collab.age_minutes(d)
         limit = deadline_minutes(d)
         status = str(d.get("status") or "assigned").lower()
-        state = STATE_LABEL.get(status, status)
-        overdue = status != "done" and age > limit
+        sent_at = d.get("sent_at")
+        state = "not sent" if not sent_at else STATE_LABEL.get(status, status)
+        # a request nobody has received cannot be late: the clock starts when it is sent
+        overdue = status != "done" and bool(sent_at) and age > limit
         if overdue:
             state = "overdue"
-        sent_at = d.get("sent_at")
         asked = d.get("action") or ""
         out.append({
             "id": d["id"], "owner": d["to_"], "ask": asked,

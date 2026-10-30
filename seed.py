@@ -348,7 +348,9 @@ c.executemany("INSERT INTO delegations(ref_id,frm,to_,action,status,ts,channel,s
     ("INC-8841", "Incident Manager", "Analytics Engineering",
      "Rebuild the finance mart after replay · expected in 90 min", "assigned", M(12), "Jira", "Act"),
     ("INC-8841", "CSM", "Checkout Team",
-     "Send the customer-facing note for the 14:02 window · expected in 30 min", "assigned", M(7), "App", "Act"),
+     "Send the customer-facing note for the 14:02 window · expected in 15 min", "assigned", M(24), "App", "Act"),
+    ("INC-8841", "Incident Manager", "Checkout Team",
+     "Confirm the 14:02 deploy window with Checkout · expected in 30 min", "done", M(4), "Teams", "Act"),
     ("DOP-1001", "Data Owner", "Data Engineer",
      "Reconcile schema (contract v4) + replay", "assigned", M(14), "Jira", "Act"),
     # INC-8850 deliberately has no handoff yet: it is the incident used to demonstrate the full
@@ -361,6 +363,19 @@ c.executemany("INSERT INTO delegations(ref_id,frm,to_,action,status,ts,channel,s
 c.execute("UPDATE delegations SET sent_at = ts WHERE sent_at IS NULL")
 c.execute("UPDATE delegations SET travels = CASE channel WHEN 'Jira' THEN 'ticket + evidence' "
           "WHEN 'Teams' THEN 'thread + evidence' ELSE 'thread context' END WHERE travels IS NULL")
+# v112: two asks recorded but never handed over — the NOT SENT state, which is the only row that
+# offers Send. One sits on page 1 and one on page 2 of the Requests list, so paging itself can be
+# demonstrated with an action on either page. They are inserted AFTER the sent_at backfill on
+# purpose: an unsent ask has no sent_at, and that is what makes it unsent.
+c.executemany("INSERT INTO delegations(ref_id,frm,to_,action,status,ts,channel,stage,actor,"
+              "changed_at,sent_at,travels) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", [
+    ("INC-8841", "Incident Manager", "Checkout Team",
+     "Draft the customer note for the 14:02 window · expected in 30 min", "assigned", M(2), "App",
+     "Act", "Incident Manager", M(2), None, "trace + 1 evidence"),
+    ("INC-8841", "Incident Manager", "Data Platform",
+     "Confirm the replay scope before the batch window · expected in 30 min", "assigned", M(60), "App",
+     "Act", "Incident Manager", M(60), None, "trace + graph"),
+])
 # The initial insertion is itself the first recorded transition: the requester is the actor.
 c.execute("UPDATE delegations SET actor=frm, changed_at=ts WHERE actor IS NULL")
 c.execute("INSERT INTO delegation_events(delegation_id,status,actor,changed_at) "
