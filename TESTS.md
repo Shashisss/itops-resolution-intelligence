@@ -34,7 +34,7 @@ that
 Screens: incident × six tabs for INC-8841 and DOP-1001, the incidents list. One line of PASS/FAIL
 per screen; exit code 1 on any failure.
 
-Result at v124: 14 screens checked, 14 PASS on the deployed app (own headless Chrome).
+Result at v125: 14 screens checked, 14 PASS on the deployed app (own headless Chrome).
 
 ## `tests/test_incident_actions.py` — the Requests tab (v110)
 

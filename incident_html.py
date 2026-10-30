@@ -285,10 +285,12 @@ def _who(F, view=None):
 def _people(F):
     """Owner, whoever holds the open request, then anyone else engaged — so a previous holder
     stays visible on the thread after someone new is brought in."""
-    out = [(F["owns"], "owner", "")]
-    if F["asked"]:
-        out.append((F["asked"]["to_"], "asked",
-                    story.fmt_minutes(collab.age_minutes(F["asked"]))))
+    asked = (F["asked"] or {}).get("to_") or ""
+    owner_extra = (story.fmt_minutes(collab.age_minutes(F["asked"]))
+                   if F["asked"] and asked == F["owns"] else "")
+    out = [(F["owns"], "owner · holds the ask" if owner_extra else "owner", owner_extra)]
+    if F["asked"] and asked != F["owns"]:
+        out.append((asked, "asked", story.fmt_minutes(collab.age_minutes(F["asked"]))))
     seen = {n for n, _r, _e in out}
     if F.get("previous_owner") and F["previous_owner"] not in seen:
         out.append((F["previous_owner"], "on the thread", ""))
@@ -615,7 +617,7 @@ def _assign_pane(F, view, owners):
 
 def _timeline_pane(F, ref, view):
     """The thread as recorded, plus the composer — the comment appears where it was written."""
-    events = story._rows("SELECT kind, detail, ts FROM timeline WHERE ref_id=? ORDER BY ts DESC LIMIT 4",
+    events = story._rows("SELECT kind, detail, ts FROM timeline WHERE ref_id=? ORDER BY ts DESC LIMIT 3",
                          (ref,))
     tl = "".join(
         f'<div class="ev"><span class="ts">{esc(str(e["ts"])[11:16])}</span>'
@@ -852,7 +854,7 @@ def _tabs(F, dom, initial, view=None):
                     f'{_assign_pane(F, view, view.get("owners"))}</div>')
         # Requests expands in place and pages there; the RCA pane lists every lead in place; the
         # four remaining panes keep their overlay.
-        if name in ("Requests", "Evidence & RCA"):
+        if name in ("Requests", "Evidence & RCA", "Timeline"):
             return f'<div class="pane{" on" if name == initial else ""}" id="p{i}">{panes[name]}</div>'
         return (f'<div class="pane{" on" if name == initial else ""}" id="p{i}">{panes[name]}'
                 f'<button class="more" data-full="{esc(name)}">Show all</button>'
