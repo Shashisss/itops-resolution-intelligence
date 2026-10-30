@@ -78,14 +78,15 @@ def main():
         fail("workspace did not put the incident in the URL")
     print("ok    incident opens with a shareable URL")
 
-    back = next((b for b in at.button if "All incidents" in (b.label or "")), None)
-    if back is None:
-        fail("no back-to-list control on the workspace")
-    back.click().run()
+    # v109: the back control lives inside the incident document (?action=back).
+    at.query_params["action"] = "back"
+    at.run()
+    if at.exception:
+        fail(f"back raised: {at.exception}")
     if at.session_state.get("open_incident"):
-        fail("back-to-list left the workspace open")
+        fail("action=back did not close the workspace")
     if at.query_params.get("inc") not in (None, [], ""):
-        fail("back-to-list left a stale ?inc= parameter")
+        fail("action=back left the deep link in the URL")
     print("ok    back to list clears state and URL")
 
     at.session_state["nav"] = "Analytics"
