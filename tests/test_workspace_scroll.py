@@ -34,7 +34,7 @@ def test_the_panel_is_not_height_clamped():
     assert "overflow:hidden" in css
     assert css.count("overflow:auto") == 1, "only the overlay's body scrolls"
     panes = re.search(r"\.panes\{([^}]*)\}", css).group(1)
-    assert "overflow:hidden" in panes, "the pane band clips rather than scrolls"
+    assert "height:164px" in panes and "overflow:hidden" in panes
 
 
 def test_the_four_phases_are_named():

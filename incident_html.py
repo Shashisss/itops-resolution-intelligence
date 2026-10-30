@@ -373,9 +373,8 @@ CSS = """
 html,body{margin:0;height:100%;overflow:hidden;background:#fff;
  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
  color:var(--ink);font-size:12.5px}
-.wrap{display:grid;grid-template-rows:auto auto 1fr auto;gap:10px;height:756px;overflow:hidden;
- padding:6px 14px 4px;min-width:0}
-.hdr,.tiles{min-width:0}
+.main{height:100%;padding:8px 14px 6px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.hdr,.tiles,.tabbar,.foot{flex:0 0 auto}
 .hdr{min-height:46px}
 .hdr .bc{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:800;display:flex;gap:10px;align-items:center}
 .hdr .bc .back{color:var(--accent);text-decoration:none;text-transform:none;letter-spacing:0;font-size:10.5px}
@@ -390,7 +389,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#fff;
 .tile .k{font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:800}
 .tile .v{font-size:18px;font-weight:800;line-height:1.15;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tile .q{font-size:10px;color:var(--muted);margin-top:1px}
-.hero{display:grid;grid-template-columns:1.6fr 1fr;gap:10px;min-height:0;overflow:hidden}
+.hero{display:grid;grid-template-columns:1.6fr 1fr;gap:10px;flex:1 1 auto;min-height:210px}
 .card{border:1px solid var(--line);border-radius:12px;background:#fff;padding:8px 11px;min-width:0;display:flex;flex-direction:column}
 .card h2{margin:0 0 2px;font-size:9.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
 .graph{flex:1;width:100%;min-height:0}
@@ -416,8 +415,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#fff;
 .tab b{display:block;font-size:9.5px;color:var(--muted);font-weight:650}
 .tab.on{border-bottom-color:var(--accent);color:var(--accent);font-weight:800}
 .tab.on b{color:var(--accent)}
-.band4{display:flex;flex-direction:column;min-height:0;overflow:hidden}
-.panes{flex:1 1 auto;min-height:0;overflow:hidden}
+.panes{flex:0 0 164px;height:164px;overflow:hidden;position:relative}
 .pane{display:none;height:100%;overflow:hidden;padding:6px 2px 0}
 .pane.on{display:block}
 .ev{display:flex;gap:8px;font-size:11px;padding:2px 0;align-items:baseline;flex-wrap:wrap}
@@ -434,7 +432,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#fff;
 .act.inert{opacity:.55;cursor:not-allowed}
 .more{margin-top:2px;border:1px solid var(--line);background:#fff;border-radius:6px;padding:1px 8px;font-size:9.5px;color:var(--muted);cursor:pointer}
 .foot{display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted)}
-.ov{grid-row:1 / -1;grid-column:1;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;z-index:50}
+.ov{position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;z-index:50}
 .ov.on{display:flex}
 .ov .sheet{background:#fff;border-radius:14px;width:min(980px,92vw);height:min(660px,88vh);display:flex;flex-direction:column;padding:14px 18px}
 .ov h3{margin:0 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
@@ -476,17 +474,24 @@ def build(inc, dom, queue="", initial_tab="Timeline", action=None):
     nxt = F["next"]
     if not F["gate"].get("closed") and F["asked"]:
         act_href = "chase"
-    body = f'''<div class="wrap">
-  <div class="r1">{_header(F, queue)}</div>
-  <div class="r2">{_tiles(F)}</div>
-  <div class="r3"><section class="hero">{_graph(F)}<div class="right">{_meaning(F, act_href)}{_who(F)}</div></section></div>
-  <div class="r4 band4"><div class="tabbar">{bar}</div><div class="panes">{panes}</div></div>
-  <div class="foot" style="grid-row:4"><span>Sample data · simulated actions · build v109</span>
+    body = f'''<div class="main">
+  {_header(F, queue)}
+  {_tiles(F)}
+  <section class="hero">
+    {_graph(F)}
+    <div class="right">
+      {_meaning(F, act_href)}
+      {_who(F)}
+    </div>
+  </section>
+  <div class="tabbar">{bar}</div>
+  <div class="panes">{panes}</div>
+  <div class="foot"><span>Sample data · simulated actions · build v109</span>
     <span>{esc(F["id"])} · {esc(F["stage"])}</span></div>
-  <div class="ov" id="ov"><div class="sheet">
-    <button class="close" id="ovclose">Close</button>
-    <h3 id="ovtitle"></h3><div class="body" id="ovbody"></div>
-  </div></div>
-</div>'''
+</div>
+<div class="ov" id="ov"><div class="sheet">
+  <button class="close" id="ovclose">Close</button>
+  <h3 id="ovtitle"></h3><div class="body" id="ovbody"></div>
+</div></div>'''
     return f'''<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <style>{CSS}</style></head><body>{body}<script>{JS}</script></body></html>'''
