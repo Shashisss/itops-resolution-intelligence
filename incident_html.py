@@ -374,6 +374,8 @@ html,body{margin:0;height:100%;overflow:hidden;background:#fff;
  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
  color:var(--ink);font-size:12.5px}
 .main{height:100%;padding:8px 14px 6px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.hdr,.tiles,.tabbar,.foot{flex:0 0 auto}
+.hdr{min-height:46px}
 .hdr .bc{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:800;display:flex;gap:10px;align-items:center}
 .hdr .bc .back{color:var(--accent);text-decoration:none;text-transform:none;letter-spacing:0;font-size:10.5px}
 .hdr .row{display:flex;align-items:center;gap:10px;white-space:nowrap;overflow:hidden}
@@ -387,7 +389,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#fff;
 .tile .k{font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:800}
 .tile .v{font-size:18px;font-weight:800;line-height:1.15;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tile .q{font-size:10px;color:var(--muted);margin-top:1px}
-.hero{display:grid;grid-template-columns:1.6fr 1fr;gap:10px;flex:1;min-height:0}
+.hero{display:grid;grid-template-columns:1.6fr 1fr;gap:10px;flex:1 1 auto;min-height:210px}
 .card{border:1px solid var(--line);border-radius:12px;background:#fff;padding:8px 11px;min-width:0;display:flex;flex-direction:column}
 .card h2{margin:0 0 2px;font-size:9.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
 .graph{flex:1;width:100%;min-height:0}
@@ -413,7 +415,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#fff;
 .tab b{display:block;font-size:9.5px;color:var(--muted);font-weight:650}
 .tab.on{border-bottom-color:var(--accent);color:var(--accent);font-weight:800}
 .tab.on b{color:var(--accent)}
-.panes{height:172px;overflow:hidden;position:relative}
+.panes{flex:0 0 164px;height:164px;overflow:hidden;position:relative}
 .pane{display:none;height:100%;overflow:hidden;padding:6px 2px 0}
 .pane.on{display:block}
 .ev{display:flex;gap:8px;font-size:11px;padding:2px 0;align-items:baseline;flex-wrap:wrap}

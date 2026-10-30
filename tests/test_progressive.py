@@ -56,7 +56,7 @@ def test_the_panes_do_not_scroll_and_have_no_absolute_positioning():
     pane_rule = re.search(r"\.panes\{([^}]*)\}", css).group(1)
     assert "overflow:hidden" in pane_rule, "the pane band clips instead of scrolling"
     assert "position:absolute" not in css, "only the graph SVG may position absolutely"
-    assert "height:172px" in pane_rule, "the band is a fixed slice, so the page height is stable"
+    assert "height:164px" in pane_rule, "the band is a fixed slice, so the page height is stable"
 
 
 def test_full_view_is_client_side():
