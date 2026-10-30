@@ -374,6 +374,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#fff;
  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
  color:var(--ink);font-size:12.5px}
 .main{height:100%;padding:8px 14px 6px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.hdr{flex:0 0 auto;margin:0 0 4px}
 .hdr,.tiles,.tabbar,.foot{flex:0 0 auto}
 .hdr{min-height:46px}
 .hdr .bc{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:800;display:flex;gap:10px;align-items:center}
@@ -403,6 +404,8 @@ html,body{margin:0;height:100%;overflow:hidden;background:#fff;
 .means .next{margin-top:auto;border-top:1px solid var(--line);padding-top:6px}
 .means .next .l{font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:800}
 .means .next .a{font-size:11.5px;font-weight:650;margin:1px 0 6px}
+.means .next .btn{margin-bottom:4px}
+.means{padding-bottom:10px}
 .btn{display:block;text-align:center;text-decoration:none;border-radius:8px;padding:6px 10px;font-size:11.5px;font-weight:750;border:1px solid var(--line);color:var(--ink);background:#fff}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .who-card .who{display:flex;align-items:center;gap:8px;margin-top:4px}
