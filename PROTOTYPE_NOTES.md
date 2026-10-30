@@ -1,6 +1,6 @@
 # PROTOTYPE NOTES — Resolution Intelligence POC
 
-Build v107c · sample data · simulated actions. This is a proof of concept, **not** production.
+Build v107d · sample data · simulated actions. This is a proof of concept, **not** production.
 
 ## Persistence boundary — what survives what
 
@@ -87,6 +87,19 @@ Relationships are **structured records** in `thread_edges` (source, target, rela
 observed/inferred kind, evidence source, timestamp, rule-based confidence). UI code no longer
 builds edges by hand; `journey.thread_edges_for()` resolves a thread via the correlation model.
 Inferred relationships are labelled as hypotheses, not proven facts.
+
+## v107d — overlap and the DataOps reading
+
+- **Overlap:** the tiles had a fixed 70px height, so their content spilled 4px into the hero card at
+  1280×800. They now size to their content (`height:auto`, min 64px, overflow hidden) with 10px of
+  air below the row; the tab body cap moved 164 → 152 to keep the 768px page budget. Verified by
+  measuring the bounding boxes of tiles, hero, tabs and body at 1366×768 and 1280×800 — no
+  intersections, `scrollHeight == clientHeight` on both.
+- **A DataOps incident read like an IT one.** On DOP-1001 the first tile said "Error rate 1 vs 0
+  threshold" for a failed-run count; it now takes the record's own label ("Failed runs"). The graph's
+  service node showed a dataset id — it now shows the pipeline (`payments_bronze_ingest`). With no
+  inferred link on the thread, "What this means" no longer prints "Confidence —"; it says observed
+  links only and claims no confidence.
 
 ## v107c — the duplicate-key crash on "Show all"
 

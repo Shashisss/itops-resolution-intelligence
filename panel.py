@@ -270,7 +270,8 @@ def tiles(inc):  # noqa: F811 — replaces the v107a tiles
         wait_q = f'{story.fmt_minutes(w["minutes"])} · {w["deadline_min"]}m deadline'
     out = [
         _tile("Waiting on", w["who"] if not w["empty"] else "—", wait_q, ""),
-        _tile("Error rate", m["value"], f'vs {m["threshold"]} threshold', ""),
+        _tile("Error rate" if inc.get("service_id") else "Failed runs", m["value"],
+              f'vs {m["threshold"]} threshold', ""),
         _tile("Data freshness", f'{f["lag_min"]}m' if f else "—",
               f'SLA {f["sla_min"]}m — {f["lag_min"] // f["sla_min"]}x over' if f and f["lag_min"] >= f["sla_min"] else
               (f'SLA {f["sla_min"]}m' if f else "no record"), ""),
@@ -345,10 +346,16 @@ def _conn_line(inc):
 
 
 def _service_name(inc):
+    """The node after the dataset: the service (IT) or the pipeline that writes it (DOP)."""
     if inc.get("service_id"):
         rows = story._rows("SELECT name FROM services WHERE id=?", (inc["service_id"],))
         if rows:
             return rows[0]["name"]
+    if inc.get("pipeline_id"):
+        rows = story._rows("SELECT name FROM pipelines WHERE id=?", (inc["pipeline_id"],))
+        if rows:
+            return rows[0]["name"]
+        return inc["pipeline_id"]
     return inc.get("dataset_id") or inc["id"]
 
 
@@ -362,11 +369,15 @@ def meaning_card(inc, action_label, on_action):
     if sig:
         import agents
         score = agents.SIGNAL_SCORE.get("inferred", {}).get((sig[0]["confidence"] or "").lower())
-    pct = f'{int(round(score * 100))}%' if score is not None else "—"
+    if score is None:
+        sentence = ("Observed links only on this thread — no inference has been recorded, so no "
+                    "confidence is claimed.")
+    else:
+        sentence = (f'Upstream data is stale. Confidence {int(round(score * 100))}%, inferred — '
+                    f'nobody has confirmed it yet.')
     st.markdown(
         f'<div class="ri-card2"><div class="h">What this means</div>'
-        f'<div class="big">Upstream data is stale. Confidence {pct}, inferred — nobody has '
-        f'confirmed it yet.</div>'
+        f'<div class="big">{_esc(sentence)}</div>'
         f'<div class="nextbox"><div class="l">Do this next</div>'
         f'<div class="a">{_esc(action_label or "No action required")}</div></div></div>',
         unsafe_allow_html=True)

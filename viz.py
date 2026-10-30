@@ -373,7 +373,7 @@ div[class*="st-key-ws_panel_"]{padding:2px 8px!important}
   padding:1px 8px;color:#334155;background:#f8fafc}
 .ri-hdr .q{font-size:11px;color:var(--ri-muted);margin-left:auto}
 .ri-hdr .clock{font-size:13px;font-weight:800;color:#0f172a}
-.ri-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:2px 0 4px}
+.ri-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:2px 0 10px}
 .ri-tile{border:1px solid var(--ri-line);border-radius:10px;background:#fff;padding:6px 10px 2px;
   min-height:92px;display:flex;flex-direction:column}
 .ri-tile .k{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--ri-muted);font-weight:800}
@@ -418,10 +418,10 @@ div[class*="st-key-tab_"] button:hover{background:transparent!important;border-b
 .ri-card2 .who b{display:block;font-weight:700;color:var(--ink)}
 .ri-card2 .who i{display:block;font-style:normal;font-size:10px;color:var(--ri-muted)}
 .ri-card2 .who em{margin-left:auto;font-style:normal;font-size:10px;color:var(--ri-muted)}
-.ri-tile{min-height:62px!important;padding:4px 10px!important;height:70px;overflow:hidden}
+.ri-tile{min-height:64px!important;padding:4px 10px!important;height:auto!important;overflow:hidden}
 .ri-tile .v{font-size:17px!important}
 .ri-tile .g{height:20px!important}
-div[class*="st-key-tabbody_"]{max-height:164px;overflow:hidden}
+div[class*="st-key-tabbody_"]{max-height:152px;overflow:hidden}
 .ri-h2 .t{font-size:18px}
 </style>
 """
