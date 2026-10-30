@@ -28,13 +28,14 @@ import ask
 import ask_view
 import agents
 import sections
+import panel
 import workspace
 import realtime
 import runclock
 
 
 _RELOAD_TARGETS = (viz, journey, collab, analytics, learn, E, DE, personas, DV, workspace,
-                   command_center, shell, realtime, graph, graph_views, story, ask, ask_view, agents, sections)
+                   command_center, shell, realtime, graph, graph_views, story, ask, ask_view, agents, sections, panel)
 
 
 def _refresh_modules():
@@ -216,6 +217,65 @@ def _render_incident_detail(dom, ref, you_role):
         personas.incident_view(inc, ctx)
 
 
+ACT_STAGES = [("Correlate", "Confirm cause"), ("Act", "Apply remediation"),
+              ("Verify", "Run verification"), ("Close", "Close")]
+
+
+def _stage_functions(dom, ref, inc):
+    """The stage bodies for this domain, so the Act & verify tab can render one at a time."""
+    if dom == "DataOps":
+        return DV.stage_functions(inc, DE.load())
+    ctx = _it_ctx()
+    return personas.incident_sections(inc, ctx)
+
+
+def _act_tab(dom, ref, inc, you_role):
+    """Act & verify — the only uncapped tab, bounded by construction: one stage at a time."""
+    fns = _stage_functions(dom, ref, inc)
+    names = dict(ACT_STAGES)
+    sel = st.session_state.get(f"act_stage_{ref}")
+    if sel not in names:
+        cur = journey.lifecycle_stage(inc)
+        sel = cur if cur in names else "Act"
+        st.session_state[f"act_stage_{ref}"] = sel
+    viz.phase_stepper(journey.lifecycle_stage(inc))
+    cols = st.columns(len(ACT_STAGES))
+    for (stage, label), col in zip(ACT_STAGES, cols):
+        if col.button(label, key=f"act_{ref}_{stage}", width="stretch",
+                      type=("primary" if stage == sel else "secondary")):
+            st.session_state[f"act_stage_{ref}"] = stage
+            st.rerun()
+    prefix = "dop" if dom == "DataOps" else "it"
+    with st.container(key=f"{prefix}_step_{ref}_anchor_{sel}"):
+        fns[sel]()
+
+
+def _tab_body(name, dom, ref, inc, you_role):
+    """Everything that is not the header, the tiles or a tab header."""
+    if name == "Timeline":
+        journey.render_timeline(ref, limit=6)
+    elif name == "Requests":
+        _collab_bar(dom, ref, you_role, heading=False)
+    elif name == "Evidence & RCA":
+        _agent_panel(dom, ref, inc)
+        corr = journey.correlation_for(ref)
+        if corr:
+            st.caption(f'Shared cause with {corr["other_domain"]} {corr["other_id"]}: '
+                       f'{corr["shared_cause"]}')
+        ev = story.evidence(inc, limit=99)
+        for item in ev[:3]:
+            st.markdown(f'- {item}')
+
+    elif name == "Connections & audit":
+        graph_views.connections_panel(ref, key=f"conn_{ref}")
+        _accel_strip(inc)
+        activity_section(ref)
+    elif name == "Act & verify":
+        _act_tab(dom, ref, inc, you_role)
+    elif name == "Learn":
+        learn.panel(inc, "DataOps" if dom == "DataOps" else "IT Ops", actor=you_role)
+
+
 def _preview(dom, ref):
     """v106: selecting a row shows the drawer; opening is one deliberate click from there."""
     st.session_state["board_preview"] = {"domain": dom, "ref": ref}
@@ -304,7 +364,7 @@ def _collaborate_popover(dom, ref, inc, you_role):
                 st.rerun()
 
 
-def _collab_bar(dom, ref, you_role):
+def _collab_bar(dom, ref, you_role, heading=True):
     """Requests, with the people on the thread and one obvious way to ask for something.
 
     v106: the people line and the two controls live in the section header, not in a row of their own."""
@@ -323,7 +383,11 @@ def _collab_bar(dom, ref, you_role):
 
     _people = _participants(inc)
     _on_it = "on it — " + " · ".join(_people[:3]) + (f" +{len(_people) - 3}" if len(_people) > 3 else "")
-    viz.section("Requests", _on_it, right=_controls)
+    if heading:
+        viz.section("Requests", _on_it, right=_controls)
+    else:
+        st.caption(_on_it)
+        _controls()
     cards = story.requests(ref)
     open_cards = [c for c in cards if c["status"] != "done"]
     done_cards = [c for c in cards if c["status"] == "done"]
@@ -526,7 +590,8 @@ def _go_stage(dom, ref, stage):
     prefix = "dop" if dom == "DataOps" else "it"
     st.session_state[f"ws_mode_{ref}"] = "Act & verify (guided)"
     st.session_state[f"{prefix}_step_{ref}"] = stage
-    st.session_state[f"open_{ref}"] = f"stage:{stage}"   # v106: the section opens with the action
+    st.session_state[f"tab_{ref}"] = "Act & verify"      # v107: the promoted action lands in tab 5
+    st.session_state[f"act_stage_{ref}"] = stage
     st.session_state["_scroll_anchor"] = f"{prefix}_step_{ref}_anchor_{stage}"
 
 
@@ -563,68 +628,68 @@ def render_workspace_page(dom, ref, you_role):
     queue = f'{idx + 1} of {len(refs)} in the queue' if idx is not None else ""
 
     with st.container(key=f"ws_head_{ref}"):
-        c0, c1, c2 = st.columns([1.0, 3.9, 3.1], vertical_alignment="center")
+        c0, c1, c2 = st.columns([1.05, 6.2, 2.3], vertical_alignment="center")
         with c0:
             viz.crumb("All incidents", _close_workspace)
         with c1:
-            st.markdown(
-                f'<div class="ri-wsid"><span class="id">{inc["id"]}</span>'
-                f'<span class="chip" style="background:{tone}1a;color:{tone}">{verdict}</span>'
-                f'<span class="meta">{sev} · <b>{nxt["stage"]}</b>'
-                f'{" · " + queue if queue else ""}</span></div>',
-                unsafe_allow_html=True)
+            panel.header(inc, verdict, sev, queue, "closed" if closed else sla)
         with c2:
-            prev_col, next_col, act_col = st.columns([1.25, 1.0, 2.0], vertical_alignment="center")
-            if idx is not None and idx > 0:
-                if prev_col.button("← Previous", key="ws_prev", width="stretch"):
-                    prev_dom, prev_inc = refs[idx - 1]
-                    _open(prev_dom, prev_inc["id"])
-                    st.rerun()
-            if idx is not None and idx < len(refs) - 1:
-                if next_col.button("Next →", key="ws_next", width="stretch"):
-                    nxt_dom, nxt_inc = refs[idx + 1]
-                    _open(nxt_dom, nxt_inc["id"])
-                    st.rerun()
-            with act_col:
+            p1, p2, p3 = st.columns([0.65, 0.6, 1.95], vertical_alignment="center")
+            if idx is not None and idx > 0 and p1.button("←", key="ws_prev", width="stretch",
+                                                         help="Previous incident"):
+                prev_dom, prev_inc = refs[idx - 1]
+                _open(prev_dom, prev_inc["id"])
+                st.rerun()
+            if idx is not None and idx < len(refs) - 1 and \
+                    p2.button("→", key="ws_next", width="stretch", help="Next incident"):
+                nxt_dom, nxt_inc = refs[idx + 1]
+                _open(nxt_dom, nxt_inc["id"])
+                st.rerun()
+            with p3:
                 if action_label:
                     if action_stage == "Close" and gate["eligible"]:
                         st.button(action_label, type="primary", width="stretch", key="ws_primary",
                                   on_click=_close_now, args=(ref, you_role))
                     elif action_stage == "Close":
                         st.button("See blockers", width="stretch", key="ws_primary",
-                                  on_click=lambda: st.session_state.update(
-                                      {"ws_show_gate": True, "_scroll_anchor": f"ws_gate_{ref}"}))
+                                  on_click=_go_stage, args=(dom, ref, "Close"))
                     else:
                         st.button(action_label, type="primary", width="stretch", key="ws_primary",
                                   on_click=_go_stage, args=(dom, ref, action_stage), help=action_why)
 
     st.query_params["inc"] = ref
+    _ws_panel_css(ref)
+    panel.tiles(inc)
 
-    # v106 deep links: ?step=Correlate or ?expand=connections lands on exactly one open section.
-    # Applied once per distinct value, so the reader can then open something else.
+    # Deep links: ?tab=… selects a tab, ?step=… lands in Act & verify at that stage,
+    # ?expand=… opens the tab that now carries that section. Applied once per distinct value.
+    _tab = (st.query_params.get("tab") or "").strip()
     _step = (st.query_params.get("step") or "").strip()
     _expand = (st.query_params.get("expand") or "").strip()
-    _token = f"{_step}|{_expand}"
-    if (_step or _expand) and st.session_state.get(f"deep_{ref}") != _token:
+    _token = f"{_tab}|{_step}|{_expand}"
+    if (_tab or _step or _expand) and st.session_state.get(f"deep_{ref}") != _token:
         st.session_state[f"deep_{ref}"] = _token
         _stage = _step.title().replace("_", " ")
         if _stage in journey.LIFECYCLE:
-            st.session_state[f"open_{ref}"] = f"stage:{_stage}"
-        elif _expand in ("agents", "connections", "evidence", "activity", "record"):
-            st.session_state[f"open_{ref}"] = _expand
-    sections.init_open(inc)
+            st.session_state[f"tab_{ref}"] = "Act & verify"
+            st.session_state[f"act_stage_{ref}"] = _stage
+        elif _expand in ("agents", "evidence"):
+            st.session_state[f"tab_{ref}"] = "Evidence & RCA"
+        elif _expand in ("connections", "activity", "record"):
+            st.session_state[f"tab_{ref}"] = "Connections & audit"
 
-    _core_strip(dom, ref, inc)
-    # The page is the only scroll surface: the identity bar is a sticky child of the app's scroll
-    # container, and every stage section carries a scroll margin so an action can land on it.
-    _ws_panel_css(ref)
-    _collab_bar(dom, ref, you_role)
-    with st.container(border=True, key=f"ws_panel_{ref}"):
-        with st.container(key=f"ws_lens_{ref}"):
-            _render_incident_detail(dom, ref, you_role)
-        with st.container(key=f"ws_activity_{ref}"):
-            _extra_sections(dom, ref, inc)
-    _accel_strip(inc)
+    st.session_state[f"tabstate_{ref}"] = panel.tab_state(inc, dom)
+    active = panel.active_tab(ref, default="Timeline")
+    panel.tab_bar(ref, active)
+    if active == "Act & verify":
+        st.markdown(f'<style>.st-key-tabbody_{ref}{{max-height:none;overflow:visible}}'
+                    f'.st-key-ws_panel_{ref}{{border:none;padding:0}}</style>', unsafe_allow_html=True)
+    with st.container(key=f"ws_panel_{ref}"):
+        with st.container(key=f"tabbody_{ref}"):
+            _tab_body(active, dom, ref, inc, you_role)
+    if active in ("Timeline", "Evidence & RCA", "Connections & audit", "Requests"):
+        if panel.show_all_button(active, ref):
+            panel.full_view(active, dom, ref, inc, you_role)
 
     _anchor = st.session_state.pop("_scroll_anchor", None)
     if _anchor:

@@ -62,7 +62,8 @@ def test_open_incident_shows_workspace_and_url():
     assert not at.exception, at.exception
     text = " ".join(str(x.value) for x in at.markdown)
     text += " " + " ".join(str(b.label) for b in at.button)
-    assert "Cross-domain" in text and "SLA remaining" in text, "the core strip must be readable first"
+    assert "handoff" in text.lower() and "time left" in text.lower(), \
+        "the tiles must state the handoff and the SLA first"
     assert "Connections" in text, "the graph panel is part of the incident screen"
     assert at.session_state["open_incident"]["ref"] == "INC-8841"
     assert at.query_params.get("inc") == "INC-8841"
@@ -91,10 +92,10 @@ def test_previous_and_next_move_between_incidents():
     at = start()
     open_row(at, "INC-8841")
     first = at.session_state["open_incident"]["ref"]
-    find_button(at, "Next →").click().run()
+    at.button(key="ws_next").click().run()
     second = at.session_state["open_incident"]["ref"]
     assert second != first, "Next did not change the incident"
-    find_button(at, "← Previous").click().run()
+    at.button(key="ws_prev").click().run()
     assert at.session_state["open_incident"]["ref"] == first
 
 

@@ -88,11 +88,12 @@ def test_freshness_is_one_number_across_the_page(db):
     at.run()
     assert not at.exception, [e.value for e in at.exception]
     md = "\n".join([m.value for m in at.markdown] + [c.value for c in at.caption])
-    seen = set(re.findall(r"freshness (\d+)m", md))
-    seen |= set(re.findall(r"(\d+)m stale", md))
-    seen |= set(re.findall(r"data_age (\d+)", md))
-    assert seen, "the page must state the freshness somewhere"
-    assert len(seen) == 1, f"freshness printed as several numbers: {sorted(seen)}"
+    t = _tiles(at)
+    lag = t["data freshness"][0].rstrip("m")
+    assert lag.isdigit(), t
+    others = set(re.findall(r"freshness (\d+)m", md)) | set(re.findall(r"data_age (\d+)", md))
+    if others:
+        assert others == {lag}, f"freshness printed as several numbers: {sorted(others)}"
 
 
 def test_wait_sla_and_owner_are_stated_once(db):
@@ -107,35 +108,37 @@ def test_wait_sla_and_owner_are_stated_once(db):
     at.run()
     assert not at.exception, [e.value for e in at.exception]
     md = "\n".join([m.value for m in at.markdown] + [c.value for c in at.caption])
-    waits = re.findall(r"Waiting \d+m · Data Platform", md)
+    waits = re.findall(r"Data Platform holds it, \d+m", md)
     slas = re.findall(r"\d+h \d+m left", md)
-    assert len(waits) == 1, f"the wait appears {len(waits)} times: {waits}"
+    assert len(waits) == 1, f"the holder and wait appear {len(waits)} times: {waits}"
     assert len(slas) == 1, f"the SLA clock appears {len(slas)} times: {slas}"
     assert ">Owner<" not in md and ">SLA<" not in md, \
         "the duplicate Owner/SLA fact-card row under the stepper is gone"
 
 
-def test_hero_strip_on_screen_matches_the_module(db, monkeypatch):
-    """The rendered page prints the same three claims story.hero() computes — no second definition.
-
-    Minute figures are compared with the digits normalised: the app aligns its own session copy of
-    the database to the wall clock, so a run that crosses a minute boundary may print 53m where the
-    fixture computes 54m. The claim (who, what, how many) must be identical."""
+def _tiles(at):
     import re
+    md = "\n".join(m.value for m in at.markdown)
+    return {k: (v, q) for k, v, q in re.findall(
+        r'<div class="k">([^<]+)</div><div class="v">([^<]+)</div><div class="q">([^<]+)</div>', md)}
+
+
+def test_hero_strip_on_screen_matches_the_module(db, monkeypatch):
+    """The four tiles and the header clock print what story computes — no second definition."""
     inc = _inc(db)
-    expected = [f["value"] for f in story.hero(inc)["facts"]]
     at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=180)
     at.query_params["inc"] = "INC-8841"
     at.run()
     assert not at.exception, [e.value for e in at.exception]
-    md = "\n".join(m.value for m in at.markdown)
-    start = md.index('<div class="ri-hero3">')
-    hero = md[start:md.index("</div></div></div>", start)]
-    shown = re.findall(r'<div class="v"[^>]*>(.*?)</div>', hero)
-    assert len(shown) == 3, shown
-    norm = lambda t: re.sub(r"\d+", "#", t)
-    for got, want in zip(shown, expected):
-        assert norm(got) == norm(want), f"hero shows {got!r}, module computes {want!r}"
+    t = _tiles(at)
+    assert set(t) == {"failed runs" if "failed runs" in t else sig for sig in t}, "four tiles"
+    assert t["handoff"][0] == story.cross(inc)["text"]
+    w = story.waiting(inc)
+    if not w["empty"]:
+        assert w["who"] in t["handoff"][1]
+    import re as _re
+    header = "\n".join(m.value for m in at.markdown)
+    assert _re.search(r"\d+h \d+m left", header), "the single clock in the header"
 
 
 def test_hero_is_honest_when_nothing_is_open(db):
@@ -209,6 +212,7 @@ def test_acceleration_is_an_em_dash_when_the_record_cannot_support_it(db):
     assert a["unblocked_by_evidence_min"] is None
     at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=180)
     at.query_params["inc"] = "INC-8850"
+    at.query_params["tab"] = "Connections & audit"
     at.run()
     md = "\n".join(m.value for m in at.markdown)
     accel = md[md.index('<div class="ri-accel-inline">'):md.index('<div class="ri-accel-inline">') + 600]

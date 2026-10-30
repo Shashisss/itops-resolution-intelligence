@@ -1,6 +1,6 @@
 # PROTOTYPE NOTES — Resolution Intelligence POC
 
-Build v106 · sample data · simulated actions. This is a proof of concept, **not** production.
+Build v107a · sample data · simulated actions. This is a proof of concept, **not** production.
 
 ## Persistence boundary — what survives what
 
@@ -87,6 +87,27 @@ Relationships are **structured records** in `thread_edges` (source, target, rela
 observed/inferred kind, evidence source, timestamp, rule-based confidence). UI code no longer
 builds edges by hand; `journey.thread_edges_for()` resolves a thread via the correlation model.
 Inferred relationships are labelled as hypotheses, not proven facts.
+
+## One viewport (v107a)
+
+The incident page is one screen: a header row, four tiles, six tabs. No scrolling at 1366×768 or
+1280×800 (measured in the browser: 768/768 and 800/800 — the page never overflows).
+
+**Header** — title, P2 + stage pills, queue position, the single clock. Nothing else.
+**Tiles** (92–100px) — error rate against its threshold, data freshness against its SLA, the share of
+the SLA already used, and the handoff route with the holder and their wait. One number and one
+qualifying line each; the wait, the domains and the SLA live here and nowhere else.
+**Tabs** — Timeline · Requests · Evidence & RCA · Connections & audit · Act & verify · Learn. Each
+header carries its state in words (`Requests · 2 open · 1 OVERDUE`, `Learn · draft, not saved`), so a
+collapsed tab never hides a critical fact. Content is capped at 224px; "Show all" opens a full-height
+dialog. Only **Act & verify** is uncapped — it is bounded by construction, one stage at a time, and it
+holds Confirm cause, Apply remediation, Run verification and Close (gap-gated), so an incident can be
+closed without opening any overlay.
+
+Deep links: `?tab=Connections & audit`, `?step=Close` (lands in Act & verify at Close), `?expand=agents`
+(maps to Evidence & RCA).
+
+v107b replaces the leftover strip/chain space with the dependency-graph hero, inside the same cap.
 
 ## Progressive disclosure (v106)
 

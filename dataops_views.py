@@ -201,7 +201,7 @@ def verify_panel(inc, data):
 
 
 # ---------------------------------------------------------------- personas
-def pipeline_view(inc, data):
+def pipeline_view(inc, data, fns_only=False):
     """One scroll: the pipeline incident with every stage as a section, all anchors kept."""
     context_header(inc, data)
 
@@ -297,7 +297,14 @@ def pipeline_view(inc, data):
     stage_fns = {"Detect": detect, "Triage": triage, "Investigate": investigate,
                  "Correlate": correlate, "Act": act, "Verify": lambda: verify_panel(inc, data),
                  "Close": close, "Learn": learn_stage}
+    if fns_only:
+        return stage_fns
     sections.accordion_stages(inc, stage_fns, DOP_STEP_HELP, DOP_HANDOFFS, "dop_step")
+
+
+def stage_functions(inc, data):
+    """The stage bodies on their own, for the v107 tab that renders one at a time."""
+    return pipeline_view(inc, data, fns_only=True)
 
 
 def data_engineer_view(inc, data):

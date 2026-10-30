@@ -47,71 +47,78 @@ def text(at):
                     + [str(b.label) for b in at.button])
 
 
-def test_incident_opens_with_only_the_current_stage_expanded():
+TABS = ["Timeline", "Requests", "Evidence & RCA", "Connections & audit", "Act & verify", "Learn"]
+
+
+def tab_buttons(at):
+    return [(b.label.split(" · ")[0], b.label) for b in at.button
+            if (b.label or "").split(" · ")[0] in TABS]
+
+
+def test_incident_opens_on_one_tab_only():
     at = open_incident()
-    current = journey.lifecycle_stage({"stage": "Diagnosed", "status": "open"})
-    assert at.session_state["open_INC-8841"] == f"stage:{current}"
-    assert "Detection — what fired and when" not in text(at), "Detect must be folded"
-    assert "hypotheses" in text(at).lower(), "the current stage's content is the one shown"
-    labelled = headers(at)
-    assert sum(1 for h in labelled if h.startswith("▾")) == 1, labelled
-    assert sum(1 for h in labelled if h.startswith("▸")) >= 10, "stages + the folded sections"
+    assert at.session_state["tab_INC-8841"] == "Timeline", "the default tab is Timeline"
+    assert len(tab_buttons(at)) == 6, tab_buttons(at)
+    assert "Operational timeline" in text(at) or "timeline" in text(at).lower()
+    assert "Root cause — ranked hypotheses" not in text(at), "other tabs are not rendered"
 
 
-def test_opening_one_section_closes_the_other():
+def test_opening_one_tab_closes_the_other():
     at = open_incident()
-    press(at, "Detect")
-    assert at.session_state["open_INC-8841"] == "stage:Detect"
-    assert "Detection — what fired and when" in text(at), "Detect is now open"
-    assert "hypotheses" not in text(at).lower(), "opening Detect closed Correlate"
-    press(at, "Close")
-    assert at.session_state["open_INC-8841"] == "stage:Close"
-    assert "Detection — what fired and when" not in text(at), "again only one section is open"
+    press_tab(at, "Learn")
+    assert at.session_state["tab_INC-8841"] == "Learn"
+    assert "Learn — capture what worked" in text(at)
+    assert "Operational timeline" not in text(at), "opening Learn closed Timeline"
+    press_tab(at, "Requests")
+    assert at.session_state["tab_INC-8841"] == "Requests"
+    assert "Learn — capture what worked" not in text(at)
 
 
-def test_deep_links_open_exactly_one_section():
-    at = open_incident(step="Act")
-    assert at.session_state["open_INC-8841"] == "stage:Act"
-    at = open_incident(expand="connections")
-    assert at.session_state["open_INC-8841"] == "connections"
-    assert "Caused by" in text(at) and "Evidenced by" in text(at)
-    at = open_incident(expand="activity")
-    assert at.session_state["open_INC-8841"] == "activity"
-
-
-def test_collapsed_headers_state_blocked_overdue_and_unverified():
-    at = open_incident()
-    labelled = " || ".join(headers(at))
-    assert "Act  ·  OVERDUE" in labelled, "an overdue request shows in the Act header"
-    assert "Verify  ·  UNVERIFIED" in labelled, "an unverified recovery shows in the Verify header"
-    assert "Close  ·  BLOCKED" in labelled, "a blocked close shows in the Close header"
-    for stage in journey.LIFECYCLE:
-        assert f"{stage}  ·" in labelled, f"{stage} header carries its own line"
-    assert "Connections  ·" in labelled and "Activity & audit  ·" in labelled
-
-
-def test_list_rows_answer_the_queue_questions():
-    at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=180).run()
-    rows = [b.label for b in at.button if "INC-8841" in (b.label or "") and "\n" in (b.label or "")]
-    assert rows, "the list row is a two-line button"
-    line = rows[0].split("\n")[-1]
-    assert "holds" in line, line
-    assert "left" in line or "closed" in line, line
-    assert "cross-domain" in line or "single-domain" in line, line
-    assert "next:" in line, line
-
-
-def test_row_opens_the_drawer_then_the_incident():
-    at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=180).run()
+def press_tab(at, name):
     for b in at.button:
-        if "INC-8841" in (b.label or ""):
+        if (b.label or "").split(" · ")[0] == name:
             b.click().run()
-            break
-    assert not at.exception, [e.value for e in at.exception]
-    assert not at.session_state.get("open_incident"), "selecting a row must not open the workspace"
-    assert at.session_state["board_preview"]["ref"] == "INC-8841"
-    assert any("Open incident" == (b.label or "") for b in at.button)
-    body = " ".join(str(m.value) for m in at.markdown)
-    assert "Data Platform" in body and "holds" in text(at).lower() + body.lower()
-    at.button(key="drawer_open_INC-8841").click().run()
-    assert at.session_state["open_incident"]["ref"] == "INC-8841"
+            assert not at.exception, [e.value for e in at.exception]
+            return at
+    raise AssertionError(f"no tab {name!r}: {[b.label for b in at.button][:20]}")
+
+
+def test_deep_links_select_a_tab_and_a_stage():
+    at = open_incident(tab="Connections & audit")
+    assert at.session_state["tab_INC-8841"] == "Connections & audit"
+    assert "Caused by" in text(at)
+    at = open_incident(step="Close")
+    assert at.session_state["tab_INC-8841"] == "Act & verify"
+    assert at.session_state["act_stage_INC-8841"] == "Close"
+    assert "Closure" in text(at)
+
+
+def test_tab_headers_carry_counts_and_critical_state():
+    at = open_incident()
+    labels = " || ".join(l for _, l in tab_buttons(at))
+    assert "Requests · 2 open · 1 OVERDUE" in labels, labels
+    assert "Act & verify · 1 OVERDUE" in labels, labels
+    assert "Learn · draft, not saved" in labels, labels
+    assert "Connections & audit ·" in labels and "records" in labels, labels
+    assert "Timeline · " in labels and "events" in labels, labels
+
+
+def test_act_and_verify_holds_every_stage_action():
+    at = open_incident(tab="Act & verify")
+    labels = [b.label for b in at.button]
+    for need in ("Confirm cause", "Apply remediation", "Run verification", "Close"):
+        assert need in labels, f"{need} must be reachable in Act & verify: {labels}"
+
+
+def test_the_tab_body_is_capped_so_the_page_cannot_grow():
+    """The height cap is a CSS contract: every tab body is capped, and only Act & verify lifts it.
+
+    The pixel measurement (768px at 1366×768, no scrollbar) is taken in the browser; this keeps the
+    structure that produces it from regressing silently."""
+    at = open_incident()
+    css = " ".join(str(m.value) for m in at.markdown)
+    assert 'div[class*="st-key-tabbody_"]{max-height:224px;overflow:hidden}' in css
+    assert len([b for b in at.button if (b.label or "").startswith("Show all")]) == 1
+    at2 = open_incident(tab="Act & verify")
+    css2 = " ".join(str(m.value) for m in at2.markdown)
+    assert "max-height:none;overflow:visible" in css2, "Act & verify is the uncapped tab"

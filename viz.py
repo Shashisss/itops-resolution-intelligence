@@ -365,6 +365,25 @@ div[class*="st-key-acc_group_"] [data-testid="stVerticalBlockBorderWrapper"]{pad
 /* v106: one tight stack on the incident screen — the page is a list, not a deck of cards */
 [data-testid="stMainBlockContainer"] > div > [data-testid="stVerticalBlock"]{gap:6px!important}
 div[class*="st-key-ws_panel_"]{padding:2px 8px!important}
+/* ---- v107a: one header row, four instrument tiles, six tabs ------------------------------- */
+.ri-hdr{display:flex;align-items:center;gap:10px;flex-wrap:nowrap;overflow:hidden;white-space:nowrap}
+.ri-hdr .id{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:800;font-size:16px}
+.ri-hdr .t{font-size:12.5px;color:#475569;overflow:hidden;text-overflow:ellipsis;max-width:38ch}
+.ri-hdr .pill{font-size:10.5px;font-weight:750;border:1px solid var(--ri-line);border-radius:999px;
+  padding:1px 8px;color:#334155;background:#f8fafc}
+.ri-hdr .q{font-size:11px;color:var(--ri-muted);margin-left:auto}
+.ri-hdr .clock{font-size:13px;font-weight:800;color:#0f172a}
+.ri-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:2px 0 4px}
+.ri-tile{border:1px solid var(--ri-line);border-radius:10px;background:#fff;padding:6px 10px 2px;
+  min-height:92px;display:flex;flex-direction:column}
+.ri-tile .k{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--ri-muted);font-weight:800}
+.ri-tile .v{font-size:19px;font-weight:800;color:var(--ri-ink);line-height:1.15;margin-top:1px}
+.ri-tile .q{font-size:10.5px;color:var(--ri-muted)}
+.ri-tile .g{margin-top:auto;height:40px;display:flex;align-items:center}
+div[class*="st-key-tabbody_"]{max-height:224px;overflow:hidden}
+div[class*="st-key-tab_"] button{font-size:11px!important;padding:2px 6px!important;min-height:30px!important}
+div[class*="st-key-tab_"] button p{font-size:11px!important;line-height:1.15!important;white-space:normal!important}
+.ri-hdr .t{max-width:26ch}
 </style>
 """
 

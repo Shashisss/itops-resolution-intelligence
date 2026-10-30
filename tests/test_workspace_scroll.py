@@ -115,9 +115,11 @@ def test_guided_walkthrough_step_is_remembered_per_incident():
 
 
 def test_dataops_workspace_is_the_same_one_scroll_with_the_same_anchors():
-    """v99 removed the lens switch and the step control: both domains render every stage as an
-    anchored section in one scroll, and a stage action still lands on its own section."""
+    """v107: the lifecycle lives in the Act & verify tab, one stage at a time, with the same anchors
+    and the same phase names."""
     at = open_incident("DOP-1001")
+    at.session_state["tab_DOP-1001"] = "Act & verify"
+    at.run()
     assert not at.exception, at.exception
     text = all_markdown(at) + " " + " ".join(str(b.label) for b in at.button)
     assert "Connections" in text, "the incident screen carries the connections section"
