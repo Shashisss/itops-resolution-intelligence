@@ -414,7 +414,7 @@ def render_workspace_page(dom, ref, you_role):
     _initial = next((t for t in incident_html.TAB_NAMES if t.lower() == _tab), "Timeline")
     st.query_params["inc"] = ref
     _html = incident_html.build(inc, dom, queue=queue, initial_tab=_initial)
-    components.html(_html, height=704, scrolling=False)
+    components.html(_html, height=688, scrolling=False)
 
     _anchor = st.session_state.pop("_scroll_anchor", None)
     if _anchor:
