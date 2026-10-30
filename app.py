@@ -103,6 +103,15 @@ if _needs_seed():
 import clock  # noqa: E402
 import build  # noqa: E402
 import store  # noqa: E402
+
+# clock and store are imported after the reload block (the seed needs them first), so a hot reload
+# would keep their old code. They are exactly where stale code is invisible but wrong: the demo
+# clock decides every relative time, and store decides which database the session reads.
+for _m in (clock, store):
+    try:
+        importlib.reload(_m)
+    except Exception as _exc:  # noqa: BLE001 — same rule as above: report, never hide
+        _RELOAD_FAILURES.append({"module": getattr(_m, "__name__", str(_m)), "error": str(_exc)})
 build.info.cache_clear()   # a hot reload swaps app.py without restarting the process
 clock.align()
 runclock.begin()   # one clock for this render — no 60m beside 61m for the same fact
