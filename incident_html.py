@@ -332,8 +332,16 @@ def _badge(r):
 
 
 def _badge_html(r):
+    """The state word, plus the decision when the clock would otherwise hide it.
+
+    Overdue outranks every other state (it is the fact not to miss), but on its own it hides the
+    answer: an overdue ask that has just been acknowledged would read OVERDUE before and after the
+    click. So the acknowledgement is printed beside it."""
     label, cls = _badge(r)
-    return f'<span class="st {cls}">{esc(label)}</span>'
+    out = f'<span class="st {cls}">{esc(label)}</span>'
+    if r["overdue"] and r["status"] == "accepted":
+        out += '<span class="st ok">ACKNOWLEDGED</span>'
+    return out
 
 
 def _req_acts(r, ref, full, page):

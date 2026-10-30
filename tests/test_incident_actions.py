@@ -258,6 +258,18 @@ def test_send_is_refused_once_the_request_is_already_sent(db):
     assert _ask(target["id"])["sent_at"] == before, "a second send must not rewrite the first"
 
 
+def test_acknowledging_an_overdue_ask_shows_both_facts(db):
+    """Overdue outranks the state word, so the acknowledgement is printed beside it — otherwise the
+    click looks like it did nothing."""
+    overdue = next(r for r in _asks() if r["overdue"] and r["status"] == "assigned")
+    _run(tab="Requests", full="1", page="1", action="ack", target=overdue["id"])
+    after = next(r for r in _asks() if r["id"] == overdue["id"])
+    assert after["status"] == "accepted" and after["overdue"]
+    h = _html(view={"full": True, "page": 1}) + _html(view={"full": True, "page": 2})
+    row = _row_for(h, overdue["id"])
+    assert "OVERDUE" in row and "ACKNOWLEDGED" in row, row[:200]
+
+
 def test_chase_with_a_target_logs_it_against_that_request(db):
     target = next(r for r in _asks() if r["owner"] == "Data Platform")
     at = _run(tab="Requests", action="chase", target=target["id"])
