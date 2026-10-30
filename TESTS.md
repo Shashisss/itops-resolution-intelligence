@@ -4,7 +4,7 @@ Two layers, both runnable without a browser.
 
 ```bash
 python3 -m pip install -r requirements-dev.txt
-python3 -m pytest tests -q          # 189 tests, ~44s
+python3 -m pytest tests -q          # 193 tests, ~42s
 python3 scripts/layout_check.py http://localhost:8501   # layout audit — launches its own headless Chrome
 python3 scripts/smoke.py            # deployment smoke test, ~5s
 ```
@@ -34,7 +34,7 @@ that
 Screens: incident × six tabs for INC-8841 and DOP-1001, the incidents list. One line of PASS/FAIL
 per screen; exit code 1 on any failure.
 
-Result at v128: 14 screens checked, 14 PASS on the deployed app (own headless Chrome).
+Result at v129: 14 screens checked, 14 PASS on the deployed app (own headless Chrome).
 
 ## `tests/test_incident_actions.py` — the Requests tab (v110)
 
@@ -96,6 +96,10 @@ re-rendered document.
 | `test_learn_save_requires_a_root_cause` | empty form saves nothing |
 | `test_the_learn_form_is_inline_and_prefilled` | inline form, four fields, pre-filled from the record |
 | `test_the_act_and_verify_pane_names_every_phase` | Confirm cause / Apply / Verify / Close all present |
+| `test_inc_8850_is_offered_its_own_plan_not_the_payments_replay` | an Orders API incident gets its own rollback plan, never the payments replay |
+| `test_inc_8841_keeps_its_own_plan` | INC-8841 keeps the schema/replay plan |
+| `test_an_incident_with_no_plan_says_so_and_offers_nothing` | DOP-1002 has no plan: the pane says so, the controls are unavailable, nothing is borrowed |
+| `test_verification_checks_the_metrics_that_are_breaching_here` | INC-8850 is checked on its latency, not on the payments error rate |
 
 ## `tests/test_rca_and_gate.py` — leads and the close gate (v111)
 

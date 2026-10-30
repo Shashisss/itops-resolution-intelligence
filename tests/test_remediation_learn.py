@@ -55,6 +55,45 @@ def db(tmp_path, monkeypatch):
     return dst
 
 
+def _inc_ref(ref):
+    con = sqlite3.connect(collab.DB)
+    con.row_factory = sqlite3.Row
+    table = "dop_incidents" if ref.startswith("DOP") else "incidents"
+    row = dict(con.execute(f"SELECT * FROM {table} WHERE id=?", (ref,)).fetchone())
+    con.close()
+    return row
+
+
+def _plan_for(ref):
+    import engine
+    if ref.startswith("DOP"):
+        return next((o for o in DE.DOP_REMEDIATION if ref in (o.get("threads") or ())), None)
+    return next((o for o in engine.IT_REMEDIATION if ref in (o.get("threads") or ())), None)
+
+
+def _html_for(ref, tab, plan="auto"):
+    inc = _inc_ref(ref)
+    if plan == "auto":
+        p = _plan_for(ref)
+        plan = ({"id": p["id"], "label": p["label"], "mode": p["mode"], "risk": p["risk"],
+                 "needs_approval": p["mode"] == "Human approval", "applied": False,
+                 "approved_at": "", "applied_at": "", "verdict": "", "checks": []} if p else None)
+    return incident_html.build(inc, "DataOps" if ref.startswith("DOP") else "IT Ops",
+                               initial_tab=tab, view={"plan": plan, "tab": tab})
+
+
+def _it_ctx():
+    import engine
+    return engine.load_ctx() if hasattr(engine, "load_ctx") else _ctx()
+
+
+def _ctx():
+    import engine
+    sv, ed, incs, ch, me, G = engine.load()
+    return {"services": sv, "edges": ed, "incidents": incs, "changes": ch, "metrics": me,
+            "G": G, "kpis": engine.load_kpis()}
+
+
 def _inc(path=None):
     con = sqlite3.connect(path or collab.DB)
     con.row_factory = sqlite3.Row
@@ -237,3 +276,47 @@ def test_the_act_and_verify_pane_names_every_phase(db):
     h = _html()
     for label in ("Confirm cause", "Apply remediation", "Run verification", "Close incident"):
         assert label in h, label
+
+
+# ---------------------------------------------------------------- the plan belongs to the incident
+def test_inc_8850_is_offered_its_own_plan_not_the_payments_replay(db):
+    """An Orders API incident cannot be fixed by replaying the payments pipeline."""
+    plan = _plan_for("INC-8850")
+    assert plan, "INC-8850 has its own recorded plan"
+    assert "orders" in plan["label"].lower() or "24.10" in plan["label"], plan["label"]
+    assert "payments_gold" not in plan["label"] and "replay the pipeline" not in plan["label"]
+    h = _html_for("INC-8850", "Act & verify")
+    assert "Roll back release 24.10" in h
+    assert "payments_gold" not in h, "no borrowed remediation text"
+
+
+def test_inc_8841_keeps_its_own_plan(db):
+    plan = _plan_for("INC-8841")
+    assert "payments_gold" in plan["label"]
+    assert "Roll back release 24.10" not in _html_for("INC-8841", "Act & verify")
+
+
+def test_an_incident_with_no_plan_says_so_and_offers_nothing(db):
+    """No plan in the record → the pane says it and the controls are unavailable with the reason.
+
+    DOP-1002 is the honest case: the recorded DataOps plan is bound to DOP-1001, so this thread has
+    none — and must not be handed its neighbour's replay."""
+    assert _plan_for("DOP-1002") is None, "the record has no plan for DOP-1002"
+    at = _run(inc="DOP-1002", tab="Act & verify", action="approve")
+    assert "No remediation plan is recorded" in _flash(at)
+    h = _html_for("DOP-1002", "Act & verify", plan=None)
+    assert "no remediation plan recorded for this incident" in h
+    assert 'action=approve' not in h and 'action=apply' not in h, "no controls without a plan"
+    assert "no plan recorded for this incident" in h
+    assert journey.remediation("DOP-1002") is None
+    assert "payments_bronze_ingest" not in h, "a neighbour's plan must not be borrowed"
+
+
+def test_verification_checks_the_metrics_that_are_breaching_here(db):
+    """INC-8850's check is its latency, not the payments error rate."""
+    import engine
+    option = next(o for o in engine.IT_REMEDIATION if "INC-8850" in (o.get("threads") or ()))
+    checks = engine.it_verification(_inc_ref("INC-8850"), _it_ctx(), option, applied=True)
+    names = " ".join(c["check"].lower() for c in checks)
+    assert "p95" in names or "latency" in names, names
+    assert "error rate" not in names, "a payments check leaked into an orders incident"

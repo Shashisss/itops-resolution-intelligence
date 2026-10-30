@@ -773,8 +773,12 @@ def _plan_rows(ref, plan):
     Without a plan (a caller that only builds the document) the rows are shown as refusals with
     their reason, so the phases are never silently missing from the screen."""
     if not plan:
-        return (_act_row(ref, "Apply remediation", "", "no remediation plan for this record", "blocked")
-                + _act_row(ref, "Run verification", "", "no remediation plan for this record", "blocked"))
+        # No borrowed plan: say it plainly and leave the controls unavailable, with the reason.
+        return ('<div class="planline none"><b>To fix</b> no remediation plan recorded for this '
+                'incident<i>—</i></div>'
+                + _act_row(ref, "Approve remediation", "", "no plan recorded for this incident", "blocked")
+                + _act_row(ref, "Apply remediation", "", "no plan recorded for this incident", "blocked")
+                + _act_row(ref, "Run verification", "", "no plan recorded for this incident", "blocked"))
     # What would actually be applied, and who has to say yes to it — stated before the controls,
     # because "Apply remediation" on its own does not tell anyone what they are approving.
     gate = plan.get("mode") or ("Human approval" if plan.get("needs_approval") else "Policy controlled")
@@ -1063,6 +1067,8 @@ html,body{margin:0;height:100%;overflow:hidden;background:#fff;
  border:1px dashed #c7d2fe;background:#f5f7ff;border-radius:7px;padding:2px 7px;margin:0 0 3px;
  white-space:nowrap;overflow:hidden}
 .planline b{font-size:8.5px;text-transform:uppercase;letter-spacing:.04em;color:#4f46e5;flex:0 0 auto}
+.planline.none{background:#fff7ed;border-color:#fdba74;color:#7c2d12}
+.planline.none i{display:none}
 .planline i{font-style:normal;color:var(--muted);margin-left:auto;flex:0 0 auto}
 .act.inert{opacity:.55;cursor:not-allowed}
 .act.blocked{opacity:1;border-color:#fecaca;background:#fff5f5}

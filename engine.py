@@ -244,18 +244,28 @@ def change_risk(change, G, services, incidents):
 # Remediation options — the OUTCOME depends on the action chosen (not scripted to pass).
 # outcomes map metric-key -> (observed value after, passed?)
 IT_REMEDIATION = [
-    {"id": "A", "label": "Reconcile source schema (contract v4), replay the pipeline, refresh payments_gold",
+    # ``threads`` is the record: a plan belongs to the incident(s) it was written for. An incident
+    # that appears in no option has no plan, and the screen says that rather than borrowing one.
+    {"id": "A", "threads": ("INC-8841",),
+     "label": "Reconcile source schema (contract v4), replay the pipeline, refresh payments_gold",
      "mode": "Human approval", "risk": "High (production data + service)",
      "outcomes": {"data_age_min": (5.0, True), "error_rate_pct": (0.4, True),
                   "active_connections": (600.0, True), "kpi": (98.5, True)}},
-    {"id": "B", "label": "Restart the payment service only (no data fix)", "mode": "Policy controlled",
+    {"id": "B", "threads": ("INC-8841",),
+     "label": "Restart the payment service only (no data fix)", "mode": "Policy controlled",
      "risk": "Medium",
      "outcomes": {"data_age_min": (45.0, False), "error_rate_pct": (0.9, True),
                   "active_connections": (690.0, True), "kpi": (93.0, False)}},
-    {"id": "C", "label": "Dismiss as transient (no fix)", "mode": "Human approval",
+    {"id": "C", "threads": ("INC-8841",),
+     "label": "Dismiss as transient (no fix)", "mode": "Human approval",
      "risk": "High",
      "outcomes": {"data_age_min": (45.0, False), "error_rate_pct": (8.0, False),
                   "active_connections": (720.0, False), "kpi": (90.0, False)}},
+    # A different incident, a different fix: rolling back a release is not replaying a pipeline.
+    {"id": "OR24", "threads": ("INC-8850",),
+     "label": "Roll back release 24.10 on its_orders_api and re-run the latency baseline",
+     "mode": "Human approval", "risk": "High (production rollback)",
+     "outcomes": {"p95_latency_ms": (420.0, True), "kpi": (99.0, True)}},
 ]
 _METRIC_LABELS = {"data_age_min": "Data age (min)", "error_rate_pct": "Error rate (%)",
                   "active_connections": "DB connections", "p95_latency_ms": "Latency (p95, ms)"}
@@ -271,14 +281,16 @@ def it_verification(inc, ctx, option, applied=True):
     biz = business_service(G, dependency_paths(G, inc["service_id"])[0], services)
     k = next((x for x in kpis if x["business_service"] == biz), None)
     rows = []
-    for key in ["data_age_min", "error_rate_pct", "active_connections"]:
-        if key in breaching:
-            m = breaching[key]
-            after, ok = option["outcomes"].get(key, (m["value"], False))
-            rows.append({"check": _METRIC_LABELS[key], "before": f'{m["value"]:.1f}',
-                         "threshold checked": f'< {m["threshold"]:.0f}',
-                         "after (simulated)": f'{after:.1f}' if applied else "—",
-                         "result": ("✅ pass" if ok else "❌ fail") if applied else "⏳ pending"})
+    # every metric that is actually breaching for this incident — not a fixed list of three, which
+    # would leave a latency incident with nothing checked and silently "verifiable"
+    for key, m in sorted(breaching.items(), key=lambda kv: kv[1]["value"] / kv[1]["threshold"],
+                         reverse=True):
+        after, ok = option["outcomes"].get(key, (m["value"], False))
+        rows.append({"check": _METRIC_LABELS.get(key, key.replace("_", " ")),
+                     "before": f'{m["value"]:.1f}',
+                     "threshold checked": f'< {m["threshold"]:.0f}',
+                     "after (simulated)": f'{after:.1f}' if applied else "—",
+                     "result": ("✅ pass" if ok else "❌ fail") if applied else "⏳ pending"})
     if k:
         after, ok = option["outcomes"].get("kpi", (k["current"], False))
         rows.append({"check": f'Business KPI — {k["metric"].replace("_"," ")}',

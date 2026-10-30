@@ -277,12 +277,13 @@ def _remediation_plan(dom, inc):
     One option is offered — the one the app's own recommend() points at — with its mode, so the
     pane can show why it is gated instead of pretending every action is one click."""
     try:
-        if dom == "DataOps":
-            options = DE.DOP_REMEDIATION
-        else:
-            options = E.IT_REMEDIATION
-        option = options[0]
+        options = DE.DOP_REMEDIATION if dom == "DataOps" else E.IT_REMEDIATION
     except Exception:  # noqa: BLE001
+        return None
+    # Only a plan recorded for THIS incident. The options carry the threads they were written for;
+    # an Orders API incident has no business offering the payments replay.
+    option = next((o for o in options if inc["id"] in (o.get("threads") or ())), None)
+    if option is None:
         return None
     rec = journey.remediation(inc["id"]) or {}
     res = journey.resolution_record(inc["id"]) or {}
@@ -398,7 +399,11 @@ def _run_incident_action(dom, ref, you_role, act, target=None):
         st.session_state["flash"] = (f'Ask recorded for {_to} ({_due} min) — NOT SENT. '
                                      "Send it from the Requests tab.")
     elif act == "approve":
-        plan = _remediation_plan(dom, inc) or {}
+        plan = _remediation_plan(dom, inc)
+        if not plan:
+            st.session_state["flash"] = ("No remediation plan is recorded for this incident — "
+                                         "there is nothing to approve.")
+            return
         try:
             when = journey.approve_remediation(ref, plan.get("id"), you_role)
             journey.add_event(ref, "dataops" if dom == "DataOps" else "itops", "verify",
@@ -408,7 +413,11 @@ def _run_incident_action(dom, ref, you_role, act, target=None):
         except ValueError as exc:
             st.session_state["flash"] = f"Not approved: {exc}"
     elif act == "apply":
-        plan = _remediation_plan(dom, inc) or {}
+        plan = _remediation_plan(dom, inc)
+        if not plan:
+            st.session_state["flash"] = ("No remediation plan is recorded for this incident — "
+                                         "there is nothing to apply.")
+            return
         try:
             when = journey.apply_remediation(ref, plan.get("id"), you_role,
                                              needs_approval=plan.get("needs_approval", True))
@@ -419,12 +428,17 @@ def _run_incident_action(dom, ref, you_role, act, target=None):
         except ValueError as exc:
             st.session_state["flash"] = f"Not applied: {exc}"
     elif act == "verify":
-        plan = _remediation_plan(dom, inc) or {}
+        plan = _remediation_plan(dom, inc)
+        if not plan:
+            st.session_state["flash"] = ("No remediation plan is recorded for this incident — "
+                                         "nothing has been applied to verify.")
+            return
         if not plan.get("applied"):
             st.session_state["flash"] = ("Verification needs an applied remediation — "
                                          "nothing has been executed on this thread yet.")
             return
-        option = (DE.DOP_REMEDIATION if dom == "DataOps" else E.IT_REMEDIATION)[0]
+        option = next(o for o in (DE.DOP_REMEDIATION if dom == "DataOps" else E.IT_REMEDIATION)
+                      if o["id"] == plan.get("id"))
         try:
             if dom == "DataOps":
                 checks = DE.verification(inc, _dop_data, option, applied=True)
