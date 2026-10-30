@@ -775,21 +775,26 @@ def _plan_rows(ref, plan):
     if not plan:
         return (_act_row(ref, "Apply remediation", "", "no remediation plan for this record", "blocked")
                 + _act_row(ref, "Run verification", "", "no remediation plan for this record", "blocked"))
-    out = []
+    # What would actually be applied, and who has to say yes to it — stated before the controls,
+    # because "Apply remediation" on its own does not tell anyone what they are approving.
+    gate = plan.get("mode") or ("Human approval" if plan.get("needs_approval") else "Policy controlled")
+    out = [f'<div class="planline" title="{esc(plan.get("label"))}">'
+           f'<b>To fix</b> {esc(plan.get("label"))}'
+           f'<i>{esc(plan.get("risk"))} · {esc(gate)}</i></div>']
     if plan.get("approved_at"):
         out.append(_act_row(ref, "Remediation approved",
                             "", f'{plan["approved_by"]} {plan["approved_at"]}', "done"))
     elif plan.get("needs_approval"):
         out.append(_act_row(ref, "Approve remediation", "approve",
-                            f'{plan["risk"]} · approval gate'))
+                            f'{plan["risk"]} · nothing runs until it is approved'))
     if plan.get("applied_at"):
         out.append(_act_row(ref, "Remediation applied", "",
                             f'{plan["applied_by"]} {plan["applied_at"]}', "done"))
     elif plan.get("needs_approval") and not plan.get("approved_at"):
         out.append(_act_row(ref, "Apply remediation", "",
-                            "needs approval first", "blocked"))
+                            "blocked — needs approval first", "blocked"))
     else:
-        out.append(_act_row(ref, "Apply remediation", "apply", plan.get("label", "")[:52]))
+        out.append(_act_row(ref, "Apply remediation", "apply", "runs the fix above (simulated)"))
     verdict = plan.get("verdict") or ""
     checks = plan.get("checks") or []
     if verdict and verdict != "Investigating":
@@ -798,7 +803,7 @@ def _plan_rows(ref, plan):
                             f'{verdict} · {passed} of {len(checks)} checks pass', "done"))
     elif plan.get("applied_at"):
         out.append(_act_row(ref, "Run verification", "verify",
-                            "independent re-check of the live signals"))
+                            "independent re-check, not the operator's claim"))
     else:
         out.append(_act_row(ref, "Run verification", "", "nothing applied yet", "blocked"))
     return "".join(out)
@@ -1052,14 +1057,19 @@ html,body{margin:0;height:100%;overflow:hidden;background:#fff;
 .st.unsent{color:var(--amber);border:1px dashed #f59e0b;background:#fffbeb}
 [hidden]{display:none !important}
 .muted{color:var(--muted);font-size:10px}
-.act{display:flex;justify-content:space-between;text-decoration:none;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:2px 9px;margin-bottom:3px;font-size:10.5px;font-weight:650}
+.act{display:flex;justify-content:space-between;text-decoration:none;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:1px 9px;margin-bottom:2px;font-size:10.5px;font-weight:650}
 .act i{font-style:normal;color:var(--muted);font-weight:500;font-size:9.5px}
+.planline{display:flex;align-items:baseline;gap:5px;font-size:9.5px;line-height:1.25;color:#334155;
+ border:1px dashed #c7d2fe;background:#f5f7ff;border-radius:7px;padding:2px 7px;margin:0 0 3px;
+ white-space:nowrap;overflow:hidden}
+.planline b{font-size:8.5px;text-transform:uppercase;letter-spacing:.04em;color:#4f46e5;flex:0 0 auto}
+.planline i{font-style:normal;color:var(--muted);margin-left:auto;flex:0 0 auto}
 .act.inert{opacity:.55;cursor:not-allowed}
 .act.blocked{opacity:1;border-color:#fecaca;background:#fff5f5}
 .act.blocked i{color:var(--red);font-weight:700}
 .act.done{border-color:#bbf7d0;background:#f0fdf4}
 .act.done i{color:var(--green);font-weight:700}
-.blk{display:flex;align-items:baseline;gap:6px;font-size:9px;color:#7f1d1d;padding:0 9px 1px 12px}
+.blk{display:flex;align-items:baseline;gap:6px;font-size:9px;color:#7f1d1d;padding:0 9px 0 12px}
 .blk .need{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .blk .tablink{color:var(--accent);text-decoration:none;font-weight:750;white-space:nowrap}
 .lead{border-left:3px solid var(--line);padding:1px 2px 1px 6px;margin-bottom:2px}
