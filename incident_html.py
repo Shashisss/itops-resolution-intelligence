@@ -253,7 +253,7 @@ def _people(F):
     out = [(F["owns"], "owner", "")]
     if F["asked"]:
         out.append((F["asked"]["to_"], "asked",
-                    f'asked {story.fmt_minutes(collab.age_minutes(F["asked"]))}'))
+                    story.fmt_minutes(collab.age_minutes(F["asked"]))))
     return out[:3]
 
 
@@ -435,7 +435,9 @@ html,body{margin:0;height:100%;overflow:hidden;background:#fff;
 .act.inert{opacity:.55;cursor:not-allowed}
 .more{margin-top:2px;border:1px solid var(--line);background:#fff;border-radius:6px;padding:1px 8px;font-size:9.5px;color:var(--muted);cursor:pointer}
 .foot{display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted)}
-.ov{position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;z-index:50}
+.stage{display:grid;grid-template-columns:1fr;grid-template-rows:1fr;height:100%}
+.main{grid-area:1/1}
+.ov{grid-area:1/1;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;z-index:5}
 .ov.on{display:flex}
 .ov .sheet{background:#fff;border-radius:14px;width:min(980px,92vw);height:min(660px,88vh);display:flex;flex-direction:column;padding:14px 18px}
 .ov h3{margin:0 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
@@ -497,4 +499,4 @@ def build(inc, dom, queue="", initial_tab="Timeline", action=None):
   <h3 id="ovtitle"></h3><div class="body" id="ovbody"></div>
 </div></div>'''
     return f'''<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
-<style>{CSS}</style></head><body>{body}<script>{JS}</script></body></html>'''
+<style>{CSS}</style></head><body><div class="stage">{body}</div><script>{JS}</script></body></html>'''

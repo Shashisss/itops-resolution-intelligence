@@ -72,3 +72,34 @@ def test_a_tab_can_be_selected_on_load():
     h = html_for(tab="Learn")
     assert re.search(r'class="pane on" id="p5"', h), "the requested tab opens"
     assert re.search(r'class="tab on" data-t="5"', h)
+
+
+def test_no_negative_margins_and_no_absolute_positioning_outside_the_svg():
+    """The class of bug that produced the overlaps: negative margins and absolute layout."""
+    h = html_for()
+    css = h[h.index("<style>"):h.index("</style>")]
+    assert not re.search(r"margin[a-z-]*:\s*-\d", css), "no negative margins"
+    assert "position:absolute" not in css and "position:fixed" not in css, \
+        "nothing is taken out of flow; the graph uses SVG coordinates only"
+    assert "<svg" in h and "viewBox" in h, "the graph positions by viewBox, not by CSS"
+
+
+def test_the_panes_render_for_every_tab():
+    for i, name in enumerate(incident_html.TAB_NAMES):
+        h = html_for(tab=name)
+        pane = re.search(rf'class="pane on" id="p{i}">(.*?)<button class="more"', h, re.S)
+        assert pane and len(pane.group(1).strip()) > 40, f"{name} pane is empty"
+
+
+def test_the_single_action_is_one_link():
+    h = html_for()
+    actions = re.findall(r'class="btn primary" href="([^"]+)"', h)
+    assert len(actions) == 1, f"one action, found {len(actions)}"
+    assert "action=" in actions[0]
+
+
+def test_the_who_row_states_asked_once():
+    h = html_for()
+    row = h[h.index("Who is on it"):]
+    assert row.count(">asked<") <= 1, "the 'asked' label appears once per row"
+    assert "asked" not in re.sub(r">asked<", "", row)
