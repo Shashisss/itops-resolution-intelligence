@@ -18,6 +18,7 @@ import html as _html
 import json
 import urllib.parse
 
+import agents
 import collab
 import journey
 import learn
@@ -90,6 +91,8 @@ def facts(inc):
         "owns": inc.get("owner_team") or "—",
         "blocker": inc.get("blocker") or "",
         "previous_owner": journey.previous_owner(inc["id"]),
+        "edges": story._rows("SELECT src, dst, rel, kind, confidence FROM thread_edges "
+                             "WHERE thread_ref=? ORDER BY id", (inc["id"],)),
         "service": _service_name(inc),
         "dataset": (f["name"] if f else (inc.get("dataset_id") or "dataset")),
         "evidence": story.evidence(inc, limit=99),
@@ -173,10 +176,91 @@ def _tiles(F):
 
 
 def _graph(F):
-    f, corr = F["fresh"], F["corr"]
-    kpi = F["kpi"]
+    """The incident's own links — never another incident's chain.
+
+    Nodes and edges come from this thread's recorded links (`thread_edges`); an incident with no
+    upstream chain shows its own nodes and says so, rather than borrowing the payments path that
+    belongs to INC-8841."""
+    f, corr, kpi = F["fresh"], F["corr"], F["kpi"]
+    edges = F.get("edges") or []
     kpi_txt = f'checkout {kpi["current"]:g}{kpi["unit"]}' if kpi else "—"
     conn = _conn_line(F["id"])
+
+    own = []                                   # bottom row: what the incident touches
+    if corr:
+        own.append((f'INCIDENT · {corr.get("other_id") or ""}'.strip(), corr.get("other_id") or "—",
+                    "#fff", "#e5e7eb"))
+    if F["dataset"] and f:
+        own.append((f'DATASET · STALE {f["lag_min"]}m', F["dataset"], "#fff", "#fdba74"))
+    own.append((f'SERVICE · {"CLOSED" if F["closed"] else "LIVE"}', F["service"], "#eef2ff", "#4f46e5"))
+    if kpi:
+        own.append(("KPI", kpi_txt, "#fff", "#e5e7eb"))
+
+    upstream, seen = [], {n for _k, n, _a, _b in own}
+    for e in edges:
+        if e.get("src") and e["src"] not in seen:
+            upstream.append(e["src"])
+            seen.add(e["src"])
+
+    def row(items, y):
+        n = max(1, len(items))
+        gap = 12
+        w = min(200, (784 - gap * (n - 1)) / n)
+        out = []
+        for i, (kind, label, fill, stroke) in enumerate(items):
+            x = 8 + i * (w + gap)
+            out.append(
+                f'<rect x="{x:.0f}" y="{y}" width="{w:.0f}" height="44" rx="8" fill="{fill}" '
+                f'stroke="{stroke}"/>'
+                f'<text x="{x + 9:.0f}" y="{y + 17}" font-size="8.5" fill="#64748b">{esc(kind)}</text>'
+                f'<text x="{x + 9:.0f}" y="{y + 33}" font-weight="650" font-size="11">'
+                f'{esc(label[:26])}</text>')
+        return out, w
+
+    bottom, bw = row(own, 132)
+    top, tw = row([("SIGNAL", u, "#fff", "#e5e7eb") for u in upstream], 18) if upstream else ([], tw if False else 0)
+
+    def col(label):
+        """Which bottom box a link points at — by name, falling back to the service."""
+        low = str(label or "").lower()
+        for i, (_k, name, _a, _b) in enumerate(own):
+            if str(name).lower() and str(name).lower() in low:
+                return i
+        return min(len(own) - 1, len(own) - 1 if own else 0)
+
+    arrows = []
+    for i, e in enumerate(edges):
+        src_i = [j for j, u in enumerate(upstream) if u == e.get("src")]
+        if not src_i:
+            continue
+        sx = 8 + src_i[0] * (tw + 12) + tw / 2
+        t_i = col(e.get("dst"))
+        tx = 8 + t_i * (bw + 12) + bw / 2
+        dash = ' stroke-dasharray="4 3"' if (e.get("kind") or "observed") == "inferred" else ""
+        mark = "ad" if dash else "as"
+        colour = "#b45309" if dash else "#475569"
+        arrows.append(f'<path d="M{sx:.0f} 62 L{sx:.0f} 96 L{tx:.0f} 96 L{tx:.0f} 128" fill="none" '
+                      f'stroke="{colour}" stroke-width="1.5"{dash} marker-end="url(#{mark})"/>')
+        score = (agents.SIGNAL_SCORE.get(e.get("kind") or "observed", {})
+                 .get((e.get("confidence") or "").lower()))
+        rel = (e.get("rel") or "").strip()[:20]
+        lab = esc(rel + (f" {score:.2f}" if score else ""))
+        arrows.append(f'<text x="{min(sx, tx) + 3:.0f}" y="92" font-size="9" fill="{colour}" '
+                      f'font-weight="700">{lab}</text>')
+
+    holder_tag = ""
+    if F["holder"] and not F.get("no_holder"):
+        svc_i = next((i for i, (_k, name, _a, _b) in enumerate(own)
+                      if str(name) == str(F["service"])), len(own) - 1)
+        hx = 8 + svc_i * (bw + 12) + 4
+        holder_tag = (f'<rect x="{hx:.0f}" y="110" width="104" height="16" rx="8" fill="#eef2ff"/>'
+                      f'<text x="{hx + 7:.0f}" y="122" font-size="8.5" fill="#3730a3" '
+                      f'font-weight="700">now · held here</text>')
+    if upstream:
+        cap = "The break is upstream — the service is serving what it was given."
+    else:
+        cap = ("No upstream chain is recorded for this incident — its own nodes, and nothing "
+               "borrowed from another thread.")
     return f'''<div class="card grow">
   <h2>Why this is happening</h2>
   <svg viewBox="0 0 800 200" preserveAspectRatio="xMidYMid meet" class="graph">
@@ -187,44 +271,13 @@ def _graph(F):
         <path d="M0,0 L7,3.5 L0,7 z" fill="#b45309"/></marker>
     </defs>
     <g font-size="11">
-      <rect x="8" y="18" width="150" height="44" rx="8" fill="#fff" stroke="#e5e7eb"/>
-      <text x="17" y="35" font-size="8.5" fill="#64748b">CHANGE</text>
-      <text x="17" y="51" font-weight="650">core_ledger v4</text>
-
-      <rect x="250" y="18" width="180" height="44" rx="8" fill="#fff" stroke="#e5e7eb"/>
-      <text x="259" y="35" font-size="8.5" fill="#64748b">JOB</text>
-      <text x="259" y="51" font-weight="650">payments_bronze_ingest</text>
-
-      <rect x="60" y="132" width="150" height="44" rx="8" fill="#fff" stroke="#e5e7eb"/>
-      <text x="69" y="149" font-size="8.5" fill="#64748b">INCIDENT</text>
-      <text x="69" y="165" font-weight="650">{esc(corr["other_id"]) if corr else "—"}</text>
-
-      <rect x="250" y="132" width="180" height="44" rx="8" fill="#fff" stroke="#fdba74"/>
-      <text x="259" y="149" font-size="8.5" fill="#b45309">DATASET · STALE {f["lag_min"] if f else "—"}m</text>
-      <text x="259" y="165" font-weight="650">{esc(F["dataset"])}</text>
-
-      <rect x="480" y="132" width="180" height="44" rx="8" fill="#eef2ff" stroke="#4f46e5"/>
-      <text x="489" y="149" font-size="8.5" fill="#3730a3">SERVICE · {"LIVE" if not F["closed"] else "CLOSED"}</text>
-      <text x="489" y="165" font-weight="700">{esc(F["service"])}</text>
-
-      <rect x="700" y="132" width="94" height="44" rx="8" fill="#fff" stroke="#e5e7eb"/>
-      <text x="709" y="149" font-size="8.5" fill="#64748b">KPI</text>
-      <text x="709" y="165" font-weight="650">{esc(kpi_txt)}</text>
+      {''.join(top)}
+      {''.join(bottom)}
+      {''.join(arrows)}
+      {holder_tag}
     </g>
-    <line x1="158" y1="40" x2="246" y2="40" stroke="#b45309" stroke-width="1.5"
-          stroke-dasharray="4 3" marker-end="url(#ad)"/>
-    <text x="166" y="32" font-size="9" fill="#b45309" font-weight="700">inferred 0.72</text>
-    <path d="M340 62 L340 128" stroke="#475569" stroke-width="1.5" marker-end="url(#as)"/>
-    <text x="348" y="100" font-size="9" fill="#64748b">writes 0.85</text>
-    <line x1="210" y1="154" x2="246" y2="154" stroke="#475569" stroke-width="1.5" marker-end="url(#as)"/>
-    <text x="212" y="146" font-size="9" fill="#64748b">stale 0.85</text>
-    <line x1="430" y1="154" x2="476" y2="154" stroke="#475569" stroke-width="1.5" marker-end="url(#as)"/>
-    <text x="432" y="146" font-size="9" fill="#64748b">feeds 0.95</text>
-    <line x1="660" y1="154" x2="696" y2="154" stroke="#475569" stroke-width="1.5" marker-end="url(#as)"/>
-    <rect x="480" y="110" width="104" height="16" rx="8" fill="#eef2ff"/>
-    <text x="487" y="122" font-size="8.5" fill="#3730a3" font-weight="700">now · held here</text>
   </svg>
-  <div class="cap">The break is upstream — the service is serving what it was given.</div>
+  <div class="cap">{esc(cap)}</div>
   <div class="legend"><span><i></i>observed</span><span><i class="dash"></i>inferred</span>
     <span class="n">{esc(conn)}</span></div>
 </div>'''

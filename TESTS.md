@@ -4,7 +4,7 @@ Two layers, both runnable without a browser.
 
 ```bash
 python3 -m pip install -r requirements-dev.txt
-python3 -m pytest tests -q          # 187 tests, ~43s
+python3 -m pytest tests -q          # 189 tests, ~44s
 python3 scripts/layout_check.py http://localhost:8501   # layout audit — launches its own headless Chrome
 python3 scripts/smoke.py            # deployment smoke test, ~5s
 ```
@@ -34,7 +34,7 @@ that
 Screens: incident × six tabs for INC-8841 and DOP-1001, the incidents list. One line of PASS/FAIL
 per screen; exit code 1 on any failure.
 
-Result at v125: 14 screens checked, 14 PASS on the deployed app (own headless Chrome).
+Result at v126: 14 screens checked, 14 PASS on the deployed app (own headless Chrome).
 
 ## `tests/test_incident_actions.py` — the Requests tab (v110)
 
@@ -72,7 +72,7 @@ re-rendered document are both read back.
 | `test_an_empty_comment_is_rejected_out_loud` | whitespace-only → visible refusal, nothing written |
 | `test_comments_are_newest_last` | the thread reads in order |
 | `test_bring_in_lists_the_records_teams_and_posts_the_assign` | the picker lists teams from the record as assign links, no modal |
-| `test_assigning_changes_owner_keeps_the_old_one_and_restarts_the_clock` | owner changed, previous holder still on the thread, ask clock restarted, audit entry |
+| `test_assigning_moves_the_open_asks_and_keeps_their_clocks` | owner changed, every open ask re-targeted and still open with its own deadline/age/overdue state, previous holder on the thread, audit entry |
 | `test_the_waiting_tile_follows_the_new_owner` | the "Waiting on" tile names the new owner |
 | `test_assigning_the_current_owner_is_refused` | assigning the current owner refuses and changes nothing |
 

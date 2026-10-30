@@ -41,13 +41,22 @@ def test_the_tiles_are_exactly_the_four_labels():
 
 
 def test_the_graph_shows_observed_and_inferred_edges_with_confidence():
+    """The graph is this thread's own links: one arrow per recorded edge, dashed when inferred."""
+    import sqlite3
+    con = sqlite3.connect(ROOT / "data" / "ops.db")
+    con.row_factory = sqlite3.Row
+    edges = [dict(r) for r in con.execute(
+        "SELECT src, dst, rel, kind FROM thread_edges WHERE thread_ref='INC-8841' ORDER BY id")]
+    con.close()
     h = html_for()
     graph = h[h.index("Why this is happening"):h.index("What this means")]
-    assert "stroke-dasharray" in graph, "an inferred edge is dashed"
-    assert graph.count('marker-end="url(#as)"') >= 3, "observed edges are solid"
-    assert graph.count('marker-end="url(#ad)"') >= 1
-    for label in ("inferred 0.72", "writes 0.85", "stale 0.85", "feeds 0.95"):
-        assert label in graph, f"edge confidence missing: {label}"
+    observed = sum(1 for e in edges if (e["kind"] or "observed") != "inferred")
+    inferred = len(edges) - observed
+    assert graph.count('marker-end="url(#as)"') == observed, "one solid arrow per observed edge"
+    assert graph.count('marker-end="url(#ad)"') == inferred, "one dashed arrow per inferred edge"
+    assert ("stroke-dasharray" in graph) == (inferred > 0)
+    for e in edges:                       # every recorded link is drawn, with its own label
+        assert (e["rel"] or "").strip()[:20] in graph, f'edge missing: {e["rel"]}'
     assert "observed" in graph and "inferred" in graph
     assert "connections" in graph
 
@@ -144,3 +153,20 @@ def test_the_who_row_states_asked_once():
     row = h[h.index("Who is on it"):]
     assert row.count(">asked<") <= 1, "the 'asked' label appears once per row"
     assert "asked" not in re.sub(r">asked<", "", row)
+
+
+def test_an_incident_without_a_chain_draws_only_its_own_nodes():
+    """INC-8850 recorded no upstream links: its graph must not borrow INC-8841's payments path."""
+    h = html_for("INC-8850")
+    graph = h[h.index("Why this is happening"):h.index("What this means")]
+    assert "Orders API" in graph, "its own service is drawn"
+    for foreign in ("core_ledger", "payments_gold", "Payment API", "payments_bronze_ingest"):
+        assert foreign not in graph, f"another incident's node leaked in: {foreign}"
+    assert "No upstream chain is recorded" in h, "and it says so"
+
+
+def test_a_dataops_incident_draws_its_own_pipeline():
+    h = html_for("DOP-1001")
+    graph = h[h.index("Why this is happening"):h.index("What this means")]
+    assert "payments_bronze_ingest" in graph, "its own pipeline"
+    assert "Payment API" not in graph and "core_ledger" not in graph

@@ -109,6 +109,31 @@ def add_delegation(ref_id, frm, to, action, status="assigned", channel="Teams", 
     return cur.lastrowid
 
 
+def retarget_delegations(ref_id, target, actor):
+    """Point every open request at a new owner, keeping its deadline and its clock.
+
+    A handover does not finish anybody's work: the asks still need doing, they just have a new
+    owner. So only the recipient changes — ts (and therefore the age, the deadline and the overdue
+    state) stays exactly as it was, and each row's history records the move."""
+    actor = str(actor or "").strip()
+    if not actor:
+        raise ValueError("a handover requires an actor")
+    target = str(target or "").strip()
+    if not target:
+        raise ValueError("no one to take over")
+    now = _now()
+    con = _connect()
+    rows = [dict(r) for r in con.execute(
+        "SELECT id, to_ FROM delegations WHERE ref_id=? AND status!='done'", (ref_id,))]
+    for r in rows:
+        con.execute("UPDATE delegations SET to_=?, actor=?, changed_at=? WHERE id=?",
+                    (target, actor, now, r["id"]))
+        _record_event(con, r["id"], "assigned", actor, now)
+    con.commit()
+    con.close()
+    return len(rows)
+
+
 def send_delegation(did, actor):
     """NOT SENT → SENT: hand a recorded ask over, stamping who sent it and when.
 

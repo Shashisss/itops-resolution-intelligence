@@ -141,34 +141,52 @@ def test_bring_in_lists_the_records_teams_and_posts_the_assign(db):
     assert 'id="ov"' in h and 'class="ov on"' not in h, "no modal"
 
 
-def test_assigning_changes_owner_keeps_the_old_one_and_restarts_the_clock(db):
+def test_assigning_moves_the_open_asks_and_keeps_their_clocks(db):
+    """A handover changes who owns the asks — not whether they still need doing.
+
+    Every open request keeps its deadline, its age and its overdue state; only the recipient moves.
+    The Waiting tile and the ask clock follow the new owner because the oldest open ask is now
+    theirs."""
     inc0 = _inc()
     old_owner = inc0["owner_team"]
+    open_before = [(d["id"], d["ts"], collab.is_overdue(d), d["action"])
+                   for d in collab.delegations(REF) if d["status"] != "done"]
+    # the holder is the oldest ask somebody was actually sent (an unsent draft holds no one)
+    sent_before = [d for d in collab.delegations(REF) if d["status"] != "done" and d.get("sent_at")]
+    oldest_before = (min(sent_before, key=lambda d: d["ts"])["id"],)
+    assert open_before, "the seed has open asks to move"
     target = "Checkout Team" if old_owner != "Checkout Team" else "Finance Data"
+
     at = _run(tab="Timeline", action="assign", target=target)
     assert f"Brought in {target}" in _flash(at)
 
     inc = _inc()
     assert inc["owner_team"] == target, "the incident is owned by the new team"
-    # the previous holder is still on the thread, as a done request
-    handovers = [d for d in collab.delegations(REF)
-                 if d["status"] == "done" and d["to_"] == old_owner]
-    assert handovers, "the previous holder's open ask was closed, not deleted"
-    # the new owner holds it now: the ask clock starts at the handover
+    open_after = [d for d in collab.delegations(REF) if d["status"] != "done"]
+    assert len(open_after) == len(open_before), "nothing was closed by the handover"
+    assert all(d["to_"] == target for d in open_after), "the open asks are addressed to the new owner"
+    for d in open_after:                                  # deadlines, clocks and overdue state kept
+        before = next(b for b in open_before if b[0] == d["id"])
+        assert d["ts"] == before[1], "the ask clock keeps running"
+        assert collab.is_overdue(d) == before[2], "the overdue state is unchanged"
+    # the holder is the new owner and the clock is the one the oldest ask has always had
     w = story.waiting(inc)
-    assert w["who"] == target, "the holder is the new owner"
-    assert w["minutes"] <= 2, "the ask clock restarted with the handover"
-    # and the audit says who did it when
+    assert w["who"] == target
+    oldest_after = next(d for d in open_after if d["id"] == oldest_before[0])
+    assert w["minutes"] == collab.age_minutes(oldest_after), "the clock is the ask's own age"
+    assert w["minutes"] >= 2, "the clock did not reset: the asks kept their age"
+    # the handover is in the audit, with who and when, and each ask's history records the move
     ev = [e for e in journey.timeline(REF) if "Brought in" in (e.get("detail") or "")]
     assert ev and re.search(r"\d{2}:\d{2}", ev[-1]["detail"])
+    assert "re-targeted" in ev[-1]["detail"]
+    moved = collab.delegation_events(open_after[0]["id"])
+    assert any((m.get("actor") == "CIO") for m in moved), "the move is in the ask's history"
 
     h = _html()
     i = h.index("Who is on it")
-    who = h[i:i + 700]                              # the who card, bounded by its own rows
+    who = h[i:i + 700]
     assert target in who, "who-card shows the new owner"
     assert old_owner in who, "the previous holder is on the thread"
-    assert "Waiting on" in h
-
 
 def test_the_waiting_tile_follows_the_new_owner(db):
     target = "Finance Data" if _inc()["owner_team"] != "Finance Data" else "Checkout Team"

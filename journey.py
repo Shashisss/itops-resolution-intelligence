@@ -822,24 +822,26 @@ def assign_owner(inc_id, target, actor):
     con.execute(f"UPDATE {table} SET owner_team=? WHERE id=?", (target, inc_id))
     con.commit()
     con.close()
-    # The handover re-bases the thread: any request that is still open was for the previous holder
-    # (or someone else's part of it), so it is closed as superseded — otherwise "Waiting on" would
-    # keep naming a team that no longer holds this incident and the ask clock would be theirs.
-    superseded = [d for d in collab.delegations(inc_id) if d["status"] != "done"]
-    for d in superseded:
-        collab.set_delegation_status(d["id"], "done", actor)
-    collab.add_delegation(inc_id, actor, target, f"Take ownership of {inc_id} · expected in 30 min",
-                          status="assigned", channel="Portal",
-                          stage=lifecycle_stage(inc), actor=actor,
-                          travels="thread + evidence", delivered=True)
+    # A handover does not finish anybody's work: every open request moves to the new owner and keeps
+    # its deadline, its clock and its overdue state. Nothing is closed, so the thread the demo is
+    # built on survives the demonstration.
+    moved = collab.retarget_delegations(inc_id, target, actor)
+    if not moved:
+        # nobody was holding anything, so give the new owner the one request that starts the clock
+        collab.add_delegation(inc_id, actor, target, f"Take ownership of {inc_id} · expected in 30 min",
+                              status="assigned", channel="Portal",
+                              stage=lifecycle_stage(inc), actor=actor,
+                              travels="thread + evidence", delivered=True)
     add_event(inc_id, "itops" if table == "incidents" else "dataops", "detect",
               f"Brought in {target} by {actor} at {now[11:16]}"
               + (f" — {old} handed over" if old else "")
-              + (f"; {len(superseded)} open request(s) closed as superseded" if superseded else ""))
+              + (f"; {moved} open request(s) re-targeted, deadlines unchanged" if moved else ""))
     collab.add_comment(inc_id, actor, "Person",
                        f"[Simulated] Brought in {target}"
-                       + (f"; {old} handed the thread over" if old else "") + ".", channel="Portal")
-    return {"owner": target, "previous": old, "at": now[11:16]}
+                       + (f"; {old} handed the thread over" if old else "")
+                       + (f"; {moved} open request(s) now addressed to {target}" if moved else "") + ".",
+                       channel="Portal")
+    return {"owner": target, "previous": old, "at": now[11:16], "moved": moved}
 
 
 def previous_owner(inc_id):
