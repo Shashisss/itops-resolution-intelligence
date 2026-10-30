@@ -4,7 +4,7 @@ Two layers, both runnable without a browser.
 
 ```bash
 python3 -m pip install -r requirements-dev.txt
-python3 -m pytest tests -q          # 164 tests, ~27s
+python3 -m pytest tests -q          # 177 tests, ~34s
 python3 scripts/layout_check.py http://localhost:8501   # layout audit, needs Chrome on :9222
 python3 scripts/smoke.py            # deployment smoke test, ~5s
 ```
@@ -31,7 +31,7 @@ Chrome already running on :9222: it loads each screen, then asserts in-page that
 Screens: incident × six tabs for INC-8841 and DOP-1001, the incidents list. One line of PASS/FAIL
 per screen; exit code 1 on any failure.
 
-Result at v120: 14 screens checked, 14 PASS on the deployed app.
+Result at v121: 14 screens checked, 14 PASS on the deployed app.
 
 ## `tests/test_incident_actions.py` — the Requests tab (v110)
 
@@ -56,6 +56,27 @@ re-rendered document are both read back.
 | `test_a_stale_target_changes_nothing_and_says_so` | unknown target → stated refusal, record untouched |
 | `test_an_ask_without_an_owner_creates_nothing` | empty form → nothing created, reason shown |
 | `test_actions_land_back_on_the_same_tab_and_page` | tab/full/page survive the action, `action` is consumed |
+
+## `tests/test_remediation_learn.py` — apply, verify, learn, reopen (v121)
+
+13 tests. Each drives the app with an `?action=…` parameter and then asserts the record *and* the
+re-rendered document.
+
+| Test | Asserts |
+|---|---|
+| `test_apply_is_refused_before_approval_and_says_so` | the gate refuses, nothing is written, the flash states why |
+| `test_approve_records_who_and_when` | approval stamped with actor + time, pane says "Remediation approved" |
+| `test_apply_records_the_action_and_asks_for_verification` | applied stamp, `action_id` on the resolution record, verification offered, close still unoffered |
+| `test_verify_records_the_verdict_from_the_checks` | verdict + checks persisted, flash counts passes |
+| `test_verify_refuses_without_an_applied_action` | no record written, reason stated |
+| `test_verdict_follows_the_checks_not_the_hope` | all pass → Verified, a fail → Recovery failed, pending → Inconclusive |
+| `test_a_failed_verification_keeps_the_close_blocked` | a non-Verified verdict cannot close |
+| `test_a_verified_incident_closes_then_reopens` | close → closed, reopen → open, closure stamp cleared |
+| `test_reopen_refuses_when_the_incident_is_open` | reopen on an open incident refuses |
+| `test_learn_save_writes_the_record_with_who_and_when` | learning saved with actor/time, pane shows it, header says saved |
+| `test_learn_save_requires_a_root_cause` | empty form saves nothing |
+| `test_the_learn_form_is_inline_and_prefilled` | inline form, four fields, pre-filled from the record |
+| `test_the_act_and_verify_pane_names_every_phase` | Confirm cause / Apply / Verify / Close all present |
 
 ## `tests/test_rca_and_gate.py` — leads and the close gate (v111)
 

@@ -385,26 +385,52 @@ def _req_preview(rows, ref, n, page):
     return cards
 
 
+def _acts_cell(acts, cls="acts"):
+    """The actions as one cell: a fixed, right-aligned column so they can never reach the border.
+
+    Three links fit at 1280 (measured); anything beyond three would overflow that column, so the
+    remainder collapses into a "…" menu rather than being clipped."""
+    if not acts:
+        return f'<span class="{cls}"></span>'
+    head, rest = acts[:3], acts[3:]
+    out = "".join(f'<a href="{h}" target="_top">{esc(t)}</a>' for t, h in head)
+    if rest:
+        # More than three cannot fit the column, so the remainder goes to the document's own
+        # overlay (the .more handler already there) instead of being clipped or floating over the
+        # row — the signed-off layout allows no positioning outside the graph SVG.
+        out += ('<button class="more dots" data-full="More actions">…</button>'
+                '<div class="full-src" hidden>'
+                + "".join(f'<a href="{h}" target="_top">{esc(t)}</a><br>' for t, h in acts)
+                + '</div>')
+    return f'<span class="{cls}">{out}</span>'
+
+
 def _req_full(rows, ref, page):
     body = "".join(
-        f'<div class="rrow" data-id="{int(r["id"])}"><b>{esc(r["owner"])}</b>'
-        f'<span class="ask">{esc(r["ask_short"])}</span>{_badge_html(r)}'
+        f'<div class="rrow" data-id="{int(r["id"])}">'
+        f'<span class="who">{esc(r["owner"])}</span>'
+        f'<span class="ask">{esc(r["ask_short"])}</span>'
+        f'<span class="badges">{_badge_html(r)}</span>'
         f'<span class="meta">{esc(str(r.get("actor") or "—"))} '
         f'{esc(str(r.get("changed_at") or "")[11:16])}</span>'
-        f'{_acts_html(_req_acts(r, ref, 1, page))}</div>'
+        f'{_acts_cell(_req_acts(r, ref, 1, page))}</div>'
         for r in rows)
     return body or '<div class="muted">No request on this thread.</div>'
 
 
-def _pager(rows, ref, page, pages, n):
+def _pager(rows, ref, page, pages, n, all_rows=None):
     first = (page - 1) * REQ_PAGE + 1
     last = first + len(rows) - 1 if rows else first - 1
     prev = (f'<a class="pg" href="{_href(ref, tab="Requests", full=1, page=page - 1)}" target="_top">'
             '‹ prev</a>' if page > 1 else '<span class="pg off">‹ prev</span>')
     nxt = (f'<a class="pg" href="{_href(ref, tab="Requests", full=1, page=page + 1)}" target="_top">'
            'next ›</a>' if page < pages else '<span class="pg off">next ›</span>')
+    thread_over = sum(1 for r in all_rows if r["overdue"]) if all_rows else 0
+    here = sum(1 for r in rows if r["overdue"])
+    elsewhere = (f'<span class="pg off">· {thread_over} overdue on the thread</span>'
+                 if thread_over != here else "")
     return (f'<div class="pager"><span class="range">{first}–{max(last, first)} of {n}</span>'
-            f'{prev}{nxt}'
+            f'{prev}{nxt}{elsewhere}'
             f'<a class="morex" href="{_href(ref, tab="Requests", full=1, page=page, extra={"new": 1})}"'
             f' target="_top">+ Create ask</a>'
             f'<a class="morex" data-req="0" href="{_href(ref, tab="Requests", full=0, page=page)}"'
@@ -439,9 +465,11 @@ def _ask_form(ref, view):
 </form>'''
 
 
-def _requests_pane(F, ref, view):
-    """The Requests tab: every ask with its actions, eight to a page, expanded in place."""
-    rows = list(reversed(story.requests(ref)))          # newest ask first
+def _req_window(rows, view):
+    """The rows actually on screen: the four-card preview, or the page of eight.
+
+    The tab header counts overdue rows *from this list*, so the number it prints is the number of
+    OVERDUE badges the reader can see — not a thread total that disagrees with the visible page."""
     n = len(rows)
     pages = max(1, (n + REQ_PAGE - 1) // REQ_PAGE)
     try:
@@ -449,10 +477,19 @@ def _requests_pane(F, ref, view):
     except (TypeError, ValueError):
         page = 1
     page = max(1, min(page, pages))
+    if view.get("full"):
+        return rows[(page - 1) * REQ_PAGE: page * REQ_PAGE], page, pages
+    return rows[:REQ_PREVIEW], page, pages
+
+
+def _requests_pane(F, ref, view):
+    """The Requests tab: every ask with its actions, eight to a page, expanded in place."""
+    rows = list(reversed(story.requests(ref)))          # newest ask first
+    n = len(rows)
+    window, page, pages = _req_window(rows, view)
     view["page"] = page
     if view.get("new"):
         return _ask_form(ref, view)
-    window = rows[(page - 1) * REQ_PAGE: page * REQ_PAGE]
     full = bool(view.get("full"))
     more = (f'<div class="reqfoot"><a class="morex" data-req="1" '
             f'href="{_href(ref, tab="Requests", full=1, page=page)}" target="_top">'
@@ -462,7 +499,7 @@ def _requests_pane(F, ref, view):
     return (f'<div class="reqprev"{"" if not full else " hidden"}>'
             f'{_req_preview(rows, ref, n, page)}{more}</div>'
             f'<div class="reqfull"{"" if full else " hidden"}>'
-            f'{_req_full(window, ref, page)}{_pager(window, ref, page, pages, n)}</div>')
+            f'{_req_full(window, ref, page)}{_pager(window, ref, page, pages, n, rows)}</div>')
 
 
 # ---------------------------------------------------------------- RCA leads (v111)
@@ -539,11 +576,7 @@ def _panes(F, dom, view=None):
     audit = "".join(f'<div class="ev"><span class="ts">{esc(str(a["ts"])[11:16])}</span>'
                     f'<span>{esc(a["detail"])}</span></div>' for a in acts)
 
-    rec = learn.get(ref) if hasattr(learn, "get") else None
-    learn_body = (f'<div class="ev"><span><b>Saved</b> {esc(rec.get("saved_at", ""))} — '
-                  f'{esc(rec.get("root_cause") or "")}</span></div>' if rec else
-                  '<div class="ev"><span><b>Draft, not saved</b> — the record is written when the '
-                  'incident closes and is verified.</span></div>')
+    learn_body = _learn_pane(ref, F, dom, view)
     sig_name = ""
     try:
         sig_name = learn.signature(inc, "DataOps" if dom == "DataOps" else "IT Ops")
@@ -553,7 +586,7 @@ def _panes(F, dom, view=None):
         learn_body += (f'<div class="ev"><span class="muted">Signature <b>{esc(sig_name)}</b></span></div>')
 
     gate = F["gate"]
-    actions = _act_links(F, view.get("headline"))
+    actions = _act_links(F, view.get("headline"), view.get("plan"))
 
     return {
         "Timeline": tl,
@@ -574,7 +607,9 @@ def _close_row(ref, gate):
     if gate.get("closed"):
         who, when = journey.closed_by(ref)
         return (f'<div class="act done"><span>Closed by {esc(who)} at {esc(when)}</span>'
-                f'<i>left the open queue</i></div>')
+                f'<i>left the open queue</i></div>'
+                f'<a class="act" href="?inc={esc(ref)}&amp;action=reopen" target="_top">'
+                f'<span>Reopen incident</span><i>puts it back on the open queue, with who and when</i></a>')
     if gate.get("eligible"):
         return (f'<a class="act" href="?inc={esc(ref)}&amp;action=close" target="_top">'
                 f'<span>Close incident</span><i>all requirements met — closes now</i></a>')
@@ -589,7 +624,54 @@ def _close_row(ref, gate):
     return "".join(out)
 
 
-def _act_links(F, headline=None):
+def _act_row(ref, label, action, why, state=None):
+    """One action row: a link, a refusal, or a recorded outcome."""
+    if state == "done":
+        return (f'<div class="act done"><span>{esc(label)}</span><i>{esc(why)}</i></div>')
+    if state == "blocked":
+        return (f'<div class="act inert"><span>{esc(label)}</span><i>{esc(why)}</i></div>')
+    return (f'<a class="act" href="?inc={esc(ref)}&amp;action={esc(action)}" target="_top">'
+            f'<span>{esc(label)}</span><i>{esc(why)}</i></a>')
+
+
+def _plan_rows(ref, plan):
+    """Approve → apply → verify, each stating why it is available or refused.
+
+    Without a plan (a caller that only builds the document) the rows are shown as refusals with
+    their reason, so the phases are never silently missing from the screen."""
+    if not plan:
+        return (_act_row(ref, "Apply remediation", "", "no remediation plan for this record", "blocked")
+                + _act_row(ref, "Run verification", "", "no remediation plan for this record", "blocked"))
+    out = []
+    if plan.get("approved_at"):
+        out.append(_act_row(ref, "Remediation approved",
+                            "", f'{plan["approved_by"]} {plan["approved_at"]}', "done"))
+    elif plan.get("needs_approval"):
+        out.append(_act_row(ref, "Approve remediation", "approve",
+                            f'{plan["risk"]} · approval gate'))
+    if plan.get("applied_at"):
+        out.append(_act_row(ref, "Remediation applied", "",
+                            f'{plan["applied_by"]} {plan["applied_at"]}', "done"))
+    elif plan.get("needs_approval") and not plan.get("approved_at"):
+        out.append(_act_row(ref, "Apply remediation", "",
+                            "needs approval first", "blocked"))
+    else:
+        out.append(_act_row(ref, "Apply remediation", "apply", plan.get("label", "")[:52]))
+    verdict = plan.get("verdict") or ""
+    checks = plan.get("checks") or []
+    if verdict and verdict != "Investigating":
+        passed = sum(1 for c in checks if str(c.get("result", "")).startswith("✅"))
+        out.append(_act_row(ref, esc(verdict) and "Verification", "",
+                            f'{verdict} · {passed} of {len(checks)} checks pass', "done"))
+    elif plan.get("applied_at"):
+        out.append(_act_row(ref, "Run verification", "verify",
+                            "independent re-check of the live signals"))
+    else:
+        out.append(_act_row(ref, "Run verification", "", "nothing applied yet", "blocked"))
+    return "".join(out)
+
+
+def _act_links(F, headline=None, plan=None):
     ref = F["id"]
     gate = F["gate"]
     if headline:
@@ -597,26 +679,64 @@ def _act_links(F, headline=None):
                        f'{headline.get("total")}, {headline.get("confidence")}')
     else:
         confirm_why = "no lead is CONFIRMED yet — confirming names none"
-    rows = [
-        ("Confirm cause", f'?inc={ref}&amp;action=confirm', False, confirm_why),
-        ("Apply remediation", "", True, "inert in this POC — no change is executed"),
-        ("Run verification", "", True, "inert in this POC — checks are recorded, not run"),
-    ]
-    out = []
-    for label, href, inert, why in rows:
-        if inert:
-            out.append(f'<div class="act inert"><span>{esc(label)}</span><i>{esc(why)}</i></div>')
-        else:
-            out.append(f'<a class="act" href="{href}" target="_top"><span>{esc(label)}</span>'
-                       f'<i>{esc(why)}</i></a>')
+    out = [_act_row(ref, "Confirm cause", "confirm", confirm_why)]
+    if not gate.get("closed"):
+        out.append(_plan_rows(ref, plan))
     out.append(_close_row(ref, gate))
     return "".join(out)
 
 
+def _learn_pane(ref, inc, dom, view):
+    """The learning: what was saved, or the form that saves it."""
+    rec = learn.get(ref) if hasattr(learn, "get") else None
+    if view.get("learn"):
+        return f'''<form class="askf" method="get" action="" target="_top">
+  <input type="hidden" name="inc" value="{esc(ref)}">
+  <input type="hidden" name="tab" value="Learn">
+  <input type="hidden" name="action" value="learn-save">
+  <div class="frow">
+    <label>Root cause<input name="root_cause" value="{esc((rec or {}).get("root_cause") or "")}"
+      placeholder="what actually broke" maxlength="120" required></label>
+    <label>Outcome<select name="outcome">{_outcome_opts((rec or {}).get("outcome"))}</select></label>
+  </div>
+  <div class="frow">
+    <label>Steps<input name="steps" value="{esc("; ".join((rec or {}).get("steps") or []))}"
+      placeholder="one per line" maxlength="240"></label>
+    <label>Summary<input name="summary" value="{esc((rec or {}).get("summary") or "")}"
+      placeholder="why it will not recur" maxlength="120"></label>
+  </div>
+  <div class="fgo"><button type="button" data-ask>Save learning</button>
+    <a class="morex" href="?inc={esc(ref)}&amp;tab=Learn" target="_top">Cancel</a></div>
+</form>'''
+    if rec:
+        steps = len(rec.get("steps") or [])
+        return (f'<div class="ev"><span><b>Saved</b> {esc(rec.get("saved_at", ""))} by '
+                f'{esc(rec.get("saved_by") or "—")} · outcome {esc(rec.get("outcome") or "—")}</span></div>'
+                f'<div class="ev"><span>{esc(rec.get("root_cause") or "")}</span></div>'
+                f'<div class="ev"><span class="muted">{steps} step(s) · '
+                f'{len(rec.get("evidence") or [])} evidence item(s)</span></div>'
+                f'<div class="rf"><a class="morex" href="?inc={esc(ref)}&amp;tab=Learn&amp;learn=1" '
+                f'target="_top">Edit and save again</a></div>')
+    return ('<div class="ev"><span><b>Draft, not saved</b> — the record is written when you save it, '
+            'on the verified record.</span></div>'
+            f'<div class="rf"><a class="morex" href="?inc={esc(ref)}&amp;tab=Learn&amp;learn=1" '
+            f'target="_top">Write the learning</a></div>')
+
+
+def _outcome_opts(current):
+    import learn as _learn
+    opts = getattr(_learn, "OUTCOMES", ["restored"])
+    return "".join(f'<option value="{esc(o)}"{" selected" if o == current else ""}>{esc(o)}</option>'
+                   for o in opts)
+
+
 def _tabs(F, dom, initial, view=None):
     view = view or {}
-    reqs = story.requests(F["id"])
-    over = sum(1 for r in reqs if r["overdue"])
+    reqs = list(reversed(story.requests(F["id"])))
+    if view.get("new"):                       # the form replaces the list: nothing on screen to count
+        over = sum(1 for r in reqs if r["overdue"])
+    else:
+        over = sum(1 for r in _req_window(reqs, view)[0] if r["overdue"])
     leads = view.get("leads") or []
     decided = [l for l in leads if l.get("decision")]
     confirmed = [l for l in decided if l.get("decision") == "confirmed"]
@@ -726,12 +846,19 @@ html,body{margin:0;height:100%;overflow:hidden;background:#fff;
 .acts{display:flex;gap:6px;white-space:nowrap;align-items:baseline}
 .acts a{color:var(--accent);text-decoration:none;font-weight:700;font-size:9px}
 .acts a:hover{text-decoration:underline}
-.rrow{display:flex;align-items:baseline;gap:6px;height:17px;line-height:17px;font-size:10px;
- white-space:nowrap;border-bottom:1px solid #f1f5f9;padding:0 1px}
-.rrow b{font-weight:750}
-.rrow .ask{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;color:#334155}
-.rrow .meta{color:var(--muted);font-size:9px}
-.rrow .acts a{font-size:9px}
+.rrow{display:grid;grid-template-columns:104px minmax(0,1fr) 84px 74px 168px;
+ column-gap:7px;align-items:baseline;height:17px;line-height:17px;font-size:10px;
+ white-space:nowrap;border-bottom:1px solid #f1f5f9;padding:0 1px;overflow:hidden}
+.rrow>*{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.rrow .who{font-weight:750}
+.rrow .ask{color:#334155}
+.rrow .badges{display:flex;gap:3px;overflow:hidden}
+.rrow .badges .st{font-size:8px;padding:0 4px;line-height:11px}
+.rrow .meta{color:var(--muted);font-size:9px;text-align:right}
+.rrow .acts{display:flex;gap:5px;justify-content:flex-end;align-items:baseline;overflow:hidden}
+.rrow .acts a{font-size:8.5px}
+.dots{border:none;background:none;padding:0 2px;font-size:11px;line-height:1;color:var(--accent);
+ cursor:pointer;font-weight:800}
 .reqfoot{display:flex;align-items:baseline;gap:10px;margin-top:1px}
 .reqfoot .morex:last-child{margin-left:auto}
 .pager{display:flex;align-items:center;gap:8px;font-size:9.5px;color:var(--muted);margin-top:2px}
@@ -757,14 +884,14 @@ html,body{margin:0;height:100%;overflow:hidden;background:#fff;
 .st.unsent{color:var(--amber);border:1px dashed #f59e0b;background:#fffbeb}
 [hidden]{display:none !important}
 .muted{color:var(--muted);font-size:10px}
-.act{display:flex;justify-content:space-between;text-decoration:none;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:4px 9px;margin-bottom:4px;font-size:11px;font-weight:650}
+.act{display:flex;justify-content:space-between;text-decoration:none;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:2px 9px;margin-bottom:3px;font-size:10.5px;font-weight:650}
 .act i{font-style:normal;color:var(--muted);font-weight:500;font-size:9.5px}
 .act.inert{opacity:.55;cursor:not-allowed}
 .act.blocked{opacity:1;border-color:#fecaca;background:#fff5f5}
 .act.blocked i{color:var(--red);font-weight:700}
 .act.done{border-color:#bbf7d0;background:#f0fdf4}
 .act.done i{color:var(--green);font-weight:700}
-.blk{display:flex;align-items:baseline;gap:6px;font-size:9.5px;color:#7f1d1d;padding:0 9px 2px 12px}
+.blk{display:flex;align-items:baseline;gap:6px;font-size:9px;color:#7f1d1d;padding:0 9px 1px 12px}
 .blk .need{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .blk .tablink{color:var(--accent);text-decoration:none;font-weight:750;white-space:nowrap}
 .lead{border-left:3px solid var(--line);padding:1px 2px 1px 6px;margin-bottom:2px}

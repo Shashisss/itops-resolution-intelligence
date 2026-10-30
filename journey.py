@@ -664,6 +664,126 @@ def closure_state(inc):
             "reasons": reasons, "blockers": blockers, "record": rec}
 
 
+# ---------------------------------------------------------------- remediation (v121)
+# The remediation a human approves, applies and then has verified. Approving and applying are two
+# different people decisions on purpose: a High-risk action states "Human approval" and the gate
+# refuses to execute until that approval is on the record.
+def _ensure_remediation_table():
+    con = sqlite3.connect(DB)
+    con.execute("CREATE TABLE IF NOT EXISTS remediation_state(ref_id TEXT PRIMARY KEY, option TEXT, "
+                "approved_by TEXT, approved_at TEXT, applied_by TEXT, applied_at TEXT)")
+    con.commit()
+    con.close()
+
+
+def remediation(ref_id):
+    """What has been approved / applied on this thread, or None."""
+    _ensure_remediation_table()
+    con = sqlite3.connect(DB)
+    con.row_factory = sqlite3.Row
+    r = con.execute("SELECT * FROM remediation_state WHERE ref_id=?", (ref_id,)).fetchone()
+    con.close()
+    return dict(r) if r else None
+
+
+def approve_remediation(ref_id, option_id, actor):
+    """Record the approval for one option. Returns the HH:MM it was stamped with."""
+    actor = str(actor or "").strip()
+    if not actor:
+        raise ValueError("an approval requires an actor")
+    _ensure_remediation_table()
+    now = dt.datetime.now().replace(microsecond=0).isoformat(timespec="seconds")
+    con = sqlite3.connect(DB)
+    con.execute("INSERT INTO remediation_state(ref_id,option,approved_by,approved_at) "
+                "VALUES(?,?,?,?) ON CONFLICT(ref_id) DO UPDATE SET option=excluded.option, "
+                "approved_by=excluded.approved_by, approved_at=excluded.approved_at",
+                (ref_id, str(option_id), actor, now))
+    con.commit()
+    con.close()
+    return now[11:16]
+
+
+def apply_remediation(ref_id, option_id, actor, needs_approval=True):
+    """Execute the approved option. Refuses (ValueError) when the approval is missing.
+
+    The applied action is written to the resolution record as the action id, with the verdict left
+    at Investigating: nothing is claimed as fixed until the independent checks run."""
+    actor = str(actor or "").strip()
+    if not actor:
+        raise ValueError("applying a remediation requires an actor")
+    rec = remediation(ref_id) or {}
+    if needs_approval and not rec.get("approved_at"):
+        raise ValueError("this action needs approval before it can be applied")
+    if rec.get("applied_at"):
+        raise ValueError("this action is already applied — re-run verification instead")
+    now = dt.datetime.now().replace(microsecond=0).isoformat(timespec="seconds")
+    con = sqlite3.connect(DB)
+    con.execute("INSERT INTO remediation_state(ref_id,option,applied_by,applied_at) VALUES(?,?,?,?) "
+                "ON CONFLICT(ref_id) DO UPDATE SET option=excluded.option, "
+                "applied_by=excluded.applied_by, applied_at=excluded.applied_at",
+                (ref_id, str(option_id), actor, now))
+    con.commit()
+    con.close()
+    set_resolution(ref_id, "Investigating", action_id=str(option_id), actor=actor, checks=None)
+    return now[11:16]
+
+
+def record_verification(ref_id, verdict, checks, actor, option_id=None):
+    """Persist the independent verdict and its checks. Returns the verdict."""
+    set_resolution(ref_id, verdict, action_id=option_id or (applied_action(ref_id) or ""),
+                   actor=actor, checks=checks)
+    return verdict
+
+
+def verdict_from_checks(checks):
+    """The one rule from a check list: all pass → Verified; a fail → Recovery failed; else
+    Inconclusive. A pending check is not a pass, and calling it one is the failure mode this
+    project exists to avoid."""
+    results = [str(c.get("result") or "") for c in (checks or [])]
+    if not results:
+        return "Inconclusive"
+    if any(r.startswith("❌") for r in results):
+        return "Recovery failed"
+    if any(not r.startswith("✅") for r in results):
+        return "Inconclusive"
+    return "Verified"
+
+
+def reopen_incident(inc_id, actor, reason=""):
+    """Reopen a closed incident: back on the open queue, with who and when on the record.
+
+    The verification record is kept — reopening does not un-prove the checks — but the closure is
+    cleared, because a closed_at that says closed on an open incident is the kind of number this
+    project must not ship."""
+    actor = str(actor or "").strip() or "Incident Manager"
+    con = sqlite3.connect(DB)
+    con.row_factory = sqlite3.Row
+    table = None
+    for t in ("incidents", "dop_incidents"):
+        if con.execute(f"SELECT 1 FROM {t} WHERE id=?", (inc_id,)).fetchone():
+            table = t
+            break
+    if table is None:
+        con.close()
+        return False, "Incident not found."
+    row = dict(con.execute(f"SELECT * FROM {table} WHERE id=?", (inc_id,)).fetchone())
+    if (row.get("status") or "").lower() != "closed":
+        con.close()
+        return False, "This incident is already open."
+    now = dt.datetime.now().replace(microsecond=0).isoformat(timespec="seconds")
+    con.execute(f"UPDATE {table} SET status='open', stage=? WHERE id=?", ("Diagnosed", inc_id))
+    con.execute("UPDATE resolution_state SET closed_at=NULL, updated_at=? WHERE ref_id=?", (now, inc_id))
+    con.commit()
+    con.close()
+    add_event(inc_id, "itops" if table == "incidents" else "dataops", "detect",
+              f"Reopened by {actor} at {now[11:16]}" + (f" — {reason}" if reason else ""))
+    import collab
+    collab.add_comment(inc_id, actor, "Person",
+                       f"[Simulated] Reopened the incident at {now[11:16]}"
+                       + (f": {reason}" if reason else "."), channel="App")
+    return True, f"Reopened by {actor} at {now[11:16]} — back on the open queue."
+
+
 def closed_by(inc_id):
     """Who closed it and when, read from the closure event the gate writes. ('—', '') if none."""
     for ev in reversed(timeline(inc_id)):

@@ -44,7 +44,12 @@ def test_each_tab_can_be_selected_on_load():
 
 def test_tab_headers_carry_counts_and_critical_state():
     h = html_for()
-    assert "OVERDUE" in h, "the Requests tab states the overdue ask"
+    # the header counts the OVERDUE badges the reader can see on the rendered page, never a thread
+    # total that disagrees with them
+    header = re.search(r'Requests<b>([^<]*)</b>', h).group(1)
+    badges = h.count(">OVERDUE<")
+    n = 0 if header == "none overdue" else int(header.split()[0])
+    assert n == badges, f"header says {header!r} but {badges} row(s) are marked OVERDUE"
     assert "BLOCKED" in h or "ready" in h, "Act & verify states the gate"
     assert re.search(r'Learn<b>(draft|saved)</b>', h), "Learn states whether the record exists"
     assert re.search(r"Timeline<b>\d+ events</b>", h)

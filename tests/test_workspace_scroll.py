@@ -48,7 +48,13 @@ def test_the_stage_actions_are_links_within_the_document():
     assert "Confirm cause" in h
     assert 'href="?inc=INC-8841&amp;action=confirm"' in h      # &amp; is the correct attribute form
     assert "Close incident" in h
-    assert "inert in this POC" in h, "the controls that do nothing must look inert"
+    # every phase is either a live link or a refusal that states why — no dead button
+    assert "Apply remediation" in h and "Run verification" in h, "every phase is named"
+    for phase, action in (("Apply remediation", "apply"), ("Run verification", "verify")):
+        as_link = f'action={action}' in h
+        explained = "needs approval first" in h or "nothing applied yet" in h or "no remediation plan" in h
+        assert as_link or explained, f'{phase} is neither offered nor explained'
+    assert 'class="act blocked"' in h or 'href="?inc=INC-8841&amp;action=close"' in h
 
 
 def test_a_dataops_incident_renders_the_same_shape():

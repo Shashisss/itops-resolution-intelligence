@@ -257,6 +257,31 @@ def _incident_leads(dom, inc):
         return [], None
 
 
+def _remediation_plan(dom, inc):
+    """The recommended remediation, its approval gate, and what the record says has happened.
+
+    One option is offered — the one the app's own recommend() points at — with its mode, so the
+    pane can show why it is gated instead of pretending every action is one click."""
+    try:
+        if dom == "DataOps":
+            options = DE.DOP_REMEDIATION
+        else:
+            options = E.IT_REMEDIATION
+        option = options[0]
+    except Exception:  # noqa: BLE001
+        return None
+    rec = journey.remediation(inc["id"]) or {}
+    res = journey.resolution_record(inc["id"]) or {}
+    return {
+        "id": option["id"], "label": option["label"], "mode": option["mode"],
+        "risk": option["risk"], "needs_approval": option["mode"] == "Human approval",
+        "approved_by": rec.get("approved_by") or "", "approved_at": str(rec.get("approved_at") or "")[11:16],
+        "applied_by": rec.get("applied_by") or "", "applied_at": str(rec.get("applied_at") or "")[11:16],
+        "applied": bool(rec.get("applied_at")),
+        "verdict": res.get("verdict") or "", "checks": res.get("checks") or [],
+    }
+
+
 def _run_incident_action(dom, ref, you_role, act, target=None):
     """Actions arrive as ?action=… from the html block. Performed once, on the record."""
     inc = _find_dop(ref) if dom == "DataOps" else _find_it(ref)
@@ -358,6 +383,59 @@ def _run_incident_action(dom, ref, you_role, act, target=None):
                               travels=_travels, delivered=False)
         st.session_state["flash"] = (f'Ask recorded for {_to} ({_due} min) — NOT SENT. '
                                      "Send it from the Requests tab.")
+    elif act == "approve":
+        plan = _remediation_plan(dom, inc) or {}
+        try:
+            when = journey.approve_remediation(ref, plan.get("id"), you_role)
+            journey.add_event(ref, "dataops" if dom == "DataOps" else "itops", "verify",
+                              f'Remediation {plan.get("id")} approved by {you_role} at {when}')
+            st.session_state["flash"] = (
+                f'Approved by {you_role} at {when} — {plan.get("risk")} action, now executable.')
+        except ValueError as exc:
+            st.session_state["flash"] = f"Not approved: {exc}"
+    elif act == "apply":
+        plan = _remediation_plan(dom, inc) or {}
+        try:
+            when = journey.apply_remediation(ref, plan.get("id"), you_role,
+                                             needs_approval=plan.get("needs_approval", True))
+            journey.add_event(ref, "dataops" if dom == "DataOps" else "itops", "repair",
+                              f'Remediation {plan.get("id")} applied by {you_role} at {when} (simulated)')
+            st.session_state["flash"] = (
+                f'Applied by {you_role} at {when} — {plan.get("label")}. Run verification next.')
+        except ValueError as exc:
+            st.session_state["flash"] = f"Not applied: {exc}"
+    elif act == "verify":
+        plan = _remediation_plan(dom, inc) or {}
+        if not plan.get("applied"):
+            st.session_state["flash"] = ("Verification needs an applied remediation — "
+                                         "nothing has been executed on this thread yet.")
+            return
+        option = (DE.DOP_REMEDIATION if dom == "DataOps" else E.IT_REMEDIATION)[0]
+        try:
+            if dom == "DataOps":
+                checks = DE.verification(inc, _dop_data, option, applied=True)
+            else:
+                checks = E.it_verification(inc, _it_ctx(), option, applied=True)
+            verdict = journey.verdict_from_checks(checks)
+        except Exception as exc:  # noqa: BLE001 — a broken check must be stated, not hidden
+            checks, verdict = [], "Inconclusive"
+            st.session_state["_verify_error"] = f"{type(exc).__name__}: {exc}"
+        journey.record_verification(ref, verdict, checks, "Verification service", plan.get("id"))
+        passed = sum(1 for c in checks if str(c.get("result", "")).startswith("✅"))
+        st.session_state["flash"] = (
+            f'Verification: {verdict} — {passed} of {len(checks)} checks pass '
+            f'(independent re-check, simulated).')
+    elif act == "learn-save":
+        fields = {k: str(st.query_params.get(k) or "").strip()
+                  for k in ("root_cause", "summary", "steps", "outcome")}
+        if not fields["root_cause"]:
+            st.session_state["flash"] = "A learning needs a root cause — nothing was saved."
+            return
+        learn.save(inc, dom, fields, actor=you_role)
+        st.session_state["flash"] = f'Learning saved by {you_role} — root cause recorded.'
+    elif act == "reopen":
+        ok, msg = journey.reopen_incident(ref, you_role, str(st.query_params.get("why") or ""))
+        st.session_state["flash"] = msg
     elif act == "back":
         _close_workspace()
     elif act == "close":
@@ -537,7 +615,8 @@ def render_workspace_page(dom, ref, you_role):
     _act = (st.query_params.get("action") or "").strip().lower()
     if _act:
         _run_incident_action(dom, ref, you_role, _act, target=st.query_params.get("target"))
-        for _k in ("action", "target", "to", "act", "due", "travels", "new"):
+        for _k in ("action", "target", "to", "act", "due", "travels", "new", "learn",
+                   "root_cause", "summary", "steps", "outcome", "why"):
             try:
                 del st.query_params[_k]
             except Exception:
@@ -557,7 +636,8 @@ def render_workspace_page(dom, ref, you_role):
     _initial = next((t for t in incident_html.TAB_NAMES if t.lower() == _tab), "Timeline")
     # The Requests tab's view lives in the URL (full / page / new) so an action lands back on the
     # page it was taken from instead of resetting the tab.
-    _view = {"full": _flag("full"), "page": _num("page", 1), "new": _flag("new")}
+    _view = {"full": _flag("full"), "page": _num("page", 1), "new": _flag("new"),
+             "learn": _flag("learn"), "plan": _remediation_plan(dom, inc)}
     _leads, _headline = _incident_leads(dom, inc)
     st.query_params["inc"] = ref
     _html = incident_html.build(inc, dom, queue=queue, initial_tab=_initial, view=_view,

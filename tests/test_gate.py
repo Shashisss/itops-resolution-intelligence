@@ -89,7 +89,9 @@ def test_recovery_failed_keeps_the_incident_open_and_explains(db):
     h = _html(_inc(db))
     assert "BLOCKED" in h, "the Act & verify tab states the gate"
     assert "Close incident" in h
-    assert "inert in this POC" in h, "a blocked close is inert, not offered"
+    assert 'class="act blocked"' in h, "a blocked close is a refusal, not a link"
+    assert "action=close" not in h, "a blocked close is not offered"
+    assert "Recovery failed" in h, "the refusal names the verdict that blocks it"
     assert status(db) == "open"
 
 
@@ -97,7 +99,8 @@ def test_open_request_blocks_a_verified_closure_and_says_so(db):
     journey.set_resolution(REF, "Verified", action_id=None, checks=PASSING)
     collab.add_delegation(REF, "Incident Manager", "Data Platform", "confirm contract v4")
     h = _html(_inc(db))
-    assert "Close incident" in h and "inert in this POC" in h
+    assert "Close incident" in h and 'class="act blocked"' in h
+    assert "action=close" not in h, "an open request keeps the close unoffered"
     assert status(db) == "open"
 
 

@@ -174,14 +174,19 @@ def test_expanded_page_holds_eight_rows_and_the_preview_holds_four(db):
 
 
 def test_header_overdue_count_equals_the_badges(db):
-    overdue_rows = sum(1 for r in _asks() if r["overdue"])
-    h = _html(view={"full": True})
-    head = _header(h)
-    assert head == (f"{overdue_rows} OVERDUE" if overdue_rows else "none overdue")
-    # the header counts the thread, the badges are spread over its pages: they must add up
+    """The header prints the number of OVERDUE badges on the rendered page — the master's rule.
+
+    Every view (preview, each page) is checked: a thread total that disagrees with the visible rows
+    is what made the reader count two badges against a header of three."""
     pages = max(1, (len(_asks()) + 7) // 8)
-    badges = sum(_html(view={"full": True, "page": p}).count(">OVERDUE<") for p in range(1, pages + 1))
-    assert badges == overdue_rows, f"{badges} badges for {overdue_rows} overdue requests"
+    for view in [{"full": False}] + [{"full": True, "page": p} for p in range(1, pages + 1)]:
+        h = _html(view=view)
+        head = _header(h)
+        shown = 0 if head == "none overdue" else int(head.split()[0])
+        assert shown == h.count(">OVERDUE<"), f'{view}: header {head!r} vs {h.count(">OVERDUE<")} badges'
+    # and the pages together still account for every overdue request
+    total = sum(_html(view={"full": True, "page": p}).count(">OVERDUE<") for p in range(1, pages + 1))
+    assert total == sum(1 for r in _asks() if r["overdue"])
 
 
 # ---------------------------------------------------------------- the actions themselves
