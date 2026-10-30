@@ -314,12 +314,16 @@ def _href(ref, action=None, target=None, tab="Requests", full=None, page=None, e
 
 
 def _badge(r):
-    """The one state word for a request, and how it is toned.
+    """The one chip for a request — a single string, never two chips in one slot.
 
-    Overdue outranks everything except nothing: it is the fact the reader must not miss. An ask
-    with no sent_at was recorded but never handed over, and says so."""
+    Overdue outranks every other state (it is the fact the reader must not miss) but on its own it
+    hides the answer, so the state it outranks is joined into the same chip: "OVERDUE · SENT",
+    "OVERDUE · ACKNOWLEDGED". Two chips would collide in one narrow column, which is what the
+    reader saw as a red-and-green blob."""
     if r["overdue"]:
-        return "OVERDUE", "od"
+        second = {"accepted": "ACKNOWLEDGED", "assigned": "SENT", "reopened": "REOPENED"}.get(
+            r["status"], "")
+        return (f"OVERDUE · {second}" if second else "OVERDUE"), "od"
     if r["unsent"]:
         return "NOT SENT", "unsent"
     if r["status"] == "done":
@@ -332,16 +336,8 @@ def _badge(r):
 
 
 def _badge_html(r):
-    """The state word, plus the decision when the clock would otherwise hide it.
-
-    Overdue outranks every other state (it is the fact not to miss), but on its own it hides the
-    answer: an overdue ask that has just been acknowledged would read OVERDUE before and after the
-    click. So the acknowledgement is printed beside it."""
     label, cls = _badge(r)
-    out = f'<span class="st {cls}">{esc(label)}</span>'
-    if r["overdue"] and r["status"] == "accepted":
-        out += '<span class="st ok">ACKNOWLEDGED</span>'
-    return out
+    return f'<span class="st {cls}">{esc(label)}</span>'
 
 
 def _req_acts(r, ref, full, page):
@@ -411,7 +407,8 @@ def _req_full(rows, ref, page):
         f'<span class="who">{esc(r["owner"])}</span>'
         f'<span class="ask">{esc(r["ask_short"])}</span>'
         f'<span class="badges">{_badge_html(r)}</span>'
-        f'<span class="meta">{esc(str(r.get("actor") or "—"))} '
+        f'<span class="meta" title="{esc(str(r.get("actor") or "—"))}">'
+        f'{esc(_initials(r.get("actor") or "—"))} '
         f'{esc(str(r.get("changed_at") or "")[11:16])}</span>'
         f'{_acts_cell(_req_acts(r, ref, 1, page))}</div>'
         for r in rows)
@@ -425,12 +422,8 @@ def _pager(rows, ref, page, pages, n, all_rows=None):
             '‹ prev</a>' if page > 1 else '<span class="pg off">‹ prev</span>')
     nxt = (f'<a class="pg" href="{_href(ref, tab="Requests", full=1, page=page + 1)}" target="_top">'
            'next ›</a>' if page < pages else '<span class="pg off">next ›</span>')
-    thread_over = sum(1 for r in all_rows if r["overdue"]) if all_rows else 0
-    here = sum(1 for r in rows if r["overdue"])
-    elsewhere = (f'<span class="pg off">· {thread_over} overdue on the thread</span>'
-                 if thread_over != here else "")
     return (f'<div class="pager"><span class="range">{first}–{max(last, first)} of {n}</span>'
-            f'{prev}{nxt}{elsewhere}'
+            f'{prev}{nxt}'
             f'<a class="morex" href="{_href(ref, tab="Requests", full=1, page=page, extra={"new": 1})}"'
             f' target="_top">+ Create ask</a>'
             f'<a class="morex" data-req="0" href="{_href(ref, tab="Requests", full=0, page=page)}"'
@@ -506,6 +499,11 @@ def _requests_pane(F, ref, view):
 LEAD_BADGE = {"confirmed": ("CONFIRMED", "ok"), "rejected": ("REJECTED", "bad"),
               "set_aside": ("SET ASIDE", "sent")}
 LEADS_SHOWN = 5
+
+
+def _initials(name):
+    """The same initials the who-card avatars use, so a 68px cell can still say who."""
+    return "".join(w[0] for w in str(name).split()[:2]).upper() or "•"
 
 
 def _lead_badge(lead):
@@ -733,10 +731,11 @@ def _outcome_opts(current):
 def _tabs(F, dom, initial, view=None):
     view = view or {}
     reqs = list(reversed(story.requests(F["id"])))
-    if view.get("new"):                       # the form replaces the list: nothing on screen to count
-        over = sum(1 for r in reqs if r["overdue"])
-    else:
-        over = sum(1 for r in _req_window(reqs, view)[0] if r["overdue"])
+    # The header counts the whole thread and says so by printing the thread's size beside it:
+    # "4 OVERDUE · 16 asks". Counting only the visible page made the reader reconcile a header of
+    # four against the four chips they could see and the sixteen asks they could not.
+    over = sum(1 for r in reqs if r["overdue"])
+    n_asks = len(reqs)
     leads = view.get("leads") or []
     decided = [l for l in leads if l.get("decision")]
     confirmed = [l for l in decided if l.get("decision") == "confirmed"]
@@ -752,7 +751,8 @@ def _tabs(F, dom, initial, view=None):
                  else ("ready" if gate.get("eligible") else f"BLOCKED · {n_block}"))
     state = {
         "Timeline": f'{len(story._rows("SELECT id FROM timeline WHERE ref_id=?", (F["id"],)))} events',
-        "Requests": (f"{over} OVERDUE" if over else "none overdue"),
+        "Requests": (f"{over} OVERDUE · {n_asks} ask{'' if n_asks == 1 else 's'}"
+                     if over else f"none overdue · {n_asks} ask{'' if n_asks == 1 else 's'}"),
         "Evidence & RCA": rca_state,
         "Connections & audit": _conn_line(F["id"]).split(" · ")[0],
         "Act & verify": act_state,
@@ -846,14 +846,15 @@ html,body{margin:0;height:100%;overflow:hidden;background:#fff;
 .acts{display:flex;gap:6px;white-space:nowrap;align-items:baseline}
 .acts a{color:var(--accent);text-decoration:none;font-weight:700;font-size:9px}
 .acts a:hover{text-decoration:underline}
-.rrow{display:grid;grid-template-columns:104px minmax(0,1fr) 84px 74px 168px;
+.rrow{display:grid;grid-template-columns:96px minmax(0,1fr) 134px 68px 158px;
  column-gap:7px;align-items:baseline;height:17px;line-height:17px;font-size:10px;
  white-space:nowrap;border-bottom:1px solid #f1f5f9;padding:0 1px;overflow:hidden}
 .rrow>*{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .rrow .who{font-weight:750}
 .rrow .ask{color:#334155}
 .rrow .badges{display:flex;gap:3px;overflow:hidden}
-.rrow .badges .st{font-size:8px;padding:0 4px;line-height:11px}
+.rrow .badges .st{font-size:7.5px;padding:0 4px;line-height:11px;letter-spacing:0}
+.rrow .badges{white-space:nowrap}
 .rrow .meta{color:var(--muted);font-size:9px;text-align:right}
 .rrow .acts{display:flex;gap:5px;justify-content:flex-end;align-items:baseline;overflow:hidden}
 .rrow .acts a{font-size:8.5px}

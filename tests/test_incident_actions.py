@@ -173,20 +173,21 @@ def test_expanded_page_holds_eight_rows_and_the_preview_holds_four(db):
     assert 1 <= prev.count('class="req"') <= 4
 
 
-def test_header_overdue_count_equals_the_badges(db):
-    """The header prints the number of OVERDUE badges on the rendered page — the master's rule.
+def test_the_header_counts_the_thread_and_says_so(db):
+    """The header is thread-wide and prints the thread's size beside the count: "4 OVERDUE · 16 asks".
 
-    Every view (preview, each page) is checked: a thread total that disagrees with the visible rows
-    is what made the reader count two badges against a header of three."""
-    pages = max(1, (len(_asks()) + 7) // 8)
-    for view in [{"full": False}] + [{"full": True, "page": p} for p in range(1, pages + 1)]:
-        h = _html(view=view)
-        head = _header(h)
-        shown = 0 if head == "none overdue" else int(head.split()[0])
-        assert shown == h.count(">OVERDUE<"), f'{view}: header {head!r} vs {h.count(">OVERDUE<")} badges'
-    # and the pages together still account for every overdue request
-    total = sum(_html(view={"full": True, "page": p}).count(">OVERDUE<") for p in range(1, pages + 1))
-    assert total == sum(1 for r in _asks() if r["overdue"])
+    A header that shows a number with no scope makes the reader reconcile it against the page in
+    front of them; naming the whole thread is what removes the reconciliation."""
+    asks = _asks()
+    overdue = sum(1 for r in asks if r["overdue"])
+    head = _header(_html(view={"full": True}))
+    assert head.startswith(f"{overdue} OVERDUE" if overdue else "none overdue"), head
+    assert head.endswith(f"{len(asks)} asks"), f"the scope is named: {head!r}"
+    # the chips on the pages add up to the number in the header
+    pages = max(1, (len(asks) + 7) // 8)
+    total = sum(_html(view={"full": True, "page": p}).count('class="st od"')
+                for p in range(1, pages + 1))
+    assert total == overdue
 
 
 # ---------------------------------------------------------------- the actions themselves
@@ -219,14 +220,14 @@ def test_mark_done_resolves_the_overdue_and_the_header_says_so(db):
     con.execute("UPDATE delegations SET ts=datetime('now','-90 minutes') WHERE ref_id=?", (REF,))
     con.commit()
     con.close()
-    assert _header(_html()) == "1 OVERDUE"
+    assert _header(_html()).startswith("1 OVERDUE")
     target = _asks()[0]
     at = _run(tab="Requests", full="1", page="1", action="done", target=target["id"])
     assert _ask(target["id"])["status"] == "done"
     assert _ask(target["id"])["done_at"]
     assert "Marked done by" in _flash(at)
     h = _html(view={"full": True})
-    assert _header(h) == "none overdue", "the tab header must stop saying OVERDUE"
+    assert _header(h).startswith("none overdue"), "the tab header must stop saying OVERDUE"
     assert ">OVERDUE<" not in h
 
 
@@ -273,6 +274,22 @@ def test_acknowledging_an_overdue_ask_shows_both_facts(db):
     h = _html(view={"full": True, "page": 1}) + _html(view={"full": True, "page": 2})
     row = _row_for(h, overdue["id"])
     assert "OVERDUE" in row and "ACKNOWLEDGED" in row, row[:200]
+
+
+def test_a_row_carries_one_chip_never_two(db):
+    """Overdue + acknowledged is one chip reading "OVERDUE · ACKNOWLEDGED" — two chips in the same
+    narrow column is what the reader saw as a single red-and-green blob."""
+    overdue_ack = next((r for r in _asks() if r["overdue"] and r["status"] == "accepted"), None)
+    if overdue_ack is None:                       # make one
+        target = next(r for r in _asks() if r["overdue"] and r["status"] == "assigned")
+        _run(tab="Requests", full="1", page="1", action="ack", target=target["id"])
+    h = _html(view={"full": True, "page": 1}) + _html(view={"full": True, "page": 2})
+    for row in _rows(h):
+        chips = re.findall(r'<span class="st [a-z]+">', row)
+        assert len(chips) <= 1, f"two chips in one slot: {row[:160]}"
+    combined = [r for r in _rows(h) if "OVERDUE · ACKNOWLEDGED" in r]
+    assert combined, "an overdue, acknowledged ask states both facts in one chip"
+    assert "OVERDUE · SENT" in h, "an overdue, sent ask states both facts in one chip"
 
 
 def test_chase_with_a_target_logs_it_against_that_request(db):
