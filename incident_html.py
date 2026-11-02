@@ -491,7 +491,7 @@ def _acts_cell(acts, cls="acts"):
 def _req_full(rows, ref, page):
     body = "".join(
         f'<div class="rrow" data-id="{int(r["id"])}">'
-        f'<span class="who">{esc(r["owner"])}</span>'
+        f'<span class="who" title="{esc(r["owner"])}">{esc(r["owner"])}</span>'
         f'<span class="ask">{esc(r["ask_short"])}</span>'
         f'<span class="badges">{_badge_html(r)}</span>'
         f'<span class="meta" title="{esc(str(r.get("actor") or "—"))}">'
@@ -1025,7 +1025,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#fff;
 .acts{display:flex;gap:6px;white-space:nowrap;align-items:baseline}
 .acts a{color:var(--accent);text-decoration:none;font-weight:700;font-size:9px}
 .acts a:hover{text-decoration:underline}
-.rrow{display:grid;grid-template-columns:96px minmax(0,1fr) 134px 68px 158px;
+.rrow{display:grid;grid-template-columns:116px minmax(0,1fr) 134px 68px 158px;
  column-gap:7px;align-items:baseline;height:17px;line-height:17px;font-size:10px;
  white-space:nowrap;border-bottom:1px solid #f1f5f9;padding:0 1px;overflow:hidden}
 .rrow>*{min-width:0;overflow:hidden;text-overflow:ellipsis}

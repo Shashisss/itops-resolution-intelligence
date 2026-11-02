@@ -200,3 +200,33 @@ def test_ensure_skips_when_nothing_changed(db):
     """It is idempotent, not merely tolerant: an unchanged record is not re-projected."""
     res = graph.ensure(str(db))
     assert res.get("skipped") == "already projected", res
+
+
+def test_a_saved_learning_is_the_only_thing_that_moves_the_count(db, tmp_path, monkeypatch):
+    """Documents the count's one data dependency, so a drift can be explained rather than guessed.
+
+    The projected count is derived from the record: the only thing that changes it for a given
+    incident is a saved learning (learn:INC-8841 --learned_from--> inc:INC-8841), because a learning
+    is a connection. Nothing in the Act & verify pane is projected, so removing a step there cannot
+    move it."""
+    import json as _json
+    learn_file = tmp_path / "learn.json"
+    monkeypatch.setattr(graph, "LEARN_PATH", str(learn_file))
+
+    def count():
+        graph.project(str(db))
+        g = graph.GraphStore(str(db))
+        return len(g.neighbours(graph.incident_node_id("INC-8841")))
+
+    learn_file.write_text("[]")
+    without = count()
+    learn_file.write_text(_json.dumps([{
+        "ref": "INC-8841", "domain": "IT Ops", "title": "t", "root_cause": "schema drift",
+        "summary": "", "steps": [], "outcome": "confirmed", "outcome_by": "CIO",
+        "outcome_at": "2026-11-02T02:00:00", "evidence": [], "saved_at": "2026-11-02T02:00:00",
+        "saved_by": "CIO", "signature": ""}]))
+    with_learn = count()
+    assert with_learn == without + 1, "a learning adds exactly one connection"
+    g = graph.GraphStore(str(db))
+    ids = {r["edge"]["id"] for r in g.neighbours(graph.incident_node_id("INC-8841"))}
+    assert "learn:INC-8841|learned_from|inc:INC-8841" in ids
