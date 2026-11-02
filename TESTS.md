@@ -4,7 +4,7 @@ Two layers, both runnable without a browser.
 
 ```bash
 python3 -m pip install -r requirements-dev.txt
-python3 -m pytest tests -q          # 205 tests, ~41s
+python3 -m pytest tests -q          # 206 tests, ~46s
 python3 scripts/layout_check.py http://localhost:8501   # layout audit — launches its own headless Chrome
 python3 scripts/smoke.py            # deployment smoke test, ~5s
 ```
@@ -34,7 +34,7 @@ that
 Screens: incident × six tabs for INC-8841 and DOP-1001, the incidents list. One line of PASS/FAIL
 per screen; exit code 1 on any failure.
 
-Result at v133: 14 screens checked, 14 PASS on the deployed app (own headless Chrome).
+Result at v134: 14 screens checked, 14 PASS on the deployed app (own headless Chrome).
 
 ## `tests/test_incident_actions.py` — the Requests tab (v110)
 
@@ -117,6 +117,7 @@ re-rendered document.
 | `test_the_seed_is_a_checked_in_file_not_generated_at_first_run` | `learn_seed.json` ships in the repo (not gitignored) and carries INC-8841 with the INC-8462 reuse |
 | `test_a_cold_start_loads_the_seeded_learning` | with no runtime file at all, the seeded learning is there and the runtime file is written from the seed |
 | `test_the_seeded_learning_makes_inc_8841_count_fifteen_connections` | a cold start projects 15 connections, including the learn edge |
+| `test_a_new_learning_invalidates_a_projection_built_without_it` | a database already carrying a projection is re-projected when a learning appears (the 14-vs-15 drift) |
 
 ## `tests/test_rca_and_gate.py` — leads and the close gate (v111)
 

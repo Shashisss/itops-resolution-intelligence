@@ -230,3 +230,26 @@ def test_a_saved_learning_is_the_only_thing_that_moves_the_count(db, tmp_path, m
     g = graph.GraphStore(str(db))
     ids = {r["edge"]["id"] for r in g.neighbours(graph.incident_node_id("INC-8841"))}
     assert "learn:INC-8841|learned_from|inc:INC-8841" in ids
+
+
+def test_a_new_learning_invalidates_a_projection_built_without_it(db, tmp_path, monkeypatch):
+    """A cold deploy writes the seeded learn file before the graph is built — but a database that
+    already carries a projection must not be trusted once a learning appears, or the count stays one
+    short (exactly the 14-vs-15 drift)."""
+    import json as _json
+    learn_file = tmp_path / "late.json"
+    learn_file.write_text("[]")
+    monkeypatch.setattr(graph, "LEARN_PATH", str(learn_file))
+    graph.project(str(db))
+    g = graph.GraphStore(str(db))
+    without = len(g.neighbours(graph.incident_node_id("INC-8841")))
+
+    learn_file.write_text(_json.dumps([{
+        "ref": "INC-8841", "domain": "IT Ops", "title": "t", "root_cause": "schema drift",
+        "summary": "", "steps": [], "outcome": "confirmed", "outcome_by": "Data Platform",
+        "outcome_at": "2026-10-30T10:05:00", "evidence": [], "saved_at": "2026-10-30T10:20:00",
+        "saved_by": "Data Platform", "signature": "it|its_payment_api|UPSTREAM"}]))
+    res = graph.ensure(str(db))
+    assert res.get("skipped") is None, "the changed learn file re-projects"
+    g = graph.GraphStore(str(db))
+    assert len(g.neighbours(graph.incident_node_id("INC-8841"))) == without + 1

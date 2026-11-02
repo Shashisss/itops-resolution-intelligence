@@ -659,7 +659,7 @@ def project(db=None, now=None):
     g.write_many(nodes, list(deduped.values()),
                  now.replace(microsecond=0).isoformat(timespec="seconds") if now else None,
                  replace=True)
-    _meta(db, "graph_sig", _thread_sig(db))
+    _meta(db, "graph_sig", _record_sig(db))
     return {"nodes": len(nodes), "edges": len(deduped)}
 
 
@@ -679,20 +679,24 @@ def _meta(db, key, value=None):
     return value
 
 
-def _thread_sig(db=None):
-    """A fingerprint of the thread links the projection derives edges from.
+def _record_sig(db=None):
+    """A fingerprint of everything the projection derives edges from.
 
     Counting rows is not enough and neither is the newest timestamp: editing a link in place keeps
-    both and changes the claim. The digest is over the rows themselves, so any edit moves it."""
+    both and changes the claim. And the learn records are an input too — a saved learning is an edge,
+    so a projection built without it must not be reused once it appears (a cold deploy writes the
+    seeded learn file before the graph is built)."""
     con = sqlite3.connect(db or DB)
     try:
-        rows = con.execute("SELECT id, thread_ref, src, dst, rel, kind, confidence "
-                           "FROM thread_edges ORDER BY id").fetchall()
+        thread = con.execute("SELECT id, thread_ref, src, dst, rel, kind, confidence "
+                             "FROM thread_edges ORDER BY id").fetchall()
     except Exception:
-        rows = []
+        thread = []
     finally:
         con.close()
-    return hashlib.sha1(repr(rows).encode("utf-8")).hexdigest()
+    learns = sorted((r.get("ref"), r.get("signature"), r.get("saved_at"))
+                    for r in _learn_records())
+    return hashlib.sha1(repr((thread, learns)).encode("utf-8")).hexdigest()
 
 
 def ensure(db=None):
@@ -712,7 +716,7 @@ def ensure(db=None):
         return {"nodes": 0, "edges": 0, "skipped": "no database"}
     # Projected already? Only skip if the thread links are the ones this projection was built from:
     # an edited row must reach the graph, and it must replace its edge rather than add a second one.
-    sig = _thread_sig(db)
+    sig = _record_sig(db)
     if have >= incidents > 0 and _meta(db, "graph_sig") == sig:
         return {"nodes": have, "edges": None, "skipped": "already projected"}
     return project(db)
