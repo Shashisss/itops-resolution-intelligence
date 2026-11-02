@@ -834,6 +834,15 @@ def _act_links(F, headline=None, plan=None):
     return "".join(out)
 
 
+def _stamp(value):
+    """An ISO timestamp as a reader reads it: "30 Oct 10:20"."""
+    try:
+        d = dt.datetime.fromisoformat(str(value))
+        return d.strftime("%d %b %H:%M")
+    except Exception:  # noqa: BLE001
+        return str(value or "")
+
+
 def _learn_pane(ref, inc, dom, view):
     """The learning: what was saved, or the form that saves it."""
     rec = learn.get(ref) if hasattr(learn, "get") else None
@@ -858,11 +867,21 @@ def _learn_pane(ref, inc, dom, view):
 </form>'''
     if rec:
         steps = len(rec.get("steps") or [])
-        return (f'<div class="ev"><span><b>Saved</b> {esc(rec.get("saved_at", ""))} by '
+        # The inheritance question is asked of the RECORD's signature — what was saved, when the
+        # cause was confirmed — not of this session's (still unconfirmed) incident state.
+        sig = rec.get("signature") or ""
+        earlier = learn.similar(sig, exclude_ref=ref) if sig and hasattr(learn, "similar") else []
+        if rec.get("reused_from"):
+            inherit = f'applied the fix recorded for {rec["reused_from"]}'
+        elif earlier:
+            inherit = f'{len(earlier)} earlier incident(s) with this signature'
+        else:
+            inherit = "no earlier incident with this signature"
+        return (f'<div class="ev"><span><b>Saved</b> {esc(_stamp(rec.get("saved_at")))} by '
                 f'{esc(rec.get("saved_by") or "—")} · outcome {esc(rec.get("outcome") or "—")}</span></div>'
                 f'<div class="ev"><span>{esc(rec.get("root_cause") or "")}</span></div>'
                 f'<div class="ev"><span class="muted">{steps} step(s) · '
-                f'{len(rec.get("evidence") or [])} evidence item(s)</span></div>'
+                f'{len(rec.get("evidence") or [])} evidence · {esc(inherit)}</span></div>'
                 f'<div class="rf"><a class="morex" href="?inc={esc(ref)}&amp;tab=Learn&amp;learn=1" '
                 f'target="_top">Edit and save again</a></div>')
     return ('<div class="ev"><span><b>Draft, not saved</b> — the record is written when you save it, '

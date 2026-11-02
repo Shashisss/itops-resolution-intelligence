@@ -13,11 +13,16 @@ raised cannot have helped resolve it; the analytics module compares timestamps t
 """
 import datetime as dt
 import json
+import pathlib
 import os
 import sqlite3
 
 DB = os.environ.get("RI_DB", "data/ops.db")
 PATH = os.environ.get("RI_LEARN_PATH", "data/learn.json")
+# The demo's learn records ship WITH the code: a checked-in file, not something generated on first
+# run. A runtime file that disappears on redeploy made Friday's rehearsal different from Monday's
+# demo, so the seed is versioned and every boot loads the same records.
+SEED = pathlib.Path(__file__).with_name("learn_seed.json")
 
 OUTCOMES = ("confirmed", "overridden", "rejected")
 OUTCOME_LABEL = {"confirmed": "Confirmed — the verified cause held",
@@ -40,7 +45,7 @@ def _read():
             data = json.load(fh)
         return data if isinstance(data, list) else []
     except FileNotFoundError:
-        recs = _seed()
+        recs = seed_records()
         try:
             _write(recs)
         except OSError:
@@ -48,6 +53,20 @@ def _read():
         return recs
     except Exception:
         return []
+
+
+def seed_records():
+    """The shipped demo records: the checked-in seed file, else the built-in list.
+
+    The fallback exists so a stripped checkout still runs; the file is what ships, so the records a
+    client sees are the ones in the repo."""
+    try:
+        data = json.loads(SEED.read_text(encoding="utf-8"))
+        if isinstance(data, list) and data:
+            return data
+    except Exception:
+        pass
+    return _seed()
 
 
 def _write(recs):

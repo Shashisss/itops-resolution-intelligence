@@ -1,0 +1,114 @@
+[
+  {
+    "domain": "IT Ops",
+    "evidence": [
+      "alert: checkout p95 latency above 800 ms",
+      "change: release 24.07 deployed"
+    ],
+    "outcome": "confirmed",
+    "outcome_at": "2026-09-24T09:40:00",
+    "outcome_by": "Checkout Team lead",
+    "ref": "INC-8802",
+    "reused_from": "INC-8711",
+    "root_cause": "Release 24.07 exhausted the checkout connection pool.",
+    "saved_at": "2026-09-24T09:40:00",
+    "saved_by": "Checkout Team lead",
+    "signature": "it|app_checkout|unclassified",
+    "steps": [
+      "Rolled back release 24.07 on checkout-api",
+      "Reset the checkout connection pool to its baseline size",
+      "Confirmed p95 latency < 800 ms for 30 minutes"
+    ],
+    "summary": "Rolled back the release, pool back to baseline, latency within threshold.",
+    "title": "Checkout latency after deploy"
+  },
+  {
+    "domain": "IT Ops",
+    "evidence": [
+      "alert: active_connections above 700"
+    ],
+    "outcome": "confirmed",
+    "outcome_at": "2026-09-14T09:40:00",
+    "outcome_by": "DBA Team",
+    "ref": "INC-8711",
+    "reused_from": null,
+    "root_cause": "A leaking session batch exhausted the payments-db connection pool.",
+    "saved_at": "2026-09-14T09:40:00",
+    "saved_by": "DBA Team",
+    "signature": "it|db_payments|unclassified",
+    "steps": [
+      "Raised the payments-db connection limit under DBA approval",
+      "Killed the leaking session batch",
+      "Added a pool-saturation alert at 80%"
+    ],
+    "summary": "Pool limit raised under DBA approval; the leaking batch was killed.",
+    "title": "DB connection pool exhaustion"
+  },
+  {
+    "domain": "IT Ops",
+    "evidence": [
+      "source: Pipeline failure \u2192 payments_gold stale (observed)"
+    ],
+    "outcome": "confirmed",
+    "outcome_at": "2026-10-13T09:40:00",
+    "outcome_by": "Data Platform",
+    "ref": "INC-8462",
+    "reused_from": null,
+    "root_cause": "core_ledger schema drift left payments_gold stale; the API served stale risk data.",
+    "saved_at": "2026-10-13T09:40:00",
+    "saved_by": "Data Platform",
+    "signature": "it|its_payment_api|UPSTREAM",
+    "steps": [
+      "Reconciled the core_ledger schema with data contract v4",
+      "Replayed payments_bronze_ingest",
+      "Refreshed payments_gold and restarted the payment service"
+    ],
+    "summary": "Contract reconciled, pipeline replayed, payments_gold fresh again.",
+    "title": "Payment API serving stale risk data (schema drift)"
+  },
+  {
+    "domain": "DataOps",
+    "evidence": [
+      "alert: run failed SCHEMA_MISMATCH 'order_channel'"
+    ],
+    "outcome": "overridden",
+    "outcome_at": "2026-10-18T09:40:00",
+    "outcome_by": "Data Owner",
+    "ref": "INC-8588",
+    "reused_from": null,
+    "root_cause": "The source feed added order_channel; the contract was out of date.",
+    "saved_at": "2026-10-18T09:40:00",
+    "saved_by": "Data Owner",
+    "signature": "dop|ds_orders_bz|RUN",
+    "steps": [
+      "Updated the orders contract to include order_channel",
+      "Replayed the failed batch"
+    ],
+    "summary": "Contract updated and the batch replayed.",
+    "title": "orders_bronze_ingest schema drift"
+  },
+  {
+    "domain": "IT Ops",
+    "evidence": [
+      "alert: Payment API data_age above the 15 min SLA (serving stale risk data)",
+      "source: Pipeline failure \u2192 payments_gold stale (observed)"
+    ],
+    "outcome": "confirmed",
+    "outcome_at": "2026-10-30T10:05:00",
+    "outcome_by": "Data Platform",
+    "ref": "INC-8841",
+    "reused_from": "INC-8462",
+    "root_cause": "core_ledger schema drift left payments_gold stale; the payments API served stale risk data.",
+    "saved_at": "2026-10-30T10:20:00",
+    "saved_by": "Data Platform",
+    "signature": "it|its_payment_api|UPSTREAM",
+    "steps": [
+      "Reconciled the core_ledger schema with data contract v4",
+      "Replayed payments_bronze_ingest",
+      "Refreshed payments_gold and watched data age fall below the 15m SLA",
+      "Confirmed error rate and checkout KPI back within threshold"
+    ],
+    "summary": "Contract v4 reconciled, the pipeline replayed and payments_gold refreshed \u2014 the API stopped serving stale risk data.",
+    "title": "Payment API failures \u2014 serving stale risk data"
+  }
+]

@@ -128,7 +128,19 @@ runclock.begin()   # one clock for this render — no 60m beside 61m for the sam
 _DB_PATH = store.db()
 for _mod in (E, DE, journey, collab, analytics, realtime):
     _mod.DB = _DB_PATH
-learn.DB = _DB_PATH          # learn records live outside the session copy on purpose (durable)
+learn.DB = _DB_PATH
+# The learning lives beside the session database and starts from the checked-in seed, so an
+# in-session edit is discarded on refresh like every other action and every deploy begins from the
+# same records — no more "the Friday rehearsal is not the Monday demo".
+_learn_path = os.path.splitext(_DB_PATH)[0] + ".learn.json"
+if not os.path.exists(_learn_path):
+    try:
+        import shutil as _shutil
+        _shutil.copyfile(learn.SEED, _learn_path)
+    except Exception:  # noqa: BLE001 — a read-only checkout still renders from the built-in seed
+        pass
+learn.PATH = _learn_path
+graph.LEARN_PATH = _learn_path        # the projection must read the same learning the pane shows
 graph.DB = _DB_PATH          # the views read the graph, not the flat tables
 story.DB = _DB_PATH          # one definition for every number the story layer states
 ask.DB = _DB_PATH            # the Ask box executes against this session's copy

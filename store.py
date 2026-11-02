@@ -21,8 +21,14 @@ MAX_FILES = 25
 
 
 def _janitor():
-    """Remove session databases left behind by closed tabs — by age, then by count."""
+    """Remove session databases (and their learn files) left by closed tabs — by age, then count."""
     cutoff = time.time() - MAX_AGE_MIN * 60
+    for extra in glob.glob("data/session_*.db.learn.json"):
+        try:
+            if os.path.getmtime(extra) < cutoff:
+                os.remove(extra)
+        except OSError:
+            pass
     files = sorted(glob.glob("data/session_*.db"), key=os.path.getmtime)
     for path in files:
         try:

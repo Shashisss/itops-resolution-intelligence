@@ -254,11 +254,15 @@ def test_learn_save_writes_the_record_with_who_and_when(db):
 
 
 def test_learn_save_requires_a_root_cause(db):
+    # the session starts from the shipped seed; an empty form must leave it exactly as it was
+    seeded = next(r for r in learn.seed_records() if r["ref"] == REF)
     at = _run(tab="Learn", action="learn-save", root_cause="", summary="x")
     assert "needs a root cause" in _flash(at)
-    assert learn.get(REF) is None
-    h = _html(tab="Learn")
-    assert "Draft, not saved" in h
+    after = learn.get(REF)
+    assert after and after["root_cause"] == seeded["root_cause"], "an empty form changes nothing"
+    assert after["saved_at"] == seeded["saved_at"]
+    h = _html(tab="Learn")            # the shipped record is what the pane shows
+    assert "Saved" in h and seeded["root_cause"][:40] in h
 
 
 def test_the_learn_form_is_inline_and_prefilled(db):

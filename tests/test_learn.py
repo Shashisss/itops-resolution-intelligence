@@ -17,6 +17,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
+import graph  # noqa: E402
 import journey  # noqa: E402
 import learn  # noqa: E402
 
@@ -69,12 +70,14 @@ def test_saving_writes_a_durable_record(db, tmp_path):
 
 
 def test_record_is_retrievable_from_the_incident_and_the_list(db):
+    """INC-8841 ships with a seeded learning; saving replaces it and it stays retrievable."""
     inc = _row(db, "INC-8841")
-    assert learn.get("INC-8841") is None
+    assert learn.get("INC-8841") is not None, "the seeded record ships with the repo"
     learn.save(inc, "IT Ops", {"root_cause": "stale upstream", "summary": "replayed",
                                "steps": "replay", "outcome": "confirmed"})
-    assert learn.get("INC-8841") is not None                     # from the incident
-    assert "INC-8841" in [r["ref"] for r in learn.records()]      # from the Learn list
+    saved = learn.get("INC-8841")
+    assert saved is not None and saved["root_cause"] == "stale upstream"   # replaced, not duplicated
+    assert [r["ref"] for r in learn.records()].count("INC-8841") == 1      # from the Learn list
 
 
 def test_similarity_matches_the_signature_not_the_service_alone(db):
@@ -105,3 +108,43 @@ def test_seeded_records_exist_for_a_fresh_install(db):
     assert {"INC-8802", "INC-8711", "INC-8462", "INC-8588"} <= {r["ref"] for r in recs}
     assert any(r["outcome"] == "overridden" for r in recs), "accuracy needs a non-confirmed decision"
     assert any(r.get("reused_from") for r in recs), "reuse needs a record that applied a prior one"
+
+
+# ---------------------------------------------------------------- the seed ships with the code (v133)
+def test_the_seed_is_a_checked_in_file_not_generated_at_first_run():
+    """A runtime-only seed made Friday's rehearsal differ from Monday's demo."""
+    import subprocess
+    assert learn.SEED.exists(), "the seed file ships in the repo"
+    ignored = subprocess.run(["git", "check-ignore", "-q", str(learn.SEED)],
+                             capture_output=True, text=True, cwd=ROOT)
+    assert ignored.returncode != 0, f"{learn.SEED.name} must not be gitignored"
+    refs = [r["ref"] for r in learn.seed_records()]
+    assert "INC-8841" in refs, "the incident the demo is built around has a seeded learning"
+    rec = next(r for r in learn.seed_records() if r["ref"] == "INC-8841")
+    assert rec["signature"] == "it|its_payment_api|UPSTREAM"
+    assert rec["reused_from"] == "INC-8462", "and it points at the prior incident with that signature"
+
+
+def test_a_cold_start_loads_the_seeded_learning(db, tmp_path, monkeypatch):
+    """Cold start = no runtime file at all: the learning must still be there, from the seed."""
+    cold = tmp_path / "cold" / "learn.json"
+    monkeypatch.setattr(learn, "PATH", str(cold))
+    assert not cold.exists()
+    rec = learn.get("INC-8841")
+    assert rec is not None and rec["saved_by"] == "Data Platform"
+    assert cold.exists(), "and the runtime file is written from the seed, not generated"
+
+
+def test_the_seeded_learning_makes_inc_8841_count_fifteen_connections(db, tmp_path, monkeypatch):
+    """The demo claim: 15 connections on every deploy, because the learning ships with the code."""
+    cold = tmp_path / "cold2" / "learn.json"
+    cold.parent.mkdir(parents=True, exist_ok=True)
+    # cold start: the runtime file is written from the shipped seed, then the graph is projected
+    cold.write_text(json.dumps(learn.seed_records()))
+    monkeypatch.setattr(learn, "PATH", str(cold))
+    monkeypatch.setattr(graph, "LEARN_PATH", str(cold))
+    graph.project(str(db))
+    g = graph.GraphStore(str(db))
+    assert len(g.neighbours(graph.incident_node_id("INC-8841"))) == 15
+    ids = {r["edge"]["id"] for r in g.neighbours(graph.incident_node_id("INC-8841"))}
+    assert "learn:INC-8841|learned_from|inc:INC-8841" in ids
