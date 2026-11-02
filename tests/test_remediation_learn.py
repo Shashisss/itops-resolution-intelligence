@@ -1,4 +1,4 @@
-"""Pass (b): apply + approval gate, verification, the learning, and reopen (v121).
+"""Pass (b): the approval gate, verification, the learning, and reopen (v121; apply removed in v131).
 
 Each test drives the real app with an `?action=…` parameter, then asserts the record changed and the
 re-rendered document shows it. The rule under test throughout: nothing is claimed as fixed until an
@@ -76,8 +76,8 @@ def _html_for(ref, tab, plan="auto"):
     if plan == "auto":
         p = _plan_for(ref)
         plan = ({"id": p["id"], "label": p["label"], "mode": p["mode"], "risk": p["risk"],
-                 "needs_approval": p["mode"] == "Human approval", "applied": False,
-                 "approved_at": "", "applied_at": "", "verdict": "", "checks": []} if p else None)
+                 "needs_approval": p["mode"] == "Human approval", "approved": False,
+                 "approved_by": "", "approved_at": "", "verdict": "", "checks": []} if p else None)
     return incident_html.build(inc, "DataOps" if ref.startswith("DOP") else "IT Ops",
                                initial_tab=tab, view={"plan": plan, "tab": tab})
 
@@ -111,9 +111,7 @@ def _plan():
             "needs_approval": opt["mode"] == "Human approval",
             "approved_by": rec.get("approved_by") or "",
             "approved_at": str(rec.get("approved_at") or "")[11:16],
-            "applied_by": rec.get("applied_by") or "",
-            "applied_at": str(rec.get("applied_at") or "")[11:16],
-            "applied": bool(rec.get("applied_at")),
+            "approved": bool(rec.get("approved_at")),
             "verdict": res.get("verdict") or "", "checks": res.get("checks") or []}
 
 
@@ -145,12 +143,17 @@ def _act_html(tab="Act & verify"):
 
 
 # ---------------------------------------------------------------- the gate on the plan
-def test_apply_is_refused_before_approval_and_says_so(db):
+def test_there_is_no_apply_step_anywhere(db):
+    """This POC cannot execute anything, so an Apply step would be theatre."""
+    h = _html()
+    assert "action=apply" not in h, "no apply link in the document"
+    assert "Apply remediation" not in h, "no apply row"
+    assert "Execution happens in the source system" in h, "and it says so"
+    # the verb is inert if someone types the old URL: nothing is written
     at = _run(tab="Act & verify", action="apply")
-    assert "needs approval" in _flash(at)
-    assert not (journey.remediation(REF) or {}).get("applied_at")
-    assert journey.resolution_record(REF) is None, "a refused apply writes no resolution record"
-    assert (_inc()["status"] or "").lower() == "open"
+    assert journey.remediation(REF) is None or not (journey.remediation(REF) or {}).get("applied_at")
+    assert journey.resolution_record(REF) is None
+    assert "apply" not in str(at.query_params.get("action") or "").lower()
 
 
 def test_approve_records_who_and_when(db):
@@ -162,16 +165,14 @@ def test_approve_records_who_and_when(db):
     assert "Remediation approved" in h and rec["approved_by"] in h
 
 
-def test_apply_records_the_action_and_asks_for_verification(db):
-    _run(tab="Act & verify", action="approve")
-    at = _run(tab="Act & verify", action="apply")
+def test_approval_is_the_action_and_it_enables_verification(db):
+    at = _run(tab="Act & verify", action="approve")
     rec = journey.remediation(REF)
-    assert rec["applied_by"] and rec["applied_at"]
-    assert journey.applied_action(REF) == "A", "the resolution record names the applied option"
-    assert "Applied by" in _flash(at)
+    assert rec["approved_by"] and rec["approved_at"]
+    assert "Approved by" in _flash(at)
     h = _html()
-    assert "Remediation applied" in h
-    assert 'action=verify' in h, "the next step is offered"
+    assert "Remediation approved" in h and rec["approved_by"] in h
+    assert 'action=verify' in h, "verification is offered once the fix is approved"
     assert 'action=close' not in h, "still unverified, so no close"
 
 
@@ -187,9 +188,9 @@ def test_verify_records_the_verdict_from_the_checks(db):
     assert f"{passed} of {len(rec['checks'])}" in _flash(at)
 
 
-def test_verify_refuses_without_an_applied_action(db):
+def test_verify_refuses_without_an_approved_fix(db):
     at = _run(tab="Act & verify", action="verify")
-    assert "applied remediation" in _flash(at)
+    assert "needs an approved fix" in _flash(at)
     assert journey.resolution_record(REF) is None
 
 
@@ -202,7 +203,6 @@ def test_verdict_follows_the_checks_not_the_hope(db):
 
 def test_a_failed_verification_keeps_the_close_blocked(db):
     _run(tab="Act & verify", action="approve")
-    _run(tab="Act & verify", action="apply")
     _run(tab="Act & verify", action="verify")
     rec = journey.resolution_record(REF)
     h = _html()
@@ -213,7 +213,6 @@ def test_a_failed_verification_keeps_the_close_blocked(db):
 
 def test_a_verified_incident_closes_then_reopens(db):
     _run(tab="Act & verify", action="approve")
-    _run(tab="Act & verify", action="apply")
     _run(tab="Act & verify", action="verify")
     # clear anything that still blocks closure (open requests) so the gate can empty
     for d in collab.delegations(REF):
@@ -251,7 +250,7 @@ def test_learn_save_writes_the_record_with_who_and_when(db):
     assert "Learning saved" in _flash(at)
     h = _html(tab="Learn")
     assert "Saved" in h and "schema drift on core_ledger" in h
-    assert re.search(r"Learn<b>saved</b>", h), "the tab header says the record exists"
+    assert re.search(r"Learn<b[^>]*>saved</b>", h), "the tab header says the record exists"
 
 
 def test_learn_save_requires_a_root_cause(db):
@@ -274,8 +273,9 @@ def test_the_learn_form_is_inline_and_prefilled(db):
 
 def test_the_act_and_verify_pane_names_every_phase(db):
     h = _html()
-    for label in ("Confirm cause", "Apply remediation", "Run verification", "Close incident"):
+    for label in ("Confirm cause", "Approve remediation", "Run verification", "Close incident"):
         assert label in h, label
+    assert "Apply remediation" not in h, "the apply step is gone"
 
 
 # ---------------------------------------------------------------- the plan belongs to the incident
@@ -306,7 +306,7 @@ def test_an_incident_with_no_plan_says_so_and_offers_nothing(db):
     assert "No remediation plan is recorded" in _flash(at)
     h = _html_for("DOP-1002", "Act & verify", plan=None)
     assert "no remediation plan recorded for this incident" in h
-    assert 'action=approve' not in h and 'action=apply' not in h, "no controls without a plan"
+    assert 'action=approve' not in h and 'action=verify' not in h, "no controls without a plan"
     assert "no plan recorded for this incident" in h
     assert journey.remediation("DOP-1002") is None
     assert "payments_bronze_ingest" not in h, "a neighbour's plan must not be borrowed"

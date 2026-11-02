@@ -4,7 +4,7 @@ Two layers, both runnable without a browser.
 
 ```bash
 python3 -m pip install -r requirements-dev.txt
-python3 -m pytest tests -q          # 198 tests, ~43s
+python3 -m pytest tests -q          # 201 tests, ~42s
 python3 scripts/layout_check.py http://localhost:8501   # layout audit — launches its own headless Chrome
 python3 scripts/smoke.py            # deployment smoke test, ~5s
 ```
@@ -34,7 +34,7 @@ that
 Screens: incident × six tabs for INC-8841 and DOP-1001, the incidents list. One line of PASS/FAIL
 per screen; exit code 1 on any failure.
 
-Result at v130: 14 screens checked, 14 PASS on the deployed app (own headless Chrome).
+Result at v131: 14 screens checked, 14 PASS on the deployed app (own headless Chrome).
 
 ## `tests/test_incident_actions.py` — the Requests tab (v110)
 
@@ -76,6 +76,14 @@ re-rendered document are both read back.
 | `test_the_waiting_tile_follows_the_new_owner` | the "Waiting on" tile names the new owner |
 | `test_assigning_the_current_owner_is_refused` | assigning the current owner refuses and changes nothing |
 
+### Tabs read as controls (v131)
+
+| Test | Asserts |
+|---|---|
+| `test_every_tab_is_a_control_with_its_own_pane` | six tabs, a pane each, exactly one shown |
+| `test_the_tab_css_makes_them_look_clickable` | pointer cursor, hover surface and underline, active underline + weight, the header Share and Bring in… underline on hover |
+| `test_the_state_colour_comes_from_the_state_word` | one function maps the state word to its colour, and the rendered class equals it |
+
 ## `tests/test_remediation_learn.py` — apply, verify, learn, reopen (v121)
 
 13 tests. Each drives the app with an `?action=…` parameter and then asserts the record *and* the
@@ -83,11 +91,11 @@ re-rendered document.
 
 | Test | Asserts |
 |---|---|
-| `test_apply_is_refused_before_approval_and_says_so` | the gate refuses, nothing is written, the flash states why |
+| `test_there_is_no_apply_step_anywhere` | no apply link, no apply row, the honest sentence instead; the old URL writes nothing |
 | `test_approve_records_who_and_when` | approval stamped with actor + time, pane says "Remediation approved" |
-| `test_apply_records_the_action_and_asks_for_verification` | applied stamp, `action_id` on the resolution record, verification offered, close still unoffered |
+| `test_approval_is_the_action_and_it_enables_verification` | the approval is the action; verification is offered once it is recorded |
 | `test_verify_records_the_verdict_from_the_checks` | verdict + checks persisted, flash counts passes |
-| `test_verify_refuses_without_an_applied_action` | no record written, reason stated |
+| `test_verify_refuses_without_an_approved_fix` | no record written, reason stated |
 | `test_verdict_follows_the_checks_not_the_hope` | all pass → Verified, a fail → Recovery failed, pending → Inconclusive |
 | `test_a_failed_verification_keeps_the_close_blocked` | a non-Verified verdict cannot close |
 | `test_a_verified_incident_closes_then_reopens` | close → closed, reopen → open, closure stamp cleared |

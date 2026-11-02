@@ -86,7 +86,7 @@ def _flash(at):
 
 
 def _tab_state(h, name):
-    m = re.search(rf'data-t="\d+">{re.escape(name)}<b>([^<]*)</b>', h)
+    m = re.search(rf'data-t="\d+">{re.escape(name)}<b[^>]*>([^<]*)</b>', h)
     return m.group(1) if m else None
 
 

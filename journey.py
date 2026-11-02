@@ -703,33 +703,11 @@ def approve_remediation(ref_id, option_id, actor):
     return now[11:16]
 
 
-def apply_remediation(ref_id, option_id, actor, needs_approval=True):
-    """Execute the approved option. Refuses (ValueError) when the approval is missing.
-
-    The applied action is written to the resolution record as the action id, with the verdict left
-    at Investigating: nothing is claimed as fixed until the independent checks run."""
-    actor = str(actor or "").strip()
-    if not actor:
-        raise ValueError("applying a remediation requires an actor")
-    rec = remediation(ref_id) or {}
-    if needs_approval and not rec.get("approved_at"):
-        raise ValueError("this action needs approval before it can be applied")
-    if rec.get("applied_at"):
-        raise ValueError("this action is already applied — re-run verification instead")
-    now = dt.datetime.now().replace(microsecond=0).isoformat(timespec="seconds")
-    con = sqlite3.connect(DB)
-    con.execute("INSERT INTO remediation_state(ref_id,option,applied_by,applied_at) VALUES(?,?,?,?) "
-                "ON CONFLICT(ref_id) DO UPDATE SET option=excluded.option, "
-                "applied_by=excluded.applied_by, applied_at=excluded.applied_at",
-                (ref_id, str(option_id), actor, now))
-    con.commit()
-    con.close()
-    set_resolution(ref_id, "Investigating", action_id=str(option_id), actor=actor, checks=None)
-    return now[11:16]
-
-
 def record_verification(ref_id, verdict, checks, actor, option_id=None):
-    """Persist the independent verdict and its checks. Returns the verdict."""
+    """Persist the independent verdict and its checks. Returns the verdict.
+
+    The action id is written here because there is no execution step to write it: the approval
+    names the fix, the independent re-check decides whether it worked."""
     set_resolution(ref_id, verdict, action_id=option_id or (applied_action(ref_id) or ""),
                    actor=actor, checks=checks)
     return verdict

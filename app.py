@@ -291,8 +291,7 @@ def _remediation_plan(dom, inc):
         "id": option["id"], "label": option["label"], "mode": option["mode"],
         "risk": option["risk"], "needs_approval": option["mode"] == "Human approval",
         "approved_by": rec.get("approved_by") or "", "approved_at": str(rec.get("approved_at") or "")[11:16],
-        "applied_by": rec.get("applied_by") or "", "applied_at": str(rec.get("applied_at") or "")[11:16],
-        "applied": bool(rec.get("applied_at")),
+        "approved": bool(rec.get("approved_at")),
         "verdict": res.get("verdict") or "", "checks": res.get("checks") or [],
     }
 
@@ -412,30 +411,15 @@ def _run_incident_action(dom, ref, you_role, act, target=None):
                 f'Approved by {you_role} at {when} — {plan.get("risk")} action, now executable.')
         except ValueError as exc:
             st.session_state["flash"] = f"Not approved: {exc}"
-    elif act == "apply":
-        plan = _remediation_plan(dom, inc)
-        if not plan:
-            st.session_state["flash"] = ("No remediation plan is recorded for this incident — "
-                                         "there is nothing to apply.")
-            return
-        try:
-            when = journey.apply_remediation(ref, plan.get("id"), you_role,
-                                             needs_approval=plan.get("needs_approval", True))
-            journey.add_event(ref, "dataops" if dom == "DataOps" else "itops", "repair",
-                              f'Remediation {plan.get("id")} applied by {you_role} at {when} (simulated)')
-            st.session_state["flash"] = (
-                f'Applied by {you_role} at {when} — {plan.get("label")}. Run verification next.')
-        except ValueError as exc:
-            st.session_state["flash"] = f"Not applied: {exc}"
     elif act == "verify":
         plan = _remediation_plan(dom, inc)
         if not plan:
             st.session_state["flash"] = ("No remediation plan is recorded for this incident — "
                                          "nothing has been applied to verify.")
             return
-        if not plan.get("applied"):
-            st.session_state["flash"] = ("Verification needs an applied remediation — "
-                                         "nothing has been executed on this thread yet.")
+        if not plan.get("approved"):
+            st.session_state["flash"] = ("Verification needs an approved fix — nobody has approved "
+                                         "a remediation on this thread yet.")
             return
         option = next(o for o in (DE.DOP_REMEDIATION if dom == "DataOps" else E.IT_REMEDIATION)
                       if o["id"] == plan.get("id"))

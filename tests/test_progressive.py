@@ -46,12 +46,12 @@ def test_tab_headers_carry_counts_and_critical_state():
     h = html_for()
     # the header counts the OVERDUE badges the reader can see on the rendered page, never a thread
     # total that disagrees with them
-    header = re.search(r'Requests<b>([^<]*)</b>', h).group(1)
+    header = re.search(r'Requests<b[^>]*>([^<]*)</b>', h).group(1)
     # thread-wide count, with the thread's size beside it so the scope is never in doubt
     assert re.match(r"(\d+ OVERDUE|none overdue) · \d+ asks?$", header), header
     assert "BLOCKED" in h or "ready" in h, "Act & verify states the gate"
-    assert re.search(r'Learn<b>(draft|saved)</b>', h), "Learn states whether the record exists"
-    assert re.search(r"Timeline<b>\d+ events</b>", h)
+    assert re.search(r'Learn<b[^>]*>(draft|saved)</b>', h), "Learn states whether the record exists"
+    assert re.search(r"Timeline<b[^>]*>\d+ events</b>", h)
 
 
 def test_the_panes_do_not_scroll_and_have_no_absolute_positioning():

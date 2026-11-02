@@ -66,7 +66,7 @@ def test_the_six_tabs_carry_state_in_words():
     h = html_for()
     import html as _h
     for name in incident_html.TAB_NAMES:
-        assert f'>{_h.escape(name)}<b>' in h, f"tab missing: {name}"
+        assert re.search(rf'>{re.escape(_h.escape(name))}<b[^>]*>', h), f"tab missing: {name}"
     assert "OVERDUE" in h or "none overdue" in h
     assert "BLOCKED" in h or "ready" in h or "closed" in h
 
@@ -194,3 +194,47 @@ def test_a_thread_with_no_links_says_so():
     graph = h[h.index("Why this is happening"):h.index("What this means")]
     assert "no links recorded for this thread" in graph
     assert "0 connections" not in graph
+
+
+# ---------------------------------------------------------------- tabs read as controls (v131)
+def test_every_tab_is_a_control_with_its_own_pane():
+    h = html_for()
+    tabs = re.findall(r'<button class="tab[^"]*" data-t="(\d)">([^<]*)<b', h)
+    assert len(tabs) == 6, tabs
+    for i, _name in tabs:
+        assert f'id="p{i}"' in h, f"tab {i} has no pane"
+    assert h.count('class="pane on"') == 1, "exactly one pane is shown"
+
+
+def test_the_tab_css_makes_them_look_clickable():
+    h = html_for()
+    css = h[h.index("<style>"):h.index("</style>")]
+    tab_rule = re.search(r"\.tab\{([^}]*)\}", css).group(1)
+    assert "cursor:pointer" in tab_rule
+    assert re.search(r"\.tab:hover\{[^}]*background", css), "hover surface"
+    assert re.search(r"\.tab:hover\{[^}]*border-bottom", css), "hover underline"
+    active = re.search(r"\.tab\.on\{([^}]*)\}", css).group(1)
+    assert "border-bottom-color:var(--accent)" in active, "solid underline when active"
+    assert "font-weight:800" in active, "and slightly stronger text"
+    # the header controls are links, not captions
+    assert re.search(r"\.hdr \.bc \.back\{[^}]*color:var\(--accent\)", css)
+    assert re.search(r"\.hdr \.bc \.back:hover\{[^}]*underline", css)
+    assert re.search(r"\.morex:hover\{[^}]*underline", css), "Bring in… underlines on hover"
+
+
+def test_the_state_colour_comes_from_the_state_word():
+    """One function decides the colour, so a tab cannot be coloured by hand and drift."""
+    assert incident_html._state_kind("4 OVERDUE · 16 asks") == "k-over"
+    assert incident_html._state_kind("none overdue · 16 asks") == "k-neutral"
+    assert incident_html._state_kind("BLOCKED · 2") == "k-blocked"
+    assert incident_html._state_kind("ready") == "k-ready"
+    assert incident_html._state_kind("saved") == "k-neutral"
+    assert incident_html._state_kind("draft") == "k-neutral"
+
+    h = html_for(tab="Requests")
+    over = re.search(r'Requests<b class="([^"]+)">([^<]*)</b>', h)
+    assert over.group(1) == incident_html._state_kind(over.group(2)), "the class matches the word"
+    blocked = re.search(r'Act &amp; verify<b class="([^"]+)">([^<]*)</b>', h)
+    assert blocked.group(1) == "k-blocked" and "BLOCKED" in blocked.group(2)
+    learn = re.search(r'Learn<b class="([^"]+)">([^<]*)</b>', h)
+    assert learn.group(1) == "k-neutral"

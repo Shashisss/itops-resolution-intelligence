@@ -39,7 +39,7 @@ def test_the_panel_is_not_height_clamped():
 
 def test_the_four_phases_are_named():
     h = html_for()
-    for phase in ("Confirm cause", "Apply remediation", "Run verification", "Close incident"):
+    for phase in ("Confirm cause", "Approve remediation", "Run verification", "Close incident"):
         assert phase in h, phase
 
 
@@ -49,8 +49,8 @@ def test_the_stage_actions_are_links_within_the_document():
     assert 'href="?inc=INC-8841&amp;action=confirm"' in h      # &amp; is the correct attribute form
     assert "Close incident" in h
     # every phase is either a live link or a refusal that states why — no dead button
-    assert "Apply remediation" in h and "Run verification" in h, "every phase is named"
-    for phase, action in (("Apply remediation", "apply"), ("Run verification", "verify")):
+    assert "Approve remediation" in h and "Run verification" in h, "every phase is named"
+    for phase, action in (("Approve remediation", "approve"), ("Run verification", "verify")):
         as_link = f'action={action}' in h
         explained = "needs approval first" in h or "nothing applied yet" in h or "no remediation plan" in h
         assert as_link or explained, f'{phase} is neither offered nor explained'

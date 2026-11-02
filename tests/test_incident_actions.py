@@ -78,7 +78,7 @@ def _asks(ref=REF):
 
 
 def _header(h, name="Requests"):
-    m = re.search(r'data-t="1">Requests<b>([^<]*)</b>', h)
+    m = re.search(r'data-t="1">Requests<b[^>]*>([^<]*)</b>', h)
     return m.group(1) if m else None
 
 

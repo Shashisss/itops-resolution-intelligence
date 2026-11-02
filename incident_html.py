@@ -780,48 +780,42 @@ def _act_row(ref, label, action, why, state=None):
 
 
 def _plan_rows(ref, plan):
-    """Approve → apply → verify, each stating why it is available or refused.
+    """The fix, the approval, the independent re-check — and no execution step.
 
-    Without a plan (a caller that only builds the document) the rows are shown as refusals with
-    their reason, so the phases are never silently missing from the screen."""
+    This POC cannot run anything, so an "Apply" button would be theatre: the approval is the action,
+    and the sentence under it says so."""
     if not plan:
         # No borrowed plan: say it plainly and leave the controls unavailable, with the reason.
         return ('<div class="planline none"><b>To fix</b> no remediation plan recorded for this '
                 'incident<i>—</i></div>'
                 + _act_row(ref, "Approve remediation", "", "no plan recorded for this incident", "blocked")
-                + _act_row(ref, "Apply remediation", "", "no plan recorded for this incident", "blocked")
                 + _act_row(ref, "Run verification", "", "no plan recorded for this incident", "blocked"))
-    # What would actually be applied, and who has to say yes to it — stated before the controls,
-    # because "Apply remediation" on its own does not tell anyone what they are approving.
     gate = plan.get("mode") or ("Human approval" if plan.get("needs_approval") else "Policy controlled")
     out = [f'<div class="planline" title="{esc(plan.get("label"))}">'
            f'<b>To fix</b> {esc(plan.get("label"))}'
            f'<i>{esc(plan.get("risk"))} · {esc(gate)}</i></div>']
     if plan.get("approved_at"):
-        out.append(_act_row(ref, "Remediation approved",
-                            "", f'{plan["approved_by"]} {plan["approved_at"]}', "done"))
-    elif plan.get("needs_approval"):
-        out.append(_act_row(ref, "Approve remediation", "approve",
-                            f'{plan["risk"]} · nothing runs until it is approved'))
-    if plan.get("applied_at"):
-        out.append(_act_row(ref, "Remediation applied", "",
-                            f'{plan["applied_by"]} {plan["applied_at"]}', "done"))
-    elif plan.get("needs_approval") and not plan.get("approved_at"):
-        out.append(_act_row(ref, "Apply remediation", "",
-                            "blocked — needs approval first", "blocked"))
+        out.append(_act_row(ref, "Remediation approved", "",
+                            f'{plan["approved_by"]} {plan["approved_at"]}', "done"))
+        out.append('<div class="exec-note">Execution happens in the source system — this records '
+                   'the approval, nothing runs here.</div>')
     else:
-        out.append(_act_row(ref, "Apply remediation", "apply", "runs the fix above (simulated)"))
+        out.append(_act_row(ref, "Approve remediation", "approve",
+                            f'{plan["risk"]} · nothing runs here'))
+        out.append('<div class="exec-note">Execution happens in the source system — this records '
+                   'the approval, nothing runs here.</div>')
     verdict = plan.get("verdict") or ""
     checks = plan.get("checks") or []
     if verdict and verdict != "Investigating":
         passed = sum(1 for c in checks if str(c.get("result", "")).startswith("✅"))
-        out.append(_act_row(ref, esc(verdict) and "Verification", "",
+        out.append(_act_row(ref, "Verification", "",
                             f'{verdict} · {passed} of {len(checks)} checks pass', "done"))
-    elif plan.get("applied_at"):
+    elif plan.get("approved"):
         out.append(_act_row(ref, "Run verification", "verify",
-                            "independent re-check, not the operator's claim"))
+                            "independent re-check of the incident's own breaching metrics"))
     else:
-        out.append(_act_row(ref, "Run verification", "", "nothing applied yet", "blocked"))
+        out.append(_act_row(ref, "Run verification", "",
+                            "needs an approved fix first", "blocked"))
     return "".join(out)
 
 
@@ -884,6 +878,20 @@ def _outcome_opts(current):
                    for o in opts)
 
 
+def _state_kind(text):
+    """Which state a tab's sub-label is in — the colour comes from the state, never the tab.
+
+    One place decides it, so a new tab cannot be coloured by hand and drift from what it says."""
+    t = str(text or "").strip().lower()
+    if "overdue" in t and not t.startswith("none"):
+        return "k-over"
+    if "blocked" in t:
+        return "k-blocked"
+    if t in ("ready",) or t.startswith("ready"):
+        return "k-ready"
+    return "k-neutral"
+
+
 def _tabs(F, dom, initial, view=None):
     view = view or {}
     reqs = list(reversed(story.requests(F["id"])))
@@ -916,7 +924,7 @@ def _tabs(F, dom, initial, view=None):
     }
     bar = "".join(
         f'<button class="tab{" on" if name == initial else ""}" data-t="{i}">'
-        f'{esc(name)}<b>{esc(state[name])}</b></button>'
+        f'{esc(name)}<b class="{_state_kind(state[name])}">{esc(state[name])}</b></button>'
         for i, name in enumerate(["Timeline", "Requests", "Evidence & RCA",
                                   "Connections & audit", "Act & verify", "Learn"]))
     panes = _panes(F, dom, view)
@@ -953,7 +961,9 @@ html,body{margin:0;height:100%;overflow:hidden;background:#fff;
 .hdr,.tiles,.tabbar,.foot{flex:0 0 auto}
 .hdr{min-height:46px}
 .hdr .bc{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:800;display:flex;gap:10px;align-items:center}
-.hdr .bc .back{color:var(--accent);text-decoration:none;text-transform:none;letter-spacing:0;font-size:10.5px}
+.hdr .bc .back{color:var(--accent);text-decoration:none;text-transform:none;letter-spacing:0;
+ font-size:10.5px;font-weight:700;cursor:pointer}
+.hdr .bc .back:hover{text-decoration:underline}
 .hdr .row{display:flex;align-items:center;gap:10px;white-space:nowrap;overflow:hidden}
 .hdr .t{font-size:18px;font-weight:800;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis}
 .hdr .r{margin-left:auto;display:flex;align-items:center;gap:8px}
@@ -989,10 +999,16 @@ html,body{margin:0;height:100%;overflow:hidden;background:#fff;
 .who i{display:block;font-style:normal;font-size:9.5px;color:var(--muted)}
 .who em{margin-left:auto;font-style:normal;font-size:9.5px;color:var(--muted)}
 .tabbar{display:flex;align-items:stretch;gap:2px;border-bottom:1px solid var(--line)}
-.tab{flex:1;background:none;border:none;border-bottom:2px solid transparent;text-align:left;cursor:pointer;padding:4px 2px;font-size:10.5px;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tab b{display:block;font-size:9.5px;color:var(--muted);font-weight:650}
-.tab.on{border-bottom-color:var(--accent);color:var(--accent);font-weight:800}
-.tab.on b{color:var(--accent)}
+.tab{flex:1;background:none;border:none;border-bottom:2px solid transparent;border-radius:6px 6px 0 0;
+ text-align:left;cursor:pointer;padding:4px 6px;font-size:10.5px;color:#475569;white-space:nowrap;
+ overflow:hidden;text-overflow:ellipsis;transition:background .12s ease,color .12s ease}
+.tab:hover{background:var(--soft);border-bottom-color:#cbd5e1;color:var(--ink)}
+.tab b{display:block;font-size:9.5px;font-weight:700}
+.tab b.k-over{color:var(--red)}
+.tab b.k-blocked{color:var(--amber)}
+.tab b.k-ready{color:var(--green)}
+.tab b.k-neutral{color:var(--muted)}
+.tab.on{border-bottom-color:var(--accent);color:var(--accent);font-weight:800;background:var(--soft)}
 .panes{flex:0 0 164px;height:164px;overflow:hidden;position:relative}
 .pane{display:none;height:100%;overflow:hidden;padding:6px 2px 0}
 .pane.on{display:block}
@@ -1081,6 +1097,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#fff;
 .planline b{font-size:8.5px;text-transform:uppercase;letter-spacing:.04em;color:#4f46e5;flex:0 0 auto}
 .planline.none{background:#fff7ed;border-color:#fdba74;color:#7c2d12}
 .planline.none i{display:none}
+.exec-note{font-size:8.5px;color:var(--muted);padding:0 2px 3px 10px;line-height:1.2}
 .planline i{font-style:normal;color:var(--muted);margin-left:auto;flex:0 0 auto}
 .act.inert{opacity:.55;cursor:not-allowed}
 .act.blocked{opacity:1;border-color:#fecaca;background:#fff5f5}
